@@ -17,7 +17,9 @@
   },
   "license": "MIT",
   "homepage": "https://github.com/normannormalmann/ultrastar-dlh",
-  "trustedDependencies": ["electron"],
+  "trustedDependencies": [
+    "electron"
+  ],
   "patchedDependencies": {
     "fstream@1.0.12": "patches/fstream@1.0.12.patch"
   },
@@ -64,5 +66,9 @@
     "lucide-react": "^1.17.0",
     "react": "19.2.7",
     "react-dom": "19.2.7"
+  },
+  "overrides": {
+    "uuid": "^11.1.1",
+    "vite": "^8.0.0"
   }
 }
