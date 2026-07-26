@@ -122,7 +122,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BEATS_PER_BPM_UNIT, beatToMs } from "../src/core/create/format.ts";
 
-type Befund = { datei: string; bpm: number; letzterBeat: number; endeMs: number };
+type Befund = { datei: string; verhaeltnis: number };
 
 /** #BPM lesen; deutsche Dateien nutzen Komma als Dezimaltrenner. */
 const leseBpm = (txt: string): number | null => {
@@ -150,15 +150,44 @@ const letzterBeat = (txt: string): number | null => {
   return max;
 };
 
+/** Mediendatei aus dem #MP3-Header; die Bibliothek nutzt oft video.mp4. */
+const leseMedium = (txt: string): string | null => {
+  const m = /^#MP3:(.*)$/m.exec(txt);
+  const name = m?.[1]?.trim();
+  return name && name.length > 0 ? name : null;
+};
+
+/** Laufzeit der Mediendatei in Sekunden, ueber ffprobe. */
+const audioDauer = (pfad: string): number | null => {
+  const p = Bun.spawnSync([
+    "ffprobe", "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "csv=p=0", pfad,
+  ]);
+  if (p.exitCode !== 0) return null;
+  const wert = Number.parseFloat(new TextDecoder().decode(p.stdout).trim());
+  return Number.isNaN(wert) || wert <= 0 ? null : wert;
+};
+
+// Fenster fuer das Verhaeltnis Songende/Audiodauer. Zweiseitig, und das ist
+// entscheidend: eine reine Obergrenze laesst auch Faktor 8 durch, bei dem
+// der Song nach der halben Datei enden wuerde.
+const MIN_VERHAELTNIS = 0.6;
+const MAX_VERHAELTNIS = 1.05;
+
 const main = async (): Promise<void> => {
   const wurzel = process.argv[2];
+  const grenze = Number.parseInt(process.argv[3] ?? "40", 10);
   if (!wurzel) {
-    console.error("Aufruf: bun run scripts/measure-beat-convention.ts <songs-verzeichnis>");
+    console.error(
+      "Aufruf: bun run scripts/measure-beat-convention.ts <songs-verzeichnis> [anzahl]",
+    );
     process.exit(2);
   }
 
   const befunde: Befund[] = [];
   for (const eintrag of await readdir(wurzel, { withFileTypes: true })) {
+    if (befunde.length >= grenze) break;
     if (!eintrag.isDirectory()) continue;
     const txtPfad = join(wurzel, eintrag.name, "song.txt");
     try {
@@ -169,35 +198,36 @@ const main = async (): Promise<void> => {
     const txt = await readFile(txtPfad, "utf8");
     const bpm = leseBpm(txt);
     const beat = letzterBeat(txt);
-    if (bpm === null || beat === null) continue;
-    befunde.push({
-      datei: eintrag.name,
-      bpm,
-      letzterBeat: beat,
-      endeMs: beatToMs(beat, bpm, leseGap(txt)),
-    });
+    const medium = leseMedium(txt);
+    if (bpm === null || beat === null || medium === null) continue;
+
+    const dauer = audioDauer(join(wurzel, eintrag.name, medium));
+    if (dauer === null) continue;
+
+    const endeSek = beatToMs(beat, bpm, leseGap(txt)) / 1000;
+    befunde.push({ datei: eintrag.name, verhaeltnis: endeSek / dauer });
   }
 
   if (befunde.length === 0) {
-    console.error("Keine auswertbaren Songs gefunden.");
+    console.error("Keine auswertbaren Songs mit Mediendatei gefunden.");
     process.exit(1);
   }
 
-  // Plausibilitaet: das errechnete Songende muss in einem realistischen
-  // Bereich liegen (1..12 Minuten). Ein falscher Faktor verschiebt das um
-  // ein Vielfaches und faellt hier sofort auf.
-  const minuten = befunde.map((b) => b.endeMs / 60_000).sort((a, b) => a - b);
-  const median = minuten[Math.floor(minuten.length / 2)] ?? 0;
-  const plausibel = minuten.filter((m) => m >= 1 && m <= 12).length;
+  const werte = befunde.map((b) => b.verhaeltnis).sort((a, b) => a - b);
+  const median = werte[Math.floor(werte.length / 2)] ?? 0;
+  const imFenster = werte.filter(
+    (v) => v >= MIN_VERHAELTNIS && v <= MAX_VERHAELTNIS,
+  ).length;
 
-  console.log(`Songs ausgewertet:      ${befunde.length}`);
-  console.log(`BEATS_PER_BPM_UNIT:     ${BEATS_PER_BPM_UNIT}`);
-  console.log(`Median Songende:        ${median.toFixed(2)} min`);
-  console.log(`Plausibel (1-12 min):   ${plausibel}/${befunde.length}`);
-  console.log(`Kuerzestes / laengstes: ${minuten[0]?.toFixed(2)} / ${minuten.at(-1)?.toFixed(2)} min`);
+  console.log(`Songs mit Audiodauer:  ${befunde.length}`);
+  console.log(`BEATS_PER_BPM_UNIT:    ${BEATS_PER_BPM_UNIT}`);
+  console.log(`Median Songende/Audio: ${median.toFixed(3)}`);
+  console.log(
+    `Im Fenster ${MIN_VERHAELTNIS}-${MAX_VERHAELTNIS}:  ${imFenster}/${befunde.length}`,
+  );
   console.log("");
   console.log(
-    plausibel / befunde.length >= 0.9
+    imFenster / befunde.length >= 0.9
       ? "OK: Faktor ist konsistent mit dem Referenzkorpus."
       : "FEHLER: Faktor passt nicht. Mit 1, 2, 8 gegenpruefen.",
   );
@@ -206,11 +236,22 @@ const main = async (): Promise<void> => {
 await main();
 ```
 
-- [ ] **Step 6: Messung ausführen und Faktor festschreiben**
+**Das Verfahren ist bewusst so gewählt.** Ein Vergleich gegen ein reines Plausibilitätsfenster für die Songlänge (etwa 1–12 Minuten) unterscheidet Faktor 2 und 4 **nicht** — beide liefern plausible Längen. Erst der Bezug auf die echte Laufzeit der Mediendatei trennt sie, und nur mit **zweiseitiger** Grenze: Faktor 8 hält jede Obergrenze ein, würde den Song aber nach der halben Datei enden lassen.
 
-Run: `bun run scripts/measure-beat-convention.ts "<pfad-zur-song-bibliothek>"`
+- [ ] **Step 6: Messung ausführen und Faktor bestätigen**
 
-Mindestens 20 Songs, über Sprachen und Tempi gemischt. Bei „FEHLER" den Wert von `BEATS_PER_BPM_UNIT` auf 1, 2, 8 setzen und erneut messen, bis der plausible Anteil ≥ 90 % ist. Den gefundenen Wert in `format.ts` eintragen und den Kommentar dort auf den Messbefund aktualisieren (Anzahl Songs, Median, Datum).
+Run: `bun run scripts/measure-beat-convention.ts "J:/Ultrastar" 40`
+
+**Erwartetes Ergebnis:** `Median Songende/Audio` bei etwa **0,92** und **40/40** im Fenster. Der Faktor **4** ist bereits vorab über 40 Songs dieser Bibliothek belegt worden; dieser Schritt reproduziert die Messung, er sucht sie nicht. Die Vergleichswerte aus dem Vorablauf:
+
+| Faktor | Median Songende/Audio | im Fenster |
+|---|---|---|
+| 1 | 3,407 | 3/40 |
+| 2 | 1,742 | 4/40 |
+| **4** | **0,919** | **40/40** |
+| 8 | 0,490 | 40/40 (scheitert an der Untergrenze 0,6) |
+
+Weicht das Ergebnis davon ab, **nicht** stillschweigend einen anderen Faktor eintragen, sondern melden — dann stimmt etwas an der Umrechnung nicht. `BEATS_PER_BPM_UNIT` bleibt bei 4; nur der Kommentar in `format.ts` wird auf den reproduzierten Befund aktualisiert (Anzahl Songs, Median, Datum).
 
 - [ ] **Step 7: Befund als Nachtrag ins Design-Dokument**
 
@@ -2859,7 +2900,7 @@ Expected: PASS, 7 Tests
 
 ```json
 {
-  "hinweis": "Kopieren nach reference-corpus.json und fuellen. Weder diese Datei noch Audio oder Referenz-.txt gehoeren ins Repo (Urheberrecht).",
+  "hinweis": "Kopieren nach reference-corpus.json und fuellen. Weder diese Datei noch Audio oder Referenz-.txt gehoeren ins Repo (Urheberrecht). Jedes songDir enthaelt song.txt; die Tonspur wird ueber deren #MP3-Header aufgeloest.",
   "language": "de",
   "songs": [
     { "artist": "Interpret", "title": "Titel", "songDir": "C:/Songs/Interpret - Titel" }
@@ -2887,9 +2928,24 @@ import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
 
 type Eintrag = { artist: string; title: string; songDir: string };
 
-const AUDIO_KANDIDATEN = ["song.ogg", "song.mp3", "audio.ogg", "audio.mp3"];
+// Rueckfall, falls der #MP3-Header fehlt.
+const AUDIO_KANDIDATEN = ["song.ogg", "song.mp3", "video.mp4", "audio.ogg", "audio.mp3"];
 
-const findeAudio = async (dir: string): Promise<string | null> => {
+/**
+ * Audio ueber den #MP3-Header des Referenz-.txt auflösen. Die Bibliothek
+ * legt die Tonspur ueberwiegend als video.mp4 ab, nicht als song.ogg —
+ * geratene Dateinamen finden dort nichts.
+ */
+const findeAudio = async (dir: string, referenzTxt: string): Promise<string | null> => {
+  const ausHeader = /^#MP3:(.*)$/m.exec(referenzTxt)?.[1]?.trim();
+  if (ausHeader) {
+    try {
+      await access(join(dir, ausHeader));
+      return join(dir, ausHeader);
+    } catch {
+      // Header zeigt ins Leere, Kandidaten versuchen
+    }
+  }
   for (const name of AUDIO_KANDIDATEN) {
     try {
       await access(join(dir, name));
@@ -2941,7 +2997,7 @@ const main = async (): Promise<void> => {
   for (const song of manifest.songs) {
     const referenzTxt = await readFile(join(song.songDir, "song.txt"), "utf8");
     const referenz = parseReferenceTxt(referenzTxt);
-    const audio = await findeAudio(song.songDir);
+    const audio = await findeAudio(song.songDir, referenzTxt);
     if (!audio) {
       console.error(`${song.artist} - ${song.title}: kein Audio gefunden, uebersprungen`);
       continue;
