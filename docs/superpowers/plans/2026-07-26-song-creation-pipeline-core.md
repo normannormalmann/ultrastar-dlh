@@ -3170,6 +3170,45 @@ git add src/core/create/evaluate.ts src/core/create/evaluate.test.ts scripts/eva
 git commit -m "feat(create): evaluation harness against human-synced reference songs"
 ```
 
+#### Nachtrag: zwei Pflichtergänzungen, vor Step 7 zu erledigen (2026-07-26)
+
+Beides fiel während der Tasks 5 bis 9 auf und ist im Ledger vermerkt.
+
+**A — Die Metrik muss Tonhöhen vergleichen, nicht nur Einsatzzeitpunkte.**
+
+Wie oben entworfen misst `compareToReference` ausschließlich Onsets. Eine Melodie, die durchgehend um Halbtöne verschoben ist, erzielt damit **fehlerfreie Timing-Kennzahlen und ist trotzdem unsingbar** — die Messung könnte den Fehler prinzipiell nicht sehen. Das ist derselbe blinde Fleck, der die Beat-Konvention beinahe falsch festgeschrieben hätte.
+
+Konkret betroffen ist `MIDI_NULLAGE = 60` in `notes.py`. Der Wert ruht auf einer Annahme: über 300 Referenzsongs liegt der Median der Song-Median-Tonhöhen bei 8, was zu „Tonhöhe 0 bedeutet C4" passt — aber ein Irrtum um eine ganze Oktave sähe genauso aus. Nur dieser Vergleich klärt es.
+
+Erforderlich:
+
+- `parseReferenceTxt` liest die Tonhöhe mit, die das bestehende Notenzeilen-Muster in Gruppe 3 schon erfasst und bislang verwirft. `ReferenceSong.syllables` wird damit zu `{ syllable, onsetMs, pitch }[]`.
+- `Metrics` erhält zwei Felder:
+  - `medianPitchOffset` — Median von (unsere Tonhöhe minus Referenz) über alle Paare. **Ein Wert ungleich null bedeutet systematische Transposition**, also eine falsche Nullage, und ist der eigentliche Prüfwert für `MIDI_NULLAGE`.
+  - `anteilPitchExakt` — Anteil der Paare, die nach Abzug von `medianPitchOffset` genau übereinstimmen. Das trennt einen konstanten Versatz von echten Formfehlern der Melodie: ersterer ist eine Konstante, letzterer ein Qualitätsproblem.
+- Tests für beide, auf synthetischen Paaren: identische Eingabe ergibt Offset 0 und Anteil 1; eine um drei Halbtöne verschobene Kopie ergibt Offset 3 und weiterhin Anteil 1; eine einzelne verfälschte Note senkt nur den Anteil.
+- Der Bericht des Harness gibt beide Werte aus, und der Nachtrag im Design-Dokument hält sie mit fest.
+
+**B — Die Modellpakete gehören in eine virtuelle Umgebung.**
+
+Step 7 ist der erste und einzige Schritt des ganzen Plans, der torch, Demucs, WhisperX, SwiftF0 und librosa tatsächlich braucht — mehrere Gigabyte. Der Editable-Install aus Task 5 lief ohne aktive venv und landete in den User-Site-Packages; dasselbe mit den Modellpaketen würde das globale Python-Environment des Nutzers vollschreiben und Versionskonflikte mit allem anderen riskieren, was dort liegt.
+
+Vor Step 7 daher eine venv anlegen und ausschließlich darin installieren:
+
+```bash
+cd python-sidecar
+python -m venv .venv
+.venv/Scripts/activate        # Windows; sonst: source .venv/bin/activate
+python -m pip install -e ".[dev,models]"
+python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+```
+
+`.venv/` gehört in `.gitignore` — der bestehende Eintrag von Step 6 ist entsprechend zu erweitern. Der Harness muss den Interpreter dieser venv verwenden; `runPipeline` nimmt ihn über `pythonBin` an, das genau dafür vorhanden ist.
+
+**Reihenfolge:** A vor Step 7, sonst misst der erste Basiswert die Tonhöhen nicht und muss wiederholt werden. B ebenfalls vor Step 7, weil danach die Pakete schon am falschen Ort liegen.
+
+**C — Ein geparkter Befund wird hier fällig.** Die Zeilenrückgewinnung in `align.py` zählt Wörter über Leerzeichen-Trennung. WhisperX kann anders tokenisieren, was die Zuordnung verschiebt *und* die Abweichungswarnung fälschlich auslöst. Sobald echte Aligner-Ausgabe vorliegt: erst ansehen, dann **einmal** informiert korrigieren — nicht vorher raten.
+
 ---
 
 ## Nach dem Plan
