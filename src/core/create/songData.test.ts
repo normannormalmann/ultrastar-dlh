@@ -48,4 +48,25 @@ describe("parseSongData", () => {
     const ohne = { ...gueltig, notes: [{ beat: 0, length: 4, pitch: 5, syllable: "Hal" }] };
     expect(parseSongData(ohne).notes[0]?.confidence).toBeUndefined();
   });
+
+  it("lehnt fehlende lineBreaks ab", () => {
+    const { lineBreaks, ...ohneLineBreaks } = gueltig;
+    expect(() => parseSongData(ohneLineBreaks)).toThrow(/lineBreaks/);
+  });
+
+  it("lehnt nicht-Array lineBreaks ab", () => {
+    expect(() => parseSongData({ ...gueltig, lineBreaks: "nope" })).toThrow(/lineBreaks/);
+  });
+
+  it("erlaubt leere lineBreaks", () => {
+    expect(parseSongData({ ...gueltig, lineBreaks: [] }).lineBreaks).toEqual([]);
+  });
+
+  it("wandelt stageVersions-Werte in Strings um", () => {
+    const d = parseSongData({
+      ...gueltig,
+      meta: { ...gueltig.meta, stageVersions: { separate: 1 } },
+    });
+    expect(d.meta.stageVersions).toEqual({ separate: "1" });
+  });
 });

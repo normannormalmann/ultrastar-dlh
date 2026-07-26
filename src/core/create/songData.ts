@@ -76,22 +76,25 @@ export const parseSongData = (input: unknown): SongData => {
     return note;
   });
 
-  const lineBreaks: LineBreak[] = Array.isArray(input.lineBreaks)
-    ? input.lineBreaks.map((b, i) => {
-        if (!istObjekt(b)) throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
-        return {
-          afterNoteIndex: zahl(b.afterNoteIndex, `lineBreaks[${i}].afterNoteIndex`),
-          beat: zahl(b.beat, `lineBreaks[${i}].beat`),
-        };
-      })
-    : [];
+  if (!Array.isArray(input.lineBreaks)) {
+    throw new Error("songData: lineBreaks muss ein Array sein");
+  }
+  const lineBreaks: LineBreak[] = input.lineBreaks.map((b, i) => {
+    if (!istObjekt(b)) throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
+    return {
+      afterNoteIndex: zahl(b.afterNoteIndex, `lineBreaks[${i}].afterNoteIndex`),
+      beat: zahl(b.beat, `lineBreaks[${i}].beat`),
+    };
+  });
 
   const rohMeta = istObjekt(input.meta) ? input.meta : {};
   const meta: SongDataMeta = {
     durationSec: typeof rohMeta.durationSec === "number" ? rohMeta.durationSec : 0,
     device: typeof rohMeta.device === "string" ? rohMeta.device : "unbekannt",
     stageVersions: istObjekt(rohMeta.stageVersions)
-      ? (rohMeta.stageVersions as Record<string, string>)
+      ? Object.fromEntries(
+          Object.entries(rohMeta.stageVersions).map(([k, v]) => [k, String(v)]),
+        )
       : {},
     warnings: Array.isArray(rohMeta.warnings) ? rohMeta.warnings.map(String) : [],
     lowConfidence: rohMeta.lowConfidence === true,
