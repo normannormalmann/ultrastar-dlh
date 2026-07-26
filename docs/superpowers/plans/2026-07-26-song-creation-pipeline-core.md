@@ -1123,10 +1123,12 @@ from ultrastar_pipeline.tempo import korrigiere_tempo
     [
         (120.0, 120.0),  # schon im Zielbereich
         (60.0, 120.0),   # zu langsam -> verdoppeln
-        (35.0, 140.0),   # zweimal verdoppeln
+        (35.0, 70.0),    # eine Verdopplung erreicht die Untergrenze, dann Schluss
         (300.0, 150.0),  # zu schnell -> halbieren
         (600.0, 150.0),  # zweimal halbieren
         (200.0, 100.0),  # knapp ueber max -> halbieren
+        (70.0, 70.0),    # genau auf der Untergrenze: unveraendert
+        (180.0, 180.0),  # genau auf der Obergrenze: unveraendert
     ],
 )
 def test_korrigiert_halb_und_doppel(eingabe, erwartet):
@@ -1202,7 +1204,13 @@ musikalisch plausiblen Bereich zurueck.
 
 
 def korrigiere_tempo(bpm: float, min_bpm: float = 70.0, max_bpm: float = 180.0) -> float:
-    """Halb/Doppel-Fehler ausgleichen, ohne endlos zu laufen."""
+    """Halb/Doppel-Fehler ausgleichen, ohne endlos zu laufen.
+
+    Der Zielbereich ist einschliesslich: ein Wert genau auf min_bpm oder
+    max_bpm ist bereits richtig und wird unveraendert zurueckgegeben.
+    Die Vergleiche muessen darum strikt bleiben — mit <= bzw. >= wuerden
+    Grenzwerte aus dem Bereich hinausgeschoben (70 -> 140, 180 -> 90).
+    """
     if bpm <= 0:
         return bpm
     wert = float(bpm)
@@ -1221,7 +1229,7 @@ def korrigiere_tempo(bpm: float, min_bpm: float = 70.0, max_bpm: float = 180.0) 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `bun run test:py`
-Expected: PASS, 14 Tests (4 aus Task 5 plus 10 neue)
+Expected: PASS, 18 Tests (4 aus Task 5 plus 14 neue — die parametrize-Blöcke expandieren, die Zahl also nicht nach Augenmass schätzen)
 
 - [ ] **Step 5: Commit**
 

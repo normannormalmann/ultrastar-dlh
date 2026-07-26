@@ -14,9 +14,9 @@ def korrigiere_tempo(bpm: float, min_bpm: float = 70.0, max_bpm: float = 180.0) 
     # Iterationsgrenze verhindert Endlosschleifen bei Bereichen, die kein
     # Faktor-2-Vielfaches treffen kann.
     for _ in range(8):
-        if wert <= min_bpm:
+        if wert < min_bpm:
             wert *= 2.0
-        elif wert >= max_bpm:
+        elif wert > max_bpm:
             wert /= 2.0
         else:
             break
