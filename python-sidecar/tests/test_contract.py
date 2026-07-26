@@ -43,3 +43,9 @@ def test_hohe_konfidenz_ist_nicht_markiert():
     d = _baue([Note(i, 2, 3, "x", 0.95) for i in range(5)])
     assert d["meta"]["lowConfidence"] is False
     assert d["meta"]["confidence"]["unsureRatio"] == 0.0
+
+
+def test_leere_notenliste_wirft_nicht_und_gilt_nicht_als_unsicher():
+    d = _baue([])
+    assert d["notes"] == []
+    assert d["meta"]["lowConfidence"] is False

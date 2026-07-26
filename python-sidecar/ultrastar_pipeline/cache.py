@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 _BLOCK = 1024 * 1024
 
@@ -44,11 +45,24 @@ def stage_path(
 
 
 def atomic_write_bytes(target: Path, daten: bytes) -> None:
-    """Erst nach .tmp schreiben, dann umbenennen."""
+    """Erst nach .tmp schreiben, dann umbenennen.
+
+    Der Tempname ist pro Aufruf eindeutig (PID + Zufallsanteil): zwei
+    gleichzeitige Schreiber auf denselben Zielpfad — etwa zwei Jobs der
+    Desktop-Warteschlange ueber derselben Audiodatei, oder ein Retry waehrend
+    ein frueherer Lauf noch schreibt — teilen sich sonst dieselbe Tempdatei,
+    und ihre Schreibvorgaenge koennten sich vor der Umbenennung vermischen.
+    with_name statt with_suffix, damit ein Dateiname mit mehreren Punkten
+    korrekt behandelt wird.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(f"{target.suffix}.tmp")
-    with open(tmp, "wb") as f:
-        f.write(daten)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, target)
+    tmp = target.with_name(f"{target.name}.{os.getpid()}-{uuid4().hex[:8]}.tmp")
+    try:
+        with open(tmp, "wb") as f:
+            f.write(daten)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, target)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
