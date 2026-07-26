@@ -74,6 +74,10 @@ export const runPipeline = (
 
       const kind = spawn(befehl, [...vorArgs, ...baueArgumente(input)], {
         stdio: ["ignore", "pipe", "pipe"],
+        // Nur auf POSIX: macht das Kind zum Gruppenfuehrer, damit
+        // process.kill(-pid) den ganzen Baum trifft. Auf Windows hat
+        // detached eine andere Bedeutung, dort erledigt taskkill /t das.
+        detached: process.platform !== "win32",
       });
 
       // Objekt-Wrapper statt einer einfachen Variable: eine Closure, die
@@ -119,12 +123,26 @@ export const runPipeline = (
         abgebrochen = true;
         if (kind.pid === undefined) return;
         if (process.platform === "win32") {
-          spawn("taskkill", ["/pid", String(kind.pid), "/t", "/f"], { stdio: "ignore" });
+          // Ohne Error-Listener wirft ein fehlgeschlagener Spawn von
+          // taskkill selbst ein unbehandeltes "error"-Event, das den
+          // Elternprozess abstuerzen liesse.
+          spawn("taskkill", ["/pid", String(kind.pid), "/t", "/f"], { stdio: "ignore" }).on(
+            "error",
+            () => {
+              // Kill fehlgeschlagen — es gibt nichts Sinnvolleres zu tun,
+              // als den Elternprozess nicht mitzureissen.
+            },
+          );
         } else {
           try {
             process.kill(-kind.pid, "SIGKILL");
           } catch {
-            kind.kill("SIGKILL");
+            try {
+              kind.kill("SIGKILL");
+            } catch {
+              // Beide Kill-Wege fehlgeschlagen — der Prozess laeuft dann
+              // weiter, aber der Elternprozess darf nicht abstuerzen.
+            }
           }
         }
       };

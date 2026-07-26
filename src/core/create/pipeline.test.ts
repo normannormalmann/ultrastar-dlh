@@ -1,4 +1,5 @@
 // src/core/create/pipeline.test.ts
+import { existsSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -108,5 +109,95 @@ describe("runPipeline", () => {
     );
     if (e._tag === "Left") expect(e.left.kind).toBe("EnvMissing");
     else throw new Error("haette fehlschlagen muessen");
+  });
+
+  it("puffert eine Marker-Zeile, die auf zwei Schreibvorgaenge aufgeteilt ist", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      process.stdout.write('@@PROGRESS {"stage":"searc');
+      await new Promise((r) => setTimeout(r, 50));
+      console.log('h","percent":0.3}');
+    `);
+    const gesehen: Array<[string, number]> = [];
+    await Effect.runPromise(
+      Effect.either(
+        runPipeline({
+          ...basis(dir),
+          pythonBin: bin,
+          onProgress: (s, p) => gesehen.push([s, p]),
+        }),
+      ),
+    );
+    expect(gesehen).toEqual([["search", 0.3]]);
+  });
+
+  it("ignoriert eine defekte Fortschritts-Zeile und laeuft trotzdem durch", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      const out = process.argv[process.argv.indexOf("--out") + 1];
+      console.log('@@PROGRESS nicht-json');
+      await Bun.write(out, ${JSON.stringify(gueltigesJson)});
+    `);
+    const daten = await Effect.runPromise(runPipeline({ ...basis(dir), pythonBin: bin }));
+    expect(daten.bpm).toBe(120);
+  });
+
+  it("bildet einen unbekannten Fehler-kind auf PipelineFailed ab", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      console.log('@@ERROR {"kind":"irgendwas_unbekanntes","detail":"?"}');
+      process.exit(1);
+    `);
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin })),
+    );
+    if (e._tag === "Left") expect(e.left.kind).toBe("PipelineFailed");
+    else throw new Error("haette fehlschlagen muessen");
+  });
+
+  it("meldet PipelineFailed mit sichtbarem Exitcode, wenn keine @@ERROR-Zeile kommt", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      console.log("nur Log-Rauschen, kein Fehler-Marker");
+      process.exit(3);
+    `);
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin })),
+    );
+    if (e._tag === "Left") {
+      expect(e.left.kind).toBe("PipelineFailed");
+      expect(e.left.detail).toContain("3");
+    } else throw new Error("haette fehlschlagen muessen");
+  });
+
+  it("killt den Kindprozessbaum bei Abbruch — ein Enkelprozess schreibt nie", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pipeline-test-"));
+    const markerPath = join(dir, "enkel.txt");
+    const enkelSkript = join(dir, "enkel.ts");
+    await writeFile(
+      enkelSkript,
+      `
+        await new Promise((r) => setTimeout(r, 300));
+        await Bun.write(${JSON.stringify(markerPath)}, "da");
+      `,
+      "utf8",
+    );
+    const hauptSkript = join(dir, "fake.ts");
+    await writeFile(
+      hauptSkript,
+      `
+        import { spawn } from "node:child_process";
+        spawn("bun", [${JSON.stringify(enkelSkript)}], { stdio: "ignore" });
+        await new Promise((r) => setTimeout(r, 5000));
+      `,
+      "utf8",
+    );
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+    await Effect.runPromise(
+      Effect.either(
+        runPipeline({ ...basis(dir), pythonBin: hauptSkript, signal: controller.signal }),
+      ),
+    );
+    // Grosszuegige Wartezeit ueber die 300ms des Enkels hinaus: wenn der
+    // Baum nicht getoetet wurde, haette die Datei laengst existieren muessen.
+    await new Promise((r) => setTimeout(r, 800));
+    expect(existsSync(markerPath)).toBe(false);
   });
 });
