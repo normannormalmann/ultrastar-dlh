@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "bpm": 120.0,
+  "gap": 1000,
+  "language": "de",
+  "notes": [
+    {
+      "beat": 0,
+      "length": 2,
+      "pitch": 0,
+      "syllable": "Hal",
+      "confidence": 0.95
+    },
+    {
+      "beat": 2,
+      "length": 2,
+      "pitch": 2,
+      "syllable": "lo",
+      "confidence": 0.95
+    },
+    {
+      "beat": 6,
+      "length": 4,
+      "pitch": 4,
+      "syllable": "Welt",
+      "confidence": 0.91
+    },
+    {
+      "beat": 16,
+      "length": 2,
+      "pitch": 5,
+      "syllable": "Gu",
+      "confidence": 0.88
+    },
+    {
+      "beat": 18,
+      "length": 2,
+      "pitch": 4,
+      "syllable": "ten",
+      "confidence": 0.88
+    },
+    {
+      "beat": 21,
+      "length": 4,
+      "pitch": 7,
+      "syllable": "Tag",
+      "confidence": 0.93
+    }
+  ],
+  "lineBreaks": [
+    {
+      "afterNoteIndex": 2,
+      "beat": 16
+    }
+  ],
+  "meta": {
+    "durationSec": 4.1,
+    "device": "cpu",
+    "stageVersions": {},
+    "warnings": [],
+    "confidence": {
+      "median": 0.92,
+      "unsureRatio": 0.0,
+      "largestGapSec": 0.0
+    },
+    "lowConfidence": false
+  }
+}
