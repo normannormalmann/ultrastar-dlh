@@ -5,7 +5,7 @@ Sync-Qualitaet entschieden, und genau deshalb muss dieses Modul in
 Millisekunden testbar bleiben — sonst laeuft bei jeder Justierung Demucs.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import median
 
 from .syllables import split_syllables
@@ -84,6 +84,14 @@ def build_notes(
     letzte_zeile = words[0].line_index
 
     for wort in words:
+        # Silben zuerst bestimmen: ein Wort ohne Silben (z. B. leerer Text)
+        # erzeugt keine Note. Wuerde die Zeile trotzdem verbucht, entstuende
+        # beim naechsten echten Zeilenwechsel ein zweiter Umbruch mit
+        # demselben after_note_index.
+        silben = split_syllables(wort.text, language)
+        if not silben:
+            continue
+
         if wort.line_index != letzte_zeile:
             # Umbruch nur, wenn schon Noten existieren — sonst gibt es
             # nichts zu trennen.
@@ -95,10 +103,6 @@ def build_notes(
                     )
                 )
             letzte_zeile = wort.line_index
-
-        silben = split_syllables(wort.text, language)
-        if not silben:
-            continue
 
         dauer = max(wort.end - wort.start, 1e-3)
         pro_silbe = dauer / len(silben)
@@ -115,5 +119,22 @@ def build_notes(
                     confidence=wort.confidence,
                 )
             )
+
+    # Beat und Laenge werden unabhaengig gerundet. Zwei Silben eines schnell
+    # gesungenen Wortes koennen dadurch auf denselben Beat fallen, was
+    # ueberlappende Noten ergibt. Erst die Beats mindestens einen Schritt
+    # auseinanderziehen ...
+    for i in range(1, len(noten)):
+        mindest = noten[i - 1].beat + 1
+        if noten[i].beat < mindest:
+            noten[i] = replace(noten[i], beat=mindest)
+
+    # ... dann die Laengen kuerzen, damit keine Note in die naechste
+    # hineinreicht. Kuerzen statt Verschieben: der Einsatzzeitpunkt ist die
+    # singbare Groesse und bleibt so erhalten.
+    for i in range(len(noten) - 1):
+        platz = noten[i + 1].beat - noten[i].beat
+        if noten[i].length > platz:
+            noten[i] = replace(noten[i], length=max(1, platz))
 
     return noten, umbrueche, gap_ms
