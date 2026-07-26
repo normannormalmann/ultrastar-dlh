@@ -250,3 +250,9 @@ Weil die Lyrics aus der Referenz selbst stammen, stimmen die Silbenfolgen 1:1 ü
 - **Korrektur-Editor** — Teilprojekt 6.
 - **Installation der Python-Umgebung und Modelle** — Teilprojekt 2. Teilprojekt 1 diagnostiziert nur.
 - **Persistenter Worker mit vorgehaltenen Modellen** — später möglich ohne Vertragsbruch.
+
+## Nachtrag: Gemessene Beat-Konvention (2026-07-26)
+
+`BEATS_PER_BPM_UNIT = 4`, gemessen über 40 Songs der lokalen Bibliothek (`J:/Ultrastar`).
+Median Songende/Audiodauer 0,919; 36/40 im zweiseitigen Fenster 0,6–1,05 (>= 90 %, also konsistent). Vergleichswerte aus demselben Lauf: Faktor 1 → Median 3,407 (2/40 im Fenster), Faktor 2 → Median 1,742 (1/40), Faktor 8 → Median 0,490 (0/40, unterschreitet die Untergrenze). Faktor 4 ist damit klar der einzige plausible Wert.
+Ermittelt mit `scripts/measure-beat-convention.ts`.
