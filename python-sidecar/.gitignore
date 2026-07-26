@@ -1,0 +1,5 @@
+# Build-/Testartefakte, die pip/pytest lokal erzeugen
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/

@@ -1,0 +1,21 @@
+[project]
+name = "ultrastar-pipeline"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+# Modell-Abhaengigkeiten getrennt, damit reine Tests ohne sie laufen.
+models = ["demucs", "whisperx", "swift-f0", "librosa", "torch", "torchaudio"]
+dev = ["pytest", "pyphen"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: braucht Modelle oder GPU, standardmaessig uebersprungen"]
+# -ra macht uebersprungene Tests im Bericht sichtbar: ein Lauf ohne GPU
+# darf nicht wie "alles gruen" aussehen.
+addopts = "-m 'not slow' -ra"

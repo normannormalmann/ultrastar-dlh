@@ -27,6 +27,8 @@
     "build": "bun run --cwd src build.ts",
     "start": "bun run src/index.tsx",
     "test": "bun test src",
+    "test:py": "cd python-sidecar && python -m pytest tests/ -v",
+    "test:py:slow": "cd python-sidecar && python -m pytest tests/ -v -m slow",
     "desktop:dev": "electron-vite dev",
     "desktop:build": "electron-vite build",
     "desktop:dist": "electron-vite build && electron-builder --win",
