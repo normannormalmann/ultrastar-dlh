@@ -76,6 +76,23 @@ def test_leeres_wort_zwischen_zeilen_erzeugt_keinen_doppelten_umbruch():
     assert len(indizes) == len(set(indizes))
 
 
+def test_umbruch_beat_liegt_in_der_luecke_zwischen_den_noten():
+    """0.12s auf drei Silben (Ba-na-ne) kollidieren vor der Normalisierung;
+    ein Wort auf der naechsten Zeile beginnt kurz danach. Der rohe
+    Umbruch-Beat stammt aus der unverschobenen Zeit und kann dadurch vor die
+    normalisierte vorherige Note fallen — er muss in die Luecke geklemmt
+    werden."""
+    words = [
+        w("Banane", 1.0, 1.12, line=0),
+        w("Hallo", 1.13, 1.63, line=1),
+    ]
+    noten, umbrueche, _ = build_notes(words, flacher_pitch(), bpm=120, language="de")
+    assert len(umbrueche) == 1
+    for umbruch in umbrueche:
+        i = umbruch.after_note_index
+        assert noten[i].beat + noten[i].length <= umbruch.beat <= noten[i + 1].beat
+
+
 def test_tonhoehe_kommt_aus_dem_pitch_verlauf():
     noten, _, _ = build_notes(
         [w("Hallo", 1.0, 1.5)], flacher_pitch(midi=62.0), bpm=120, language="de"

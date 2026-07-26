@@ -137,4 +137,19 @@ def build_notes(
         if noten[i].length > platz:
             noten[i] = replace(noten[i], length=max(1, platz))
 
+    # Umbruch-Beats stammen aus den unverschobenen Zeiten, die Normalisierung
+    # hat die Noten aber nach hinten geschoben. Jeden Umbruch daher in die
+    # Luecke zwischen der Note, der er folgt, und der naechsten klemmen.
+    geklemmt: list[LineBreak] = []
+    for umbruch in umbrueche:
+        i = umbruch.after_note_index
+        if i + 1 >= len(noten):
+            continue                      # kein Umbruch hinter der letzten Note
+        untere = noten[i].beat + noten[i].length
+        obere = noten[i + 1].beat
+        geklemmt.append(
+            replace(umbruch, beat=min(max(umbruch.beat, untere), obere))
+        )
+    umbrueche = geklemmt
+
     return noten, umbrueche, gap_ms
