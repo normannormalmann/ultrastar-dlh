@@ -493,7 +493,7 @@ git commit -m "feat(create): lyrics normalization reports ambiguities instead of
 
 **Interfaces:**
 - Consumes: nichts.
-- Produces: `SCHEMA_VERSION = 1`, Typen `Note`, `LineBreak`, `SongDataMeta`, `SongData`, sowie `parseSongData(input: unknown): SongData` (wirft `Error` bei Verstoß). Task 4, 10, 11 verwenden `SongData`; Task 10 verwendet `parseSongData`.
+- Produces: `SCHEMA_VERSION = 1`, Typen `Note`, `LineBreak`, `SongDataMeta`, `SongData`, sowie `parseSongData(input: unknown): SongData` (wirft `Error` bei Verstoß; `notes` und `lineBreaks` sind Pflicht, `meta` tolerant mit Koerzierung). Task 4, 10, 11 verwenden `SongData`; Task 10 verwendet `parseSongData`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -547,6 +547,27 @@ describe("parseSongData", () => {
   it("erlaubt fehlende optionale Konfidenz", () => {
     const ohne = { ...gueltig, notes: [{ beat: 0, length: 4, pitch: 5, syllable: "Hal" }] };
     expect(parseSongData(ohne).notes[0]?.confidence).toBeUndefined();
+  });
+
+  it("lehnt fehlende lineBreaks ab", () => {
+    const { lineBreaks, ...ohne } = gueltig;
+    expect(() => parseSongData(ohne)).toThrow(/lineBreaks/);
+  });
+
+  it("lehnt nicht-Array lineBreaks ab, statt still auf [] zu fallen", () => {
+    expect(() => parseSongData({ ...gueltig, lineBreaks: "nope" })).toThrow(/lineBreaks/);
+  });
+
+  it("erlaubt leere lineBreaks", () => {
+    expect(parseSongData({ ...gueltig, lineBreaks: [] }).lineBreaks).toEqual([]);
+  });
+
+  it("koerziert stageVersions-Werte zu Strings", () => {
+    const d = parseSongData({
+      ...gueltig,
+      meta: { ...gueltig.meta, stageVersions: { separate: 1 } },
+    });
+    expect(d.meta.stageVersions).toEqual({ separate: "1" });
   });
 });
 ```
@@ -637,22 +658,31 @@ export const parseSongData = (input: unknown): SongData => {
     return note;
   });
 
-  const lineBreaks: LineBreak[] = Array.isArray(input.lineBreaks)
-    ? input.lineBreaks.map((b, i) => {
-        if (!istObjekt(b)) throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
-        return {
-          afterNoteIndex: zahl(b.afterNoteIndex, `lineBreaks[${i}].afterNoteIndex`),
-          beat: zahl(b.beat, `lineBreaks[${i}].beat`),
-        };
-      })
-    : [];
+  // lineBreaks ist Pflichtdatum, kein Diagnosefeld: ein stiller Rückfall auf
+  // [] wuerde den ganzen Liedtext auf eine Zeile legen — unsingbar. Leer ist
+  // erlaubt, fehlend oder falsch typisiert nicht.
+  if (!Array.isArray(input.lineBreaks)) {
+    throw new Error("songData: lineBreaks muss ein Array sein");
+  }
+  const lineBreaks: LineBreak[] = input.lineBreaks.map((b, i) => {
+    if (!istObjekt(b)) throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
+    return {
+      afterNoteIndex: zahl(b.afterNoteIndex, `lineBreaks[${i}].afterNoteIndex`),
+      beat: zahl(b.beat, `lineBreaks[${i}].beat`),
+    };
+  });
 
   const rohMeta = istObjekt(input.meta) ? input.meta : {};
   const meta: SongDataMeta = {
     durationSec: typeof rohMeta.durationSec === "number" ? rohMeta.durationSec : 0,
     device: typeof rohMeta.device === "string" ? rohMeta.device : "unbekannt",
+    // Werte koerzieren statt casten: meta bleibt tolerant, aber der
+    // deklarierte Typ Record<string, string> wird dadurch wahr. Ein blosser
+    // Cast liesse {cuda: 123} als String durchgehen.
     stageVersions: istObjekt(rohMeta.stageVersions)
-      ? (rohMeta.stageVersions as Record<string, string>)
+      ? Object.fromEntries(
+          Object.entries(rohMeta.stageVersions).map(([k, v]) => [k, String(v)]),
+        )
       : {},
     warnings: Array.isArray(rohMeta.warnings) ? rohMeta.warnings.map(String) : [],
     lowConfidence: rohMeta.lowConfidence === true,
