@@ -11,35 +11,41 @@ def w(text, i=0):
 def test_exakte_zuordnung_ueber_mehrere_zeilen():
     lines = ["eins zwei", "drei", "vier fuenf sechs"]
     woerter = [w(t, i) for i, t in enumerate(["eins", "zwei", "drei", "vier", "fuenf", "sechs"])]
-    ergebnis = zeilen_zuordnen(woerter, lines)
+    ergebnis, abweichung = zeilen_zuordnen(woerter, lines)
     assert [e.line_index for e in ergebnis] == [0, 0, 1, 2, 2, 2]
     # Text und Zeitwerte bleiben unveraendert, nur line_index wird ersetzt.
     assert [e.text for e in ergebnis] == [e.text for e in woerter]
+    assert abweichung == 0  # Anzahl stimmt genau ueberein
 
 
 def test_ueberzaehlige_woerter_fallen_an_die_letzte_zeile():
     lines = ["eins", "zwei"]
     woerter = [w(t, i) for i, t in enumerate(["eins", "zwei", "extra1", "extra2"])]
-    ergebnis = zeilen_zuordnen(woerter, lines)
+    ergebnis, abweichung = zeilen_zuordnen(woerter, lines)
     assert [e.line_index for e in ergebnis] == [0, 1, 1, 1]
+    assert abweichung == 2  # zwei Woerter mehr als die Zeilen erwarten liessen
 
 
 def test_fehlende_woerter_lassen_spaetere_zeilen_leer():
     lines = ["eins", "zwei", "drei"]
     woerter = [w(t, i) for i, t in enumerate(["eins", "zwei"])]
-    ergebnis = zeilen_zuordnen(woerter, lines)
+    ergebnis, abweichung = zeilen_zuordnen(woerter, lines)
     # Nur zwei Woerter geliefert: die dritte Zeile bekommt nichts, statt dass
     # etwas erfunden wird.
     assert [e.line_index for e in ergebnis] == [0, 1]
     assert len(ergebnis) == 2
+    assert abweichung == -1  # ein Wort weniger als die Zeilen erwarten liessen
 
 
 def test_einzelne_zeile_bekommt_alle_woerter():
     lines = ["ein einziges wort hier"]
     woerter = [w(t, i) for i, t in enumerate(["ein", "einziges", "wort", "hier"])]
-    ergebnis = zeilen_zuordnen(woerter, lines)
+    ergebnis, abweichung = zeilen_zuordnen(woerter, lines)
     assert [e.line_index for e in ergebnis] == [0, 0, 0, 0]
+    assert abweichung == 0
 
 
 def test_leere_wortliste_ergibt_leere_liste():
-    assert zeilen_zuordnen([], ["eins", "zwei"]) == []
+    ergebnis, abweichung = zeilen_zuordnen([], ["eins", "zwei"])
+    assert ergebnis == []
+    assert abweichung == -2  # zwei erwartete Woerter, keines geliefert

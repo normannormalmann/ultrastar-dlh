@@ -93,7 +93,9 @@ def main(argv: list[str] | None = None) -> int:
 
         fingerprint = audio_fingerprint(args.audio)
         vocals = separate(args.audio, args.work_dir, fingerprint, device)
-        woerter = align(vocals, zeilen, args.language, args.work_dir, fingerprint, device)
+        woerter = align(
+            vocals, zeilen, args.language, args.work_dir, fingerprint, device, warnungen
+        )
         verlauf = track_pitch(vocals, args.work_dir, fingerprint)
 
         # Groesste nicht zugeordnete Luecke: ein Indiz dafuer, dass der

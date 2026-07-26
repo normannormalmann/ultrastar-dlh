@@ -32,19 +32,25 @@ def _dauer_sekunden(pfad: Path) -> float:
         return w.getnframes() / float(w.getframerate())
 
 
-def zeilen_zuordnen(woerter: list[AlignedWord], lines: list[str]) -> list[AlignedWord]:
+def zeilen_zuordnen(
+    woerter: list[AlignedWord], lines: list[str]
+) -> tuple[list[AlignedWord], int]:
     """Ordnet flach ausgerichtete Woerter den Quellzeilen zu.
 
     Grundlage ist die Wortanzahl je Zeile, in der Reihenfolge des Textes.
     Liefert der Aligner mehr Woerter als erwartet, fallen die ueberzaehligen
     an die letzte Zeile; liefert er weniger, bleiben spaetere Zeilen leer.
-    Beides ist eine Abweichung und darf nicht still bleiben — der Aufrufer
-    meldet sie als Warnung.
+    Beides ist eine Abweichung und darf nicht still bleiben, wirft hier aber
+    nicht: die zweite Rueckgabe ist die Abweichung (Ist minus Soll), positiv
+    bei Wortueberschuss, negativ bei Wortmangel, 0 bei Uebereinstimmung — der
+    Aufrufer meldet sie als Warnung.
     """
-    if not woerter:
-        return []
-
     anzahl_je_zeile = [len(zeile.split()) for zeile in lines]
+    abweichung = len(woerter) - sum(anzahl_je_zeile)
+
+    if not woerter:
+        return [], abweichung
+
     letzte_zeile = len(lines) - 1 if lines else 0
 
     zugeordnet: list[AlignedWord] = []
@@ -52,7 +58,7 @@ def zeilen_zuordnen(woerter: list[AlignedWord], lines: list[str]) -> list[Aligne
     for zeile_idx, anzahl in enumerate(anzahl_je_zeile):
         for _ in range(anzahl):
             if index >= len(woerter):
-                return zugeordnet
+                return zugeordnet, abweichung
             zugeordnet.append(replace(woerter[index], line_index=zeile_idx))
             index += 1
 
@@ -61,7 +67,7 @@ def zeilen_zuordnen(woerter: list[AlignedWord], lines: list[str]) -> list[Aligne
     while index < len(woerter):
         zugeordnet.append(replace(woerter[index], line_index=letzte_zeile))
         index += 1
-    return zugeordnet
+    return zugeordnet, abweichung
 
 
 def align(
@@ -71,6 +77,7 @@ def align(
     work_dir: Path,
     audio_hash: str,
     device: str,
+    warnungen: list[str],
 ) -> list[AlignedWord]:
     """Bekannte Zeilen auf die Gesangsspur ausrichten."""
     # Der Text geht mit in den Cache-Schluessel ein: sonst wuerde ein
@@ -87,6 +94,9 @@ def align(
         ".json",
     )
     if ziel.is_file():
+        # Cache-Treffer: die Wortabweichung wird hier nicht neu berechnet,
+        # also entsteht auch keine Warnung — selbst wenn beim urspruenglichen
+        # Lauf eine Abweichung bestand. Bekannte Einschraenkung, siehe Bericht.
         emit_progress("align", 1.0)
         return [AlignedWord(**w) for w in json.loads(ziel.read_text(encoding="utf8"))]
 
@@ -129,7 +139,18 @@ def align(
     if not woerter:
         raise AlignmentFailed("keine Woerter zugeordnet")
 
-    woerter = zeilen_zuordnen(woerter, lines)
+    woerter, abweichung = zeilen_zuordnen(woerter, lines)
+    # Eine Wortabweichung ist ein Indiz, dass Text und Audio nicht
+    # zusammenpassen (fehlende Strophe, falscher Song) — dieselbe Klasse von
+    # Signal wie die groesste Luecke, und darf darum nicht stumm bleiben.
+    if abweichung > 0:
+        warnungen.append(
+            f"Alignment lieferte {abweichung} Wort(e) mehr, als der Liedtext erwarten liess."
+        )
+    elif abweichung < 0:
+        warnungen.append(
+            f"Alignment lieferte {-abweichung} Wort(e) weniger, als der Liedtext erwarten liess."
+        )
 
     atomic_write_bytes(
         ziel, json.dumps([w.__dict__ for w in woerter], ensure_ascii=False).encode("utf8")
