@@ -242,14 +242,16 @@ await main();
 
 Run: `bun run scripts/measure-beat-convention.ts "J:/Ultrastar" 40`
 
-**Erwartetes Ergebnis:** `Median Songende/Audio` bei etwa **0,92** und **40/40** im Fenster. Der Faktor **4** ist bereits vorab über 40 Songs dieser Bibliothek belegt worden; dieser Schritt reproduziert die Messung, er sucht sie nicht. Die Vergleichswerte aus dem Vorablauf:
+**Erwartetes Ergebnis:** `Median Songende/Audio` bei etwa **0,92** und **36/40** im Fenster. Der Faktor **4** ist bereits vorab über 40 Songs dieser Bibliothek belegt worden; dieser Schritt reproduziert die Messung, er sucht sie nicht. Die Vergleichswerte aus dem Vorablauf, gezählt mit dem **zweiseitigen** Fenster 0,6–1,05, das das Skript umsetzt:
 
 | Faktor | Median Songende/Audio | im Fenster |
 |---|---|---|
-| 1 | 3,407 | 3/40 |
-| 2 | 1,742 | 4/40 |
-| **4** | **0,919** | **40/40** |
-| 8 | 0,490 | 40/40 (scheitert an der Untergrenze 0,6) |
+| 1 | 3,407 | 2/40 |
+| 2 | 1,742 | 1/40 |
+| **4** | **0,919** | **36/40** |
+| 8 | 0,490 | 0/40 |
+
+Die vier Songs, die bei Faktor 4 aus dem Fenster fallen, liegen mit Verhältnissen von 0,18 bis 0,37 deutlich darunter — Stücke mit langem Instrumentalteil, bei denen der Gesang lange vor dem Dateiende endet. Erwartet, kein Mangel: die Aussage trägt der Median.
 
 Weicht das Ergebnis davon ab, **nicht** stillschweigend einen anderen Faktor eintragen, sondern melden — dann stimmt etwas an der Umrechnung nicht. `BEATS_PER_BPM_UNIT` bleibt bei 4; nur der Kommentar in `format.ts` wird auf den reproduzierten Befund aktualisiert (Anzahl Songs, Median, Datum).
 
