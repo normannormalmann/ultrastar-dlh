@@ -1480,6 +1480,22 @@ git add python-sidecar/ultrastar_pipeline/notes.py python-sidecar/tests/test_not
 git commit -m "feat(sidecar): pure note builder mapping alignment and pitch to UltraStar beats"
 ```
 
+#### Nachtrag: der Code oben ist überholt (2026-07-26)
+
+**Bei einem erneuten Lauf nicht die Codeblöcke dieses Tasks übernehmen.** Das Review fand darin einen Critical und zwei Important; die verbindliche Fassung ist der committete Code (`0796d07`, korrigiert in `4c3e217` und `35dbe81`). Fünf Korrekturen, jeweils mit dem Grund:
+
+1. **Der Reinheits-Test bewies nichts.** Er prüfte `sys.modules` nach dem Import — und weil die ML-Pakete gar nicht installiert sind, war die Zusicherung leer wahr, unabhängig davon, was `notes.py` importiert. Ersetzt durch eine AST-Analyse der Importanweisungen von `notes.py` **und** `syllables.py`. Bekannte Grenze: ein verbotenes Paket, das über ein drittes lokales Modul hereinkäme, wird nicht erfasst.
+
+2. **Beat und Länge rundeten unabhängig.** Zwei Silben eines schnell gesungenen Wortes konnten auf denselben Beat fallen und behielten beide Länge ≥ 1 — übereinandergestapelte Noten. Behoben durch zwei Durchläufe: Beats mindestens einen Schritt auseinanderziehen, dann Längen kürzen. **Kürzen statt Verschieben**, weil der Einsatzzeitpunkt die singbare Größe ist.
+
+3. **Eine Zeile ohne Silben erzeugte zwei Umbrüche mit gleichem Index.** Die Zeilenbuchführung lief vor dem Abbruch. Silben werden jetzt zuerst berechnet, und ein Wort ohne Silben verbucht keinen Zeilenwechsel.
+
+4. **Die Umbruch-Beats wurden durch Korrektur 2 inkonsistent** — sie stammen aus unverschobenen Zeiten, während die Noten nach hinten wanderten, sodass ein Umbruch vor der Note liegen konnte, der er folgt. Dritter Durchlauf klemmt jeden Umbruch in die Lücke zwischen seiner Note und der nächsten; ein Umbruch hinter der letzten Note entfällt. Dieser Defekt entstand **durch die Behebung von Korrektur 2** — ein Hinweis darauf, die Wechselwirkung mitzuprüfen, nicht nur die Einzelbefunde.
+
+5. **Ein Test prüfte nur den Typ der Tonhöhe, nicht den Wert.** Bei vollständig stimmloser Eingabe ist der Rückfall exakt 0 und wird jetzt so geprüft.
+
+Testzahl danach: **31** (13 in `test_notes.py` plus 18 aus den Tasks 5 und 6).
+
 ---
 
 ### Task 8: Cache und Vertrag auf Python-Seite
