@@ -99,7 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         # Groesste nicht zugeordnete Luecke: ein Indiz dafuer, dass der
         # Text nicht zum Audio passt (fehlende Strophe, falscher Song).
         luecken = [b.start - a.end for a, b in zip(woerter, woerter[1:])]
-        groesste_luecke = max(luecken) if luecken else 0.0
+        # Ueberlappende oder unsortierte Woerter koennten eine negative
+        # Luecke ergeben; das waere kein Indiz, sondern nur Rauschen.
+        groesste_luecke = max(0.0, max(luecken)) if luecken else 0.0
 
         emit_progress("notes", 0.0)
         noten, umbrueche, gap = build_notes(woerter, verlauf, bpm, args.language)

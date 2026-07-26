@@ -1,6 +1,8 @@
 """Forced Alignment ueber WhisperX. Duenner Adapter."""
 
+import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from .cache import atomic_write_bytes, stage_path
@@ -22,6 +24,46 @@ class AlignmentFailed(Exception):
     """Alignment lieferte kein verwertbares Ergebnis."""
 
 
+def _dauer_sekunden(pfad: Path) -> float:
+    """Laufzeit der WAV-Datei, ueber die Standardbibliothek."""
+    import wave
+
+    with wave.open(str(pfad), "rb") as w:
+        return w.getnframes() / float(w.getframerate())
+
+
+def zeilen_zuordnen(woerter: list[AlignedWord], lines: list[str]) -> list[AlignedWord]:
+    """Ordnet flach ausgerichtete Woerter den Quellzeilen zu.
+
+    Grundlage ist die Wortanzahl je Zeile, in der Reihenfolge des Textes.
+    Liefert der Aligner mehr Woerter als erwartet, fallen die ueberzaehligen
+    an die letzte Zeile; liefert er weniger, bleiben spaetere Zeilen leer.
+    Beides ist eine Abweichung und darf nicht still bleiben — der Aufrufer
+    meldet sie als Warnung.
+    """
+    if not woerter:
+        return []
+
+    anzahl_je_zeile = [len(zeile.split()) for zeile in lines]
+    letzte_zeile = len(lines) - 1 if lines else 0
+
+    zugeordnet: list[AlignedWord] = []
+    index = 0
+    for zeile_idx, anzahl in enumerate(anzahl_je_zeile):
+        for _ in range(anzahl):
+            if index >= len(woerter):
+                return zugeordnet
+            zugeordnet.append(replace(woerter[index], line_index=zeile_idx))
+            index += 1
+
+    # Ueberzaehlige Woerter (Aligner liefert mehr, als die Zeilen erwarten
+    # lassen) landen auf der letzten Zeile statt verworfen zu werden.
+    while index < len(woerter):
+        zugeordnet.append(replace(woerter[index], line_index=letzte_zeile))
+        index += 1
+    return zugeordnet
+
+
 def align(
     vocals: Path,
     lines: list[str],
@@ -31,11 +73,16 @@ def align(
     device: str,
 ) -> list[AlignedWord]:
     """Bekannte Zeilen auf die Gesangsspur ausrichten."""
+    # Der Text geht mit in den Cache-Schluessel ein: sonst wuerde ein
+    # geaenderter Liedtext bei gleicher Zeilenzahl eine veraltete
+    # Ausrichtung fuer unveraendertes Audio wiederverwenden — ein leises,
+    # falsches Ergebnis waere die Folge.
+    text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
     ziel = stage_path(
         work_dir,
         audio_hash,
         "align",
-        {"language": language, "lines": len(lines)},
+        {"language": language, "lines": len(lines), "text": text_digest},
         STAGE_VERSION,
         ".json",
     )
@@ -51,15 +98,18 @@ def align(
     except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
         raise LanguageUnsupported(language) from exc
 
-    # Jede Textzeile wird ein Segment: die Zeilenzuordnung bleibt damit
-    # erhalten und liefert spaeter die Zeilenumbrueche.
-    segmente = [{"text": zeile, "start": 0.0, "end": 0.0} for zeile in lines]
+    # Ein einziges Segment ueber die ganze Spur: Forced Alignment mit
+    # bekanntem Text will einen Durchlauf ueber die komplette Aufnahme, nicht
+    # pro Zeile ein eigenes (und damit zwangslaeufig falsches) Zeitfenster.
+    # Die Zeilenzuordnung wird danach ueber die Wortanzahl je Zeile
+    # rekonstruiert (zeilen_zuordnen), nicht ueber Segmentgrenzen.
+    segmente = [{"text": " ".join(lines), "start": 0.0, "end": _dauer_sekunden(vocals)}]
     ergebnis = whisperx.align(
         segmente, modell, metadaten, str(vocals), device, return_char_alignments=False
     )
 
     woerter: list[AlignedWord] = []
-    for i, segment in enumerate(ergebnis.get("segments", [])):
+    for segment in ergebnis.get("segments", []):
         for wort in segment.get("words", []):
             if wort.get("start") is None or wort.get("end") is None:
                 continue
@@ -72,12 +122,14 @@ def align(
                     start=float(wort["start"]),
                     end=float(wort["end"]),
                     confidence=float(wort.get("score", 0.0)),
-                    line_index=i,
+                    line_index=0,  # wird unten durch zeilen_zuordnen ersetzt
                 )
             )
 
     if not woerter:
         raise AlignmentFailed("keine Woerter zugeordnet")
+
+    woerter = zeilen_zuordnen(woerter, lines)
 
     atomic_write_bytes(
         ziel, json.dumps([w.__dict__ for w in woerter], ensure_ascii=False).encode("utf8")
