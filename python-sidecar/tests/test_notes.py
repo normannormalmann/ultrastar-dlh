@@ -12,7 +12,18 @@ def flacher_pitch(midi=60.0, bis=10.0):
 
 def test_erzeugt_eine_note_pro_silbe():
     noten, _, _ = build_notes([w("Hallo", 1.0, 1.5)], flacher_pitch(), bpm=120, language="de")
-    assert [n.syllable for n in noten] == ["Hal", "lo"]
+    assert [n.syllable for n in noten] == ["Hal", "lo "]
+
+
+def test_letzte_silbe_eines_wortes_traegt_das_trennzeichen():
+    """Nur die letzte Silbe eines Wortes bekommt das trailing space, das im
+    UltraStar-Format zum naechsten Wort trennt — fruehere Silben bleiben
+    unveraendert."""
+    noten, _, _ = build_notes([w("Hallo", 1.0, 1.5)], flacher_pitch(), bpm=120, language="de")
+    silben = [n.syllable for n in noten]
+    assert silben[0] == "Hal"
+    assert silben[-1] == "lo "
+    assert not silben[0].endswith(" ")
 
 
 def test_erste_note_beginnt_auf_beat_null_und_setzt_gap():

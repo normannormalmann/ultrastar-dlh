@@ -15,14 +15,14 @@
       "beat": 2,
       "length": 2,
       "pitch": 2,
-      "syllable": "lo",
+      "syllable": "lo ",
       "confidence": 0.95
     },
     {
       "beat": 6,
       "length": 4,
       "pitch": 4,
-      "syllable": "Welt",
+      "syllable": "Welt ",
       "confidence": 0.91
     },
     {
@@ -36,14 +36,14 @@
       "beat": 18,
       "length": 2,
       "pitch": 4,
-      "syllable": "ten",
+      "syllable": "ten ",
       "confidence": 0.88
     },
     {
       "beat": 21,
       "length": 4,
       "pitch": 7,
-      "syllable": "Tag",
+      "syllable": "Tag ",
       "confidence": 0.93
     }
   ],

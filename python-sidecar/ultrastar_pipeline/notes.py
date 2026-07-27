@@ -110,12 +110,17 @@ def build_notes(
         for i, silbe in enumerate(silben):
             von = wort.start + i * pro_silbe
             bis = von + pro_silbe
+            # Worttrennung im UltraStar-Format: die letzte Silbe eines Wortes
+            # traegt ein trailing space als Trennzeichen zum naechsten Wort.
+            # Nur hier ist bekannt, wo ein Wort endet (ein AlignedWord pro
+            # Wort) — die Serialisierung schreibt die Silbe nur noch verbatim.
+            ist_letzte_silbe = i == len(silben) - 1
             noten.append(
                 Note(
                     beat=int(round((von - gap_sekunden) * bps)),
                     length=max(1, int(round(pro_silbe * bps))),
                     pitch=_mittlere_tonhoehe(pitch, von, bis, rueckfall),
-                    syllable=silbe,
+                    syllable=f"{silbe} " if ist_letzte_silbe else silbe,
                     confidence=wort.confidence,
                 )
             )

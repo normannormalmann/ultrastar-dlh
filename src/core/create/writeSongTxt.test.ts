@@ -71,6 +71,37 @@ describe("renderSongTxt", () => {
     expect(txt).toContain("#COVER:c.jpg");
   });
 
+  it("traegt zwischen zwei Woertern derselben Zeile ein Leerzeichen", () => {
+    // notes.py haengt das Trennzeichen an die letzte Silbe eines Wortes an
+    // ("lo "); writeSongTxt.ts schreibt die Silbe nur verbatim durch. Ohne
+    // dieses trailing space wuerden "Hallo" und "Welt" beim Zusammenfuegen
+    // der Silben zu "HalloWelt" verschmelzen.
+    const zweiWoerterEineZeile: SongData = {
+      schemaVersion: 1,
+      bpm: 120,
+      gap: 0,
+      language: "de",
+      notes: [
+        { beat: 0, length: 2, pitch: 0, syllable: "Hal" },
+        { beat: 2, length: 2, pitch: 2, syllable: "lo " },
+        { beat: 4, length: 4, pitch: 4, syllable: "Welt" },
+      ],
+      lineBreaks: [],
+      meta: {
+        durationSec: 1,
+        device: "cpu",
+        stageVersions: {},
+        warnings: [],
+        lowConfidence: false,
+      },
+    };
+    const noten = renderSongTxt(zweiWoerterEineZeile, headers)
+      .split("\n")
+      .filter((z) => z.startsWith(": "));
+    const text = noten.map((z) => z.replace(/^: -?\d+ \d+ -?\d+ /, "")).join("");
+    expect(text).toBe("Hallo Welt");
+  });
+
   it("erzeugt eine vollstaendige, stabile Ausgabe", () => {
     expect(renderSongTxt(daten, headers)).toBe(
       [
