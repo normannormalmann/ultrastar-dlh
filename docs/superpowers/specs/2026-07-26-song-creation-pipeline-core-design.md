@@ -292,6 +292,16 @@ Alle zwölf Teilaufgaben sind umgesetzt und abgenommen. Die folgenden Befunde st
 - Der Pfad „pyphen fehlt vollständig" ist ungetestet; nur der Fall einer unbekannten Sprache wird geprüft.
 - Der Nebenläufigkeits-Test des Caches belegt den geteilten Temp-Pfad, nicht buchstäbliches Vermischen von Bytes. Er wacht über die richtige Invariante, beweist aber das schwächere Merkmal.
 - Die AST-Reinheitsprüfung erfasst nur die beiden genannten Dateien; ein verbotenes Paket über ein drittes lokales Modul bliebe unentdeckt.
+- Die Cache-Schlüssel-Ergänzung in `pitch.py` ist nur durch Codelesen belegt — es gibt keine `test_pitch.py`. Die symmetrische Änderung in `align.py` ist getestet.
+
+### Nachtrag zum Nachtrag: was das Abschluss-Review zusätzlich fand (2026-07-27)
+
+Ein frischer Prüfer über den gesamten Branch fand zwei blockierende Defekte, die **zwischen** den Bausteinen lagen und die keine der zwölf Einzelabnahmen sehen konnte. Beide sind behoben; sie stehen hier, weil sie zeigen, wonach bei ähnlichen Vorhaben zu suchen ist.
+
+- **Erzeugte Dateien hatten keine Worttrennung.** Die lesende Seite kannte die Konvention (nachgestelltes Leerzeichen an der letzten Silbe eines Wortes), die schreibende erzeugte sie nie — jede mehrwortige Zeile wäre als ein zusammengeklebtes Wort erschienen. Der Goldstandard-Test verdeckte es, weil dort nie zwei Wörter eine Zeile teilten, und der Bewertungs-Harness hätte es nicht gemeldet, weil er Zeitpunkte und Tonhöhen vergleicht, nie den Silbentext.
+- **Nachgelagerte Cache-Stufen ignorierten ihre Vorstufe.** Alignment und Tonhöhe schlüsselten nur auf die eigene Stufenversion. Eine Änderung an der Stimmtrennung erzeugte korrekt eine neue Gesangsspur, während beide weiter Ergebnisse aus der alten verwendeten — still und falsch, und genau das, was der Cache-Entwurf zu verhindern beansprucht.
+
+Dazu vier kleinere: ein fehlendes Modellpaket meldete einen allgemeinen statt eines Umgebungsfehlers, strukturierte Fehlerdaten (Sprachname, Markerliste) gingen an der Sprachgrenze verloren, die gemeldeten Stufenversionen waren fest verdrahtet, und ein bereits abgebrochenes Abbruchsignal wurde ignoriert.
 
 ### Bewusste Abwägungen
 
