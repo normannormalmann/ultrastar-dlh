@@ -37,11 +37,30 @@ const FEHLER_ABBILDUNG: Record<string, PipelineErrorKind> = {
   language_unsupported: "LanguageUnsupported",
   alignment_failed: "AlignmentFailed",
   device_error: "DeviceError",
+  env_missing: "EnvMissing",
   audio_unreadable: "PipelineFailed",
   lyrics_unreadable: "PipelineFailed",
   lyrics_empty: "PipelineFailed",
   lyrics_unresolved: "PipelineFailed",
   pipeline_failed: "PipelineFailed",
+};
+
+/** Strukturierter Fehler des Sidecars, wie er ueber @@ERROR ankommt. */
+type SidecarFehler = { kind: string; detail?: string } & Record<string, unknown>;
+
+/**
+ * Baut aus dem Fehlerobjekt eine lesbare Meldung. Nicht jede Fehlerart
+ * liefert `detail` — language_unsupported liefert `language`,
+ * lyrics_unresolved liefert `markers`, env_missing liefert `module`. Ohne
+ * diese Zusammensetzung wuerde der Aufrufer nur die blanke Fehlerart sehen
+ * und genau die Angabe verlieren, die den Fehler erst erklaert.
+ */
+const baueDetail = (fehler: SidecarFehler): string => {
+  if (typeof fehler.detail === "string") return fehler.detail;
+  const zusatz = Object.entries(fehler)
+    .filter(([schluessel]) => schluessel !== "kind")
+    .map(([schluessel, wert]) => `${schluessel}=${Array.isArray(wert) ? wert.join(",") : String(wert)}`);
+  return zusatz.length > 0 ? `${fehler.kind}: ${zusatz.join(" ")}` : fehler.kind;
 };
 
 const baueArgumente = (input: PipelineInput): string[] => {
@@ -66,6 +85,11 @@ export const runPipeline = (
 ): Effect.Effect<SongData, PipelineError> =>
   Effect.tryPromise({
     try: async (): Promise<SongData> => {
+      // Ein Signal, das schon vor dem Aufruf abgebrochen wurde, darf den
+      // Sidecar nicht erst noch starten — sonst reagiert nur das spaetere
+      // "abort"-Event, das hier nie mehr kommt.
+      if (input.signal?.aborted) throw { kind: "Cancelled" } satisfies PipelineError;
+
       const bin = input.pythonBin ?? "python";
       // Ein .ts-Ersatz-Sidecar laeuft ueber bun, echtes Python als Modul.
       const [befehl, vorArgs] = bin.endsWith(".ts")
@@ -84,7 +108,7 @@ export const runPipeline = (
       // eine reine let-Variable neu zuweist, wird von TS' Kontrollfluss-
       // Analyse beim spaeteren Lesen nicht verfolgt und narrowt faelschlich
       // auf `never`. Eine Objekteigenschaft entgeht diesem Fallstrick.
-      const zustand: { fehler: { kind: string; detail?: string } | null } = { fehler: null };
+      const zustand: { fehler: SidecarFehler | null } = { fehler: null };
       let rest = "";
 
       const verarbeite = (stueck: string): void => {
@@ -162,7 +186,7 @@ export const runPipeline = (
           const fehler = zustand.fehler;
           throw {
             kind: FEHLER_ABBILDUNG[fehler.kind] ?? "PipelineFailed",
-            detail: fehler.detail ?? fehler.kind,
+            detail: baueDetail(fehler),
           } satisfies PipelineError;
         }
         throw {

@@ -111,6 +111,62 @@ describe("runPipeline", () => {
     else throw new Error("haette fehlschlagen muessen");
   });
 
+  it("meldet Cancelled sofort, wenn das Signal schon beim Aufruf abgebrochen ist", async () => {
+    const { bin, dir } = await fakeSidecar(
+      `await new Promise((r) => setTimeout(r, 5000));`,
+    );
+    const controller = new AbortController();
+    controller.abort();
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin, signal: controller.signal })),
+    );
+    if (e._tag === "Left") expect(e.left.kind).toBe("Cancelled");
+    else throw new Error("haette abbrechen muessen");
+  });
+
+  it("nennt bei language_unsupported die betroffene Sprache im detail", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      console.log('@@ERROR {"kind":"language_unsupported","language":"is"}');
+      process.exit(1);
+    `);
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin })),
+    );
+    if (e._tag === "Left") {
+      expect(e.left.kind).toBe("LanguageUnsupported");
+      expect(e.left.detail).toContain("is");
+    } else throw new Error("haette fehlschlagen muessen");
+  });
+
+  it("listet bei lyrics_unresolved die gefundenen Marker im detail auf", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      console.log('@@ERROR {"kind":"lyrics_unresolved","markers":["(2x)","[chorus]"]}');
+      process.exit(1);
+    `);
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin })),
+    );
+    if (e._tag === "Left") {
+      expect(e.left.kind).toBe("PipelineFailed");
+      expect(e.left.detail).toContain("(2x)");
+      expect(e.left.detail).toContain("[chorus]");
+    } else throw new Error("haette fehlschlagen muessen");
+  });
+
+  it("bildet env_missing ab und nennt das fehlende Paket im detail", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      console.log('@@ERROR {"kind":"env_missing","module":"whisperx"}');
+      process.exit(1);
+    `);
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), pythonBin: bin })),
+    );
+    if (e._tag === "Left") {
+      expect(e.left.kind).toBe("EnvMissing");
+      expect(e.left.detail).toContain("whisperx");
+    } else throw new Error("haette fehlschlagen muessen");
+  });
+
   it("puffert eine Marker-Zeile, die auf zwei Schreibvorgaenge aufgeteilt ist", async () => {
     const { bin, dir } = await fakeSidecar(`
       process.stdout.write('@@PROGRESS {"stage":"searc');
