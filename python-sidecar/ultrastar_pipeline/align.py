@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+from . import separate
 from .cache import atomic_write_bytes, stage_path
 from .notes import AlignedWord
 from .progress import emit_progress
@@ -24,12 +25,27 @@ class AlignmentFailed(Exception):
     """Alignment lieferte kein verwertbares Ergebnis."""
 
 
-def _dauer_sekunden(pfad: Path) -> float:
-    """Laufzeit der WAV-Datei, ueber die Standardbibliothek."""
+def dauer_sekunden(pfad: Path) -> float:
+    """Laufzeit einer WAV-Datei, ueber die Standardbibliothek."""
     import wave
 
     with wave.open(str(pfad), "rb") as w:
         return w.getnframes() / float(w.getframerate())
+
+
+def dauer_oder_rueckfall(pfad: Path, rueckfall: float) -> float:
+    """Wie dauer_sekunden, faellt aber auf einen Rueckfallwert zurueck.
+
+    Fuer die berichtete Gesamtdauer: der letzte Zeitstempel des
+    Tonhoehenverlaufs endet vor dem tatsaechlichen Ende der Aufnahme (die
+    letzten unstimmhaften Millisekunden liefern keinen Punkt) und ist damit
+    systematisch zu kurz. Nicht jede Datei ist aber eine lesbare WAV — dann
+    bleibt der Rueckfallwert die einzige verfuegbare Naeherung.
+    """
+    try:
+        return dauer_sekunden(pfad)
+    except Exception:
+        return rueckfall
 
 
 def zeilen_zuordnen(
@@ -70,6 +86,20 @@ def zeilen_zuordnen(
     return zugeordnet, abweichung
 
 
+def _melde_abweichung(abweichung: int, warnungen: list[str]) -> None:
+    """Meldet eine Wortabweichung als Warnung — bei Neuberechnung wie bei
+    Cache-Treffer, denn sie ist dasselbe Indiz in beiden Faellen: Text und
+    Audio passen nicht zusammen (fehlende Strophe, falscher Song)."""
+    if abweichung > 0:
+        warnungen.append(
+            f"Alignment lieferte {abweichung} Wort(e) mehr, als der Liedtext erwarten liess."
+        )
+    elif abweichung < 0:
+        warnungen.append(
+            f"Alignment lieferte {-abweichung} Wort(e) weniger, als der Liedtext erwarten liess."
+        )
+
+
 def align(
     vocals: Path,
     lines: list[str],
@@ -85,20 +115,31 @@ def align(
     # Ausrichtung fuer unveraendertes Audio wiederverwenden — ein leises,
     # falsches Ergebnis waere die Folge.
     text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
+    # Die Identitaet der separate-Stufe geht mit in den Schluessel ein: sonst
+    # wuerde eine geanderte Stimmtrennung (neues Modell, neue Version) eine
+    # Ausrichtung wiederverwenden, die noch auf dem alten Stem beruht.
     ziel = stage_path(
         work_dir,
         audio_hash,
         "align",
-        {"language": language, "lines": len(lines), "text": text_digest},
+        {
+            "language": language,
+            "lines": len(lines),
+            "text": text_digest,
+            "separate_stage_version": separate.STAGE_VERSION,
+            "separate_model": separate.MODELL,
+        },
         STAGE_VERSION,
         ".json",
     )
     if ziel.is_file():
-        # Cache-Treffer: die Wortabweichung wird hier nicht neu berechnet,
-        # also entsteht auch keine Warnung — selbst wenn beim urspruenglichen
-        # Lauf eine Abweichung bestand. Bekannte Einschraenkung, siehe Bericht.
+        # Die Abweichung wird mitgecacht, nicht neu berechnet — sonst wuerde
+        # die Warnung bei einem Cache-Treffer verschwinden, obwohl der
+        # urspruengliche Lauf sie gemeldet hatte.
+        gespeichert = json.loads(ziel.read_text(encoding="utf8"))
+        _melde_abweichung(gespeichert["deviation"], warnungen)
         emit_progress("align", 1.0)
-        return [AlignedWord(**w) for w in json.loads(ziel.read_text(encoding="utf8"))]
+        return [AlignedWord(**w) for w in gespeichert["words"]]
 
     emit_progress("align", 0.0)
     import whisperx
@@ -113,7 +154,7 @@ def align(
     # pro Zeile ein eigenes (und damit zwangslaeufig falsches) Zeitfenster.
     # Die Zeilenzuordnung wird danach ueber die Wortanzahl je Zeile
     # rekonstruiert (zeilen_zuordnen), nicht ueber Segmentgrenzen.
-    segmente = [{"text": " ".join(lines), "start": 0.0, "end": _dauer_sekunden(vocals)}]
+    segmente = [{"text": " ".join(lines), "start": 0.0, "end": dauer_sekunden(vocals)}]
     ergebnis = whisperx.align(
         segmente, modell, metadaten, str(vocals), device, return_char_alignments=False
     )
@@ -140,20 +181,14 @@ def align(
         raise AlignmentFailed("keine Woerter zugeordnet")
 
     woerter, abweichung = zeilen_zuordnen(woerter, lines)
-    # Eine Wortabweichung ist ein Indiz, dass Text und Audio nicht
-    # zusammenpassen (fehlende Strophe, falscher Song) — dieselbe Klasse von
-    # Signal wie die groesste Luecke, und darf darum nicht stumm bleiben.
-    if abweichung > 0:
-        warnungen.append(
-            f"Alignment lieferte {abweichung} Wort(e) mehr, als der Liedtext erwarten liess."
-        )
-    elif abweichung < 0:
-        warnungen.append(
-            f"Alignment lieferte {-abweichung} Wort(e) weniger, als der Liedtext erwarten liess."
-        )
+    _melde_abweichung(abweichung, warnungen)
 
     atomic_write_bytes(
-        ziel, json.dumps([w.__dict__ for w in woerter], ensure_ascii=False).encode("utf8")
+        ziel,
+        json.dumps(
+            {"words": [w.__dict__ for w in woerter], "deviation": abweichung},
+            ensure_ascii=False,
+        ).encode("utf8"),
     )
     emit_progress("align", 1.0)
     return woerter

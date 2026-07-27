@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 
+from . import separate
 from .cache import atomic_write_bytes, stage_path
 from .notes import PitchPoint
 from .progress import emit_progress
@@ -20,7 +21,14 @@ def _hz_zu_midi(hz: float) -> float:
 
 def track_pitch(vocals: Path, work_dir: Path, audio_hash: str) -> list[PitchPoint]:
     """f0-Verlauf der Gesangsspur, in MIDI-Halbtoenen."""
-    ziel = stage_path(work_dir, audio_hash, "pitch", {}, STAGE_VERSION, ".json")
+    # Die Identitaet der separate-Stufe geht in den Schluessel ein: sonst
+    # wuerde eine geanderte Stimmtrennung (neues Modell, neue Version) einen
+    # Tonhoehenverlauf wiederverwenden, der noch auf dem alten Stem beruht.
+    parameter = {
+        "separate_stage_version": separate.STAGE_VERSION,
+        "separate_model": separate.MODELL,
+    }
+    ziel = stage_path(work_dir, audio_hash, "pitch", parameter, STAGE_VERSION, ".json")
     if ziel.is_file():
         emit_progress("pitch", 1.0)
         return [PitchPoint(**p) for p in json.loads(ziel.read_text(encoding="utf8"))]

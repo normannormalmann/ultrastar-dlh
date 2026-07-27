@@ -1,4 +1,13 @@
-from ultrastar_pipeline.align import zeilen_zuordnen
+import hashlib
+import json
+import wave
+from pathlib import Path
+
+import pytest
+
+from ultrastar_pipeline import separate
+from ultrastar_pipeline.align import align, dauer_oder_rueckfall, zeilen_zuordnen
+from ultrastar_pipeline.cache import atomic_write_bytes, stage_path
 from ultrastar_pipeline.notes import AlignedWord
 
 
@@ -49,3 +58,94 @@ def test_leere_wortliste_ergibt_leere_liste():
     ergebnis, abweichung = zeilen_zuordnen([], ["eins", "zwei"])
     assert ergebnis == []
     assert abweichung == -2  # zwei erwartete Woerter, keines geliefert
+
+
+def _cache_pfad(work_dir: Path, audio_hash: str, lines: list[str], language: str = "de") -> Path:
+    text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
+    return stage_path(
+        work_dir,
+        audio_hash,
+        "align",
+        {
+            "language": language,
+            "lines": len(lines),
+            "text": text_digest,
+            "separate_stage_version": separate.STAGE_VERSION,
+            "separate_model": separate.MODELL,
+        },
+        "1",
+        ".json",
+    )
+
+
+def test_wortabweichung_warnung_bleibt_bei_cache_treffer_erhalten(tmp_path):
+    """align() darf die Abweichungswarnung nicht nur beim ersten Lauf melden
+    — sie ist mitgecacht, muss also auch beim zweiten (Cache-Treffer) wieder
+    in den Warnungen landen."""
+    lines = ["eins zwei"]
+    woerter = [{"text": "eins", "start": 0.0, "end": 0.5, "confidence": 0.9, "line_index": 0}]
+    atomic_write_bytes(
+        _cache_pfad(tmp_path, "hash123", lines),
+        json.dumps({"words": woerter, "deviation": -1}, ensure_ascii=False).encode("utf8"),
+    )
+
+    warnungen: list[str] = []
+    ergebnis = align(Path("egal.wav"), lines, "de", tmp_path, "hash123", "cpu", warnungen)
+
+    assert len(ergebnis) == 1
+    assert any("weniger" in w for w in warnungen)
+
+
+def test_ausgeglichene_abweichung_erzeugt_bei_cache_treffer_keine_warnung(tmp_path):
+    lines = ["eins zwei"]
+    woerter = [
+        {"text": "eins", "start": 0.0, "end": 0.5, "confidence": 0.9, "line_index": 0},
+        {"text": "zwei", "start": 0.6, "end": 1.0, "confidence": 0.9, "line_index": 0},
+    ]
+    atomic_write_bytes(
+        _cache_pfad(tmp_path, "hash456", lines),
+        json.dumps({"words": woerter, "deviation": 0}, ensure_ascii=False).encode("utf8"),
+    )
+
+    warnungen: list[str] = []
+    align(Path("egal.wav"), lines, "de", tmp_path, "hash456", "cpu", warnungen)
+    assert warnungen == []
+
+
+def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypatch):
+    """separate.STAGE_VERSION geht in den align-Cache-Schluessel ein: eine
+    geanderte Stimmtrennung darf keine Ausrichtung wiederverwenden, die noch
+    auf dem alten Stem beruht. Nachweis: derselbe Cache-Inhalt ist nach dem
+    Versionswechsel ein Treffer unter dem alten, aber ein Fehlschlag unter
+    dem neuen Pfad — der echte (hier nicht installierte) Aligner wuerde
+    importiert."""
+    lines = ["eins"]
+    ziel = _cache_pfad(tmp_path, "hashXYZ", lines)
+    atomic_write_bytes(
+        ziel, json.dumps({"words": [], "deviation": 0}, ensure_ascii=False).encode("utf8")
+    )
+
+    # Vor dem Versionswechsel: Cache-Treffer, keine Modelle noetig.
+    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", []) == []
+
+    monkeypatch.setattr(separate, "STAGE_VERSION", "999")
+    # Derselbe Cache-Inhalt liegt jetzt unter einem anderen Pfad -> Treffer
+    # bleibt aus, whisperx (nicht installiert) wuerde importiert.
+    with pytest.raises(ModuleNotFoundError):
+        align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [])
+
+
+def test_dauer_oder_rueckfall_liest_die_echte_wav_laenge(tmp_path):
+    pfad = tmp_path / "clip.wav"
+    with wave.open(str(pfad), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(100)
+        w.writeframes(b"\x00\x00" * 250)  # 2.5 Sekunden bei 100 Hz
+    assert dauer_oder_rueckfall(pfad, 999.0) == pytest.approx(2.5)
+
+
+def test_dauer_oder_rueckfall_faellt_bei_unlesbarer_datei_auf_den_rueckfall_zurueck(tmp_path):
+    pfad = tmp_path / "kaputt.wav"
+    pfad.write_bytes(b"kein echtes wav")
+    assert dauer_oder_rueckfall(pfad, 4.1) == 4.1
