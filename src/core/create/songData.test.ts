@@ -62,6 +62,14 @@ describe("parseSongData", () => {
     expect(parseSongData({ ...gueltig, lineBreaks: [] }).lineBreaks).toEqual([]);
   });
 
+  it("lehnt eine Silbe mit Zeilenumbruch ab", () => {
+    const kaputt = {
+      ...gueltig,
+      notes: [{ ...gueltig.notes[0], syllable: "Hal\nlo" }],
+    };
+    expect(() => parseSongData(kaputt)).toThrow(/Zeilenumbruch/);
+  });
+
   it("wandelt stageVersions-Werte in Strings um", () => {
     const d = parseSongData({
       ...gueltig,

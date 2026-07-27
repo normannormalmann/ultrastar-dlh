@@ -47,6 +47,19 @@ const text = (v: unknown, feld: string): string => {
 };
 
 /**
+ * Wie text(), aber fuer Silben: ein Zeilenumbruch in der Silbe wuerde die
+ * .txt-Zeilenstruktur zerreissen, sobald writeSongTxt.ts sie verbatim
+ * ausschreibt — hier abbrechen ist billiger als das dort zu entdecken.
+ */
+const silbentext = (v: unknown, feld: string): string => {
+  const wert = text(v, feld);
+  if (/[\r\n]/.test(wert)) {
+    throw new Error(`songData: ${feld} darf keinen Zeilenumbruch enthalten`);
+  }
+  return wert;
+};
+
+/**
  * Handgeschriebene Validierung — das Projekt nutzt bewusst kein zod und
  * kein Schema. Bricht beim ersten Verstoss ab, statt teilweise zu parsen.
  */
@@ -68,7 +81,7 @@ export const parseSongData = (input: unknown): SongData => {
       beat: zahl(n.beat, `notes[${i}].beat`),
       length: zahl(n.length, `notes[${i}].length`),
       pitch: zahl(n.pitch, `notes[${i}].pitch`),
-      syllable: text(n.syllable, `notes[${i}].syllable`),
+      syllable: silbentext(n.syllable, `notes[${i}].syllable`),
     };
     if (n.confidence !== undefined) {
       note.confidence = zahl(n.confidence, `notes[${i}].confidence`);
