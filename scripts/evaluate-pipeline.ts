@@ -47,11 +47,17 @@ const findeAudio = async (dir: string, referenzTxt: string): Promise<string | nu
  * Abschnitts zusammensetzen, an "- " umbrechen. Damit stimmt die
  * Silbenfolge 1:1 mit der Referenz und der Vergleich ist wohldefiniert.
  */
-const lyricsAusReferenz = (referenzTxt: string): string[] => {
+export const lyricsAusReferenz = (referenzTxt: string): string[] => {
   const zeilen: string[] = [];
   let laufend = "";
-  for (const z of referenzTxt.split("\n")) {
-    const note = /^[:*FR]\s+-?\d+\s+\d+\s+-?\d+\s?(.*)$/.exec(z.trimEnd());
+  for (const roh of referenzTxt.split("\n")) {
+    // Nur das Windows-Zeilenende kappen, nicht trimEnd(): die letzte Silbe
+    // eines Worts traegt hier ihr Leerzeichen als Trennzeichen zum naechsten
+    // Wort. trimEnd() wuerde genau dieses Leerzeichen verschlucken und alle
+    // Woerter einer Zeile zu einer Silbe verschmelzen (gemessen: 1,09 statt
+    // 4,49 Woerter/Zeile ueber 60 Referenzsongs).
+    const z = roh.replace(/\r$/, "");
+    const note = /^[:*FR]\s+-?\d+\s+\d+\s+-?\d+\s?(.*)$/.exec(z);
     if (note) {
       laufend += note[1] ?? "";
       continue;
@@ -161,4 +167,8 @@ const main = async (): Promise<void> => {
   console.log(`Anteil Pitch exakt:  ${(mittel((m) => m.anteilPitchExakt) * 100).toFixed(0)}%`);
 };
 
-await main();
+// Nur beim direkten Aufruf ausfuehren, nicht beim Import in Tests
+// (lyricsAusReferenz ist fuer evaluate-pipeline.test.ts exportiert).
+if (import.meta.main) {
+  await main();
+}

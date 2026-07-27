@@ -34,8 +34,13 @@ export const parseReferenceTxt = (txt: string): ReferenceSong => {
   const gap = zahlAusHeader(txt, "GAP", 0);
   const syllables: { syllable: string; onsetMs: number; pitch: number }[] = [];
 
-  for (const zeile of txt.split("\n")) {
-    const m = /^[:*FR]\s+(-?\d+)\s+(\d+)\s+(-?\d+)\s?(.*)$/.exec(zeile.trimEnd());
+  for (const roh of txt.split("\n")) {
+    // Nur das Windows-Zeilenende kappen, nicht trimEnd(): die letzte Silbe
+    // eines Worts traegt hier ihr Leerzeichen als Trennzeichen zum naechsten
+    // Wort. trimEnd() wuerde genau dieses Leerzeichen verschlucken und alle
+    // Woerter einer Zeile zu einer Silbe verschmelzen.
+    const zeile = roh.replace(/\r$/, "");
+    const m = /^[:*FR]\s+(-?\d+)\s+(\d+)\s+(-?\d+)\s?(.*)$/.exec(zeile);
     if (!m?.[1]) continue;
     syllables.push({
       syllable: m[4] ?? "",

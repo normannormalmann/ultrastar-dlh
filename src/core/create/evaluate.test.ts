@@ -32,6 +32,23 @@ describe("parseReferenceTxt", () => {
   it("ignoriert Umbruch- und Kopfzeilen als Silben", () => {
     expect(parseReferenceTxt(txt).syllables).toHaveLength(3);
   });
+
+  it("behaelt das trennende Leerzeichen einer Silbe verbatim", () => {
+    // Das Format kodiert ein Wortende als Leerzeichen am Ende der letzten
+    // Silbe. trimEnd() vor dem Regex-Match wuerde genau das verschlucken
+    // und beim Zusammenbau der Lyrics Woerter verschmelzen lassen.
+    const zeilenMitTrenner = [
+      "#BPM:120",
+      "#GAP:0",
+      ": 0 4 5 Fuu ",
+      ": 4 4 5 bar",
+      "E",
+      "",
+    ].join("\n");
+    const r = parseReferenceTxt(zeilenMitTrenner);
+    expect(r.syllables[0]?.syllable).toBe("Fuu ");
+    expect(r.syllables[1]?.syllable).toBe("bar");
+  });
 });
 
 describe("compareToReference", () => {
