@@ -1,0 +1,7 @@
+{
+  "hinweis": "Kopieren nach reference-corpus.json und fuellen. Weder diese Datei noch Audio oder Referenz-.txt gehoeren ins Repo (Urheberrecht). Jedes songDir enthaelt song.txt; die Tonspur wird ueber deren #MP3-Header aufgeloest. Interpreter ueber die Umgebungsvariable PIPELINE_PYTHON steuern, z.B. auf python-sidecar/.venv zeigen lassen — ohne sie wird 'python' aus dem PATH genutzt.",
+  "language": "de",
+  "songs": [
+    { "artist": "Interpret", "title": "Titel", "songDir": "C:/Songs/Interpret - Titel" }
+  ]
+}

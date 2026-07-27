@@ -48,3 +48,12 @@ cookies.txt
 # Playwright
 test-results/
 playwright-report/
+
+# Bewertungs-Harness (Urheberrecht: kein Audio, keine Referenz-.txt im Repo)
+scripts/reference-corpus.json
+.pipeline-cache/
+.eval-lyrics.txt
+.eval-song-data.json
+
+# Virtuelle Umgebung fuer Modellpakete (Task 12, Nachtrag B)
+python-sidecar/.venv/
