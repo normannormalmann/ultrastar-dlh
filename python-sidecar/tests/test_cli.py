@@ -56,6 +56,37 @@ def test_leerer_text_meldet_strukturierten_fehler(tmp_path):
     assert _fehler_kind(p.stdout) == "lyrics_empty"
 
 
+def test_fehlendes_modell_paket_meldet_env_missing_mit_paketnamen(tmp_path):
+    """In dieser Umgebung sind die Modell-Extras absichtlich nicht
+    installiert (siehe pyproject.toml) — genau der Fall, den env_missing
+    abdecken soll. --bpm gesetzt, damit der erste Modell-Import in separate()
+    (torch) und nicht schon in _erkenne_bpm (librosa) stattfindet."""
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"kein echtes audio")
+    lyrics = tmp_path / "l.txt"
+    lyrics.write_text("Hallo Welt\n", encoding="utf8")
+    p = _lauf(
+        "--audio", str(audio), "--lyrics-file", str(lyrics),
+        "--language", "de", "--bpm", "120", "--device", "cpu",
+        "--work-dir", str(tmp_path / "cache"), "--out", str(tmp_path / "out.json"),
+    )
+    assert p.returncode == 1
+    assert _fehler_kind(p.stdout) == "env_missing"
+    for zeile in p.stdout.splitlines():
+        if zeile.startswith(ERROR_PREFIX):
+            nutzlast = json.loads(zeile[len(ERROR_PREFIX):])
+            assert nutzlast["module"] == "torch"
+
+
+def test_stage_versions_folgen_den_modulkonstanten(monkeypatch):
+    """_stage_versions() muss aus den Modulen lesen, nicht aus Literalen —
+    sonst bumpt eine Aenderung von align.STAGE_VERSION den Bericht nicht."""
+    import ultrastar_pipeline.__main__ as haupt
+
+    monkeypatch.setattr(haupt, "ALIGN_STAGE_VERSION", "77")
+    assert haupt._stage_versions()["align"] == "77"
+
+
 def test_ungeloeste_textfrage_bricht_ab(tmp_path):
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"kein echtes audio")

@@ -10,13 +10,19 @@ import json
 import sys
 from pathlib import Path
 
-from .align import AlignmentFailed, LanguageUnsupported, align
+from .align import (
+    STAGE_VERSION as ALIGN_STAGE_VERSION,
+    AlignmentFailed,
+    LanguageUnsupported,
+    align,
+    dauer_oder_rueckfall,
+)
 from .cache import atomic_write_bytes, audio_fingerprint
 from .contract import baue_song_data
 from .notes import build_notes
-from .pitch import track_pitch
+from .pitch import STAGE_VERSION as PITCH_STAGE_VERSION, track_pitch
 from .progress import emit_error, emit_progress
-from .separate import separate
+from .separate import STAGE_VERSION as SEPARATE_STAGE_VERSION, separate
 from .syllables import has_dictionary
 from .tempo import korrigiere_tempo
 
@@ -47,6 +53,19 @@ def _erkenne_bpm(audio: Path) -> float:
     return korrigiere_tempo(float(tempo))
 
 
+def _stage_versions() -> dict[str, str]:
+    """Stufenversionen fuer den Bericht, aus den Modulen selbst — nicht
+    hartkodiert, damit eine Versionsbumpe in separate/align/pitch hier
+    automatisch ankommt. notes wird nie gecacht (siehe Modulkopf) und hat
+    darum keine eigene STAGE_VERSION."""
+    return {
+        "separate": SEPARATE_STAGE_VERSION,
+        "align": ALIGN_STAGE_VERSION,
+        "pitch": PITCH_STAGE_VERSION,
+        "notes": "1",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ultrastar_pipeline")
     p.add_argument("--audio", required=True, type=Path)
@@ -73,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
         emit_error("lyrics_empty")
         return 1
 
+    # Bekannte Lücke, absichtlich ungefixt: dieser Scan findet nur die
+    # literalen Marker selbst. Liedtext, der von lyrics.ts schon normalisiert
+    # wurde, dessen offene Rueckfragen aber nie beantwortet wurden, sieht in
+    # einer reinen .txt-Datei identisch zu geklaertem Text aus — dieser
+    # Zustand ist hier nicht repraesentierbar. Gehoert zum UI-Teilprojekt.
     klein = roh.lower()
     gefunden = [m for m in UNGELOESTE_MARKER if m in klein]
     if gefunden:
@@ -118,6 +142,12 @@ def main(argv: list[str] | None = None) -> int:
     except MemoryError:
         emit_error("device_error", detail="Speicher voll. Mit --device cpu erneut versuchen.")
         return 1
+    except ModuleNotFoundError as exc:
+        # Bei weitem der wahrscheinlichste Fehler, solange die Modell-Extras
+        # nicht installiert sind — muss deshalb vor dem generischen Fall
+        # abgefangen werden, sonst verschwindet der Paketname darin.
+        emit_error("env_missing", module=exc.name)
+        return 1
     except Exception as exc:  # noqa: BLE001 - letzte Instanz, strukturiert melden
         art = type(exc).__name__
         # Kein automatisches Ausweichen auf CPU: das verwandelt einen
@@ -130,15 +160,20 @@ def main(argv: list[str] | None = None) -> int:
             emit_error("pipeline_failed", detail=f"{art}: {exc}")
         return 1
 
+    # Der letzte Zeitstempel des Tonhoehenverlaufs bleibt der Rueckfall: die
+    # echte WAV-Laenge (aus vocals, der garantiert eine WAV ist) ist genauer,
+    # aber nicht in jedem Umfeld lesbar.
+    dauer = dauer_oder_rueckfall(vocals, verlauf[-1].time if verlauf else 0.0)
+
     daten = baue_song_data(
         bpm=bpm,
         gap=gap,
         language=args.language,
         notes=noten,
         line_breaks=umbrueche,
-        duration_sec=verlauf[-1].time if verlauf else 0.0,
+        duration_sec=dauer,
         device=device,
-        stage_versions={"separate": "1", "align": "1", "pitch": "1", "notes": "1"},
+        stage_versions=_stage_versions(),
         warnings=warnungen,
         largest_gap_sec=groesste_luecke,
     )
