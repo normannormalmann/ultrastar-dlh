@@ -120,4 +120,30 @@ describe("compareToReference - Tonhoehe", () => {
     expect(m.medianPitchOffset).toBe(0);
     expect(m.anteilPitchExakt).toBeCloseTo(2 / 3, 6);
   });
+
+  // medianPitchOffset ist vorzeichenbehaftet: eine Implementierung, die die
+  // Differenzen durch Betrag jagt, wuerde alle bisherigen Tests bestehen und
+  // trotzdem eine Transposition abwaerts nicht von einer aufwaerts
+  // unterscheiden koennen. Diese beiden Faelle pruefen genau das Vorzeichen.
+  it("misst eine konstante Transposition um vier Halbtoene abwaerts", () => {
+    const referenz = parseReferenceTxt(txt);
+    const unser = {
+      ...referenz,
+      syllables: referenz.syllables.map((s) => ({ ...s, pitch: s.pitch - 4 })),
+    };
+    const m = compareToReference(unser, referenz);
+    expect(m.medianPitchOffset).toBe(-4);
+    expect(m.anteilPitchExakt).toBe(1);
+  });
+
+  it("eine einzelne abwaerts verfaelschte Note senkt nur den Anteil, nicht den Offset", () => {
+    const referenz = parseReferenceTxt(txt);
+    const unser = {
+      ...referenz,
+      syllables: referenz.syllables.map((s, i) => (i === 0 ? { ...s, pitch: s.pitch - 5 } : s)),
+    };
+    const m = compareToReference(unser, referenz);
+    expect(m.medianPitchOffset).toBe(0);
+    expect(m.anteilPitchExakt).toBeCloseTo(2 / 3, 6);
+  });
 });
