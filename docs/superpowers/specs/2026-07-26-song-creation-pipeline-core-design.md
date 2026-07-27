@@ -256,3 +256,50 @@ Weil die Lyrics aus der Referenz selbst stammen, stimmen die Silbenfolgen 1:1 ü
 `BEATS_PER_BPM_UNIT = 4`, gemessen über 40 Songs der lokalen Bibliothek (`J:/Ultrastar`).
 Median Songende/Audiodauer 0,919; 36/40 im zweiseitigen Fenster 0,6–1,05 (>= 90 %, also konsistent). Vergleichswerte aus demselben Lauf: Faktor 1 → Median 3,407 (2/40 im Fenster), Faktor 2 → Median 1,742 (1/40), Faktor 8 → Median 0,490 (0/40, unterschreitet die Untergrenze). Faktor 4 ist damit klar der einzige plausible Wert.
 Ermittelt mit `scripts/measure-beat-convention.ts`.
+
+## Nachtrag: Zurückgestellte Befunde bei Abschluss des Codes (2026-07-27)
+
+Alle zwölf Teilaufgaben sind umgesetzt und abgenommen. Die folgenden Befunde stammen aus den Task-Reviews und aus eigenen Messungen; jeder wurde bewusst zurückgestellt, mit Begründung. Sie stehen hier, weil das Arbeitsverzeichnis des Ablaufs gelöscht wird und dieses Wissen sonst verloren ginge.
+
+### Blockierend für den Qualitätsnachweis
+
+- **Der Alignment-Ansatz ist unbewiesen.** Kein Modellaufruf des Sidecars ist je ausgeführt worden. Der ursprüngliche Entwurf war falsch — er gab jeder Textzeile ein eigenes Zeitfenster der Länge Null — und wurde auf einen Durchgang über die ganze Aufnahme umgestellt. Besser begründet, nicht belegt.
+- **Die Zeilenrückgewinnung zählt Wörter über Leerzeichen-Trennung.** WhisperX kann anders tokenisieren. Dann verschiebt sich die Zuordnung *und* die Abweichungswarnung schlägt fälschlich an. Bewusst nicht blind umgebaut: erst echte Aligner-Ausgabe ansehen, dann einmal informiert korrigieren.
+- **WhisperX ist auf Python 3.14 nicht installierbar.** Es pinnt `ctranslate2==4.4.0`, wofür kein Wheel für 3.14 existiert (verfügbar ab 4.6.1); zahlreiche Pakete im Umfeld enden bei `<3.13`. **Konsequenz für Teilprojekt 2:** die Umgebungsverwaltung muss eine passende Python-Version mitliefern, statt sich auf die vorhandene zu verlassen.
+
+### Lücken im Vertrag
+
+`parseSongData` lässt Eingaben durch, die der deklarierte Typ ausschließt.
+
+- **Eine Silbe mit Zeilenumbruch zerstört die Datei.** Verifiziert: die Ausgabe erhält eine verwaiste Zeile, die kein gültiges Konstrukt ist. Heute unerreichbar, weil beide Produzenten Umbrüche wegschneiden — der Vertrag verbietet es aber nicht. Fixstelle: `text()` in `songData.ts`.
+- **`lineBreaks[].afterNoteIndex` wird nicht gegen `notes.length` geprüft.** Ein Index außerhalb des Bereichs wird beim Serialisieren still verworfen.
+- **`language: ""` besteht die Validierung**, führt aber dazu, dass `#LANGUAGE` still fehlt.
+- **`stageVersions` hat auf der Python-Seite keine Laufzeitprüfung** auf Strings. Die TypeScript-Seite koerziert defensiv; das sollte ein No-op sein und ist derzeit nicht garantiert.
+
+### Bekannte Verhaltensgrenzen
+
+- **Wiederholungsmarker jenseits von zweimal** werden nicht erkannt. Praxisrelevant.
+- **Ein alleinstehender Refrain-Verweis als allererste Zeile** erzeugt eine Rückfrage mit leerer Vorlage. Die Oberfläche in Teilprojekt 5 muss das abfangen.
+- **Bei einem Cache-Treffer entfällt die Abweichungswarnung**, obwohl die Bedingung beim Schreiben galt. Sauber zu lösen hieße, den Cache-Inhalt zu versionieren.
+- **`MIDI_NULLAGE = 60` ist eine Annahme.** Über 300 Referenzsongs liegt der Median der Song-Median-Tonhöhen bei 8, was dazu passt — ein Irrtum um eine Oktave sähe identisch aus. Der Tonhöhen-Vergleich der Metrik klärt es beim ersten Lauf.
+- **Die Tempokorrektur klemmt nicht** bei absurden Eingaben, sondern gibt nach acht Schritten einen Wert außerhalb des Bereichs zurück.
+- **Die verlustfreie Silbenzerlegung gilt nur**, solange das Wort das interne Trennzeichen nicht enthält.
+
+### Testlücken
+
+- Der Monotonie-Test der Zeitumrechnung prüft nur ein Nachbarpaar bei einem Tempo.
+- Der POSIX-Zweig des Prozessbaum-Abbruchs ist ungetestet — es gibt keinen POSIX-Läufer. Der Fix ruht auf Begründung.
+- Der Pfad „pyphen fehlt vollständig" ist ungetestet; nur der Fall einer unbekannten Sprache wird geprüft.
+- Der Nebenläufigkeits-Test des Caches belegt den geteilten Temp-Pfad, nicht buchstäbliches Vermischen von Bytes. Er wacht über die richtige Invariante, beweist aber das schwächere Merkmal.
+- Die AST-Reinheitsprüfung erfasst nur die beiden genannten Dateien; ein verbotenes Paket über ein drittes lokales Modul bliebe unentdeckt.
+
+### Bewusste Abwägungen
+
+- **Ein `detached`-Kind ist auf POSIX verwaist**, wenn der Elternprozess ohne den Abbruchpfad stirbt. Das ist der Preis dafür, dass der Gruppen-Abbruch überhaupt wirkt. **Teilprojekt 3 muss beim Beenden aktiv aufräumen.**
+- **Ein fehlgeschlagener Abbruch ist unsichtbar** — Folge der bewusst verschluckenden Fehlerbehandlung.
+- **`runPipeline` erkennt Testskripte an der Dateiendung**, statt einen injizierbaren Starter anzubieten. Vertagt, weil es die öffentliche Form ändert, auf die der Harness zugreift.
+- **Log-Ausgaben könnten theoretisch ein Markerpräfix vortäuschen.**
+- **Der Parameterhash des Caches ist auf acht Zeichen gekürzt** — dünner Kollisionsspielraum.
+- **Ein nicht serialisierbarer Stufenparameter** wirft einen rohen `TypeError` ohne Kontext.
+- **Ein fehlendes oder beschädigtes WAV** meldet `pipeline_failed` statt einer eigenen Fehlerart.
+- **Die Tonhöhenmittelung behandelt MIDI 0 wie stimmlos** und verschmilzt damit zwei Zustände.
