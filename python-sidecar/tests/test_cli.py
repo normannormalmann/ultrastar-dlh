@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,12 +11,26 @@ from ultrastar_pipeline.progress import ERROR_PREFIX
 WURZEL = Path(__file__).resolve().parent.parent
 
 
-def _lauf(*args: str) -> subprocess.CompletedProcess[str]:
+def _lauf(*args: str, schattenpfad: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """Ruft die CLI als Subprozess auf.
+
+    schattenpfad landet vor den site-packages in PYTHONPATH und kann damit ein
+    installiertes Paket verdecken — so laesst sich eine unvollstaendige
+    Umgebung erzwingen, statt sie vorzufinden.
+    """
+    umgebung = None
+    if schattenpfad is not None:
+        umgebung = dict(os.environ)
+        bisher = umgebung.get("PYTHONPATH")
+        umgebung["PYTHONPATH"] = (
+            f"{schattenpfad}{os.pathsep}{bisher}" if bisher else str(schattenpfad)
+        )
     return subprocess.run(
         [sys.executable, "-m", "ultrastar_pipeline", *args],
         capture_output=True,
         text=True,
         cwd=WURZEL,
+        env=umgebung,
     )
 
 
@@ -57,10 +72,23 @@ def test_leerer_text_meldet_strukturierten_fehler(tmp_path):
 
 
 def test_fehlendes_modell_paket_meldet_env_missing_mit_paketnamen(tmp_path):
-    """In dieser Umgebung sind die Modell-Extras absichtlich nicht
-    installiert (siehe pyproject.toml) — genau der Fall, den env_missing
-    abdecken soll. --bpm gesetzt, damit der erste Modell-Import in separate()
-    (torch) und nicht schon in _erkenne_bpm (librosa) stattfindet."""
+    """Ein fehlendes Modellpaket muss env_missing melden und das Paket nennen.
+
+    Der Zustand wird erzwungen, nicht vorgefunden: ein vorgeschaltetes
+    torch.py wirft beim Import genau das, was ein fehlendes Paket wirft.
+    Vorher verliess sich der Test darauf, dass die Modell-Extras in dieser
+    Umgebung nicht installiert sind — seit sie es fuer den Bewertungslauf
+    sind, prueft er den Zustand der Maschine statt des Verhaltens.
+
+    --bpm gesetzt, damit der erste Modell-Import in separate() (torch) und
+    nicht schon in _erkenne_bpm (librosa) stattfindet.
+    """
+    schatten = tmp_path / "schatten"
+    schatten.mkdir()
+    (schatten / "torch.py").write_text(
+        'raise ModuleNotFoundError("No module named \'torch\'", name="torch")\n',
+        encoding="utf8",
+    )
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"kein echtes audio")
     lyrics = tmp_path / "l.txt"
@@ -69,6 +97,7 @@ def test_fehlendes_modell_paket_meldet_env_missing_mit_paketnamen(tmp_path):
         "--audio", str(audio), "--lyrics-file", str(lyrics),
         "--language", "de", "--bpm", "120", "--device", "cpu",
         "--work-dir", str(tmp_path / "cache"), "--out", str(tmp_path / "out.json"),
+        schattenpfad=schatten,
     )
     assert p.returncode == 1
     assert _fehler_kind(p.stdout) == "env_missing"

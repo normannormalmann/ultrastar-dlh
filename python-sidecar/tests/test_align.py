@@ -1,12 +1,19 @@
 import hashlib
 import json
+import sys
+import types
 import wave
 from pathlib import Path
 
 import pytest
 
 from ultrastar_pipeline import separate
-from ultrastar_pipeline.align import align, dauer_oder_rueckfall, zeilen_zuordnen
+from ultrastar_pipeline.align import (
+    LanguageUnsupported,
+    align,
+    dauer_oder_rueckfall,
+    zeilen_zuordnen,
+)
 from ultrastar_pipeline.cache import atomic_write_bytes, stage_path
 from ultrastar_pipeline.notes import AlignedWord
 
@@ -117,22 +124,41 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     geanderte Stimmtrennung darf keine Ausrichtung wiederverwenden, die noch
     auf dem alten Stem beruht. Nachweis: derselbe Cache-Inhalt ist nach dem
     Versionswechsel ein Treffer unter dem alten, aber ein Fehlschlag unter
-    dem neuen Pfad — der echte (hier nicht installierte) Aligner wuerde
-    importiert."""
+    dem neuen Pfad.
+
+    Der Fehlschlag wird an einem vorgeschalteten Platzhalter-whisperx
+    abgelesen, der jeden Zugriff mitzaehlt. Vorher diente der Importfehler des
+    echten Pakets als Beweis — das prueft die Umgebung statt des Caches und
+    faellt in dem Moment um, in dem die Modelle wirklich installiert sind.
+    """
     lines = ["eins"]
     ziel = _cache_pfad(tmp_path, "hashXYZ", lines)
     atomic_write_bytes(
         ziel, json.dumps({"words": [], "deviation": 0}, ensure_ascii=False).encode("utf8")
     )
 
-    # Vor dem Versionswechsel: Cache-Treffer, keine Modelle noetig.
+    zugriffe: list[str] = []
+
+    def load_align_model(language_code: str, device: str):
+        zugriffe.append(language_code)
+        raise RuntimeError("Platzhalter: dieser Test laedt kein Modell")
+
+    platzhalter = types.ModuleType("whisperx")
+    platzhalter.load_align_model = load_align_model
+    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+
+    # Vor dem Versionswechsel: Cache-Treffer, das Modell bleibt unberuehrt.
     assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", []) == []
+    assert zugriffe == []
 
     monkeypatch.setattr(separate, "STAGE_VERSION", "999")
     # Derselbe Cache-Inhalt liegt jetzt unter einem anderen Pfad -> Treffer
-    # bleibt aus, whisperx (nicht installiert) wuerde importiert.
-    with pytest.raises(ModuleNotFoundError):
+    # bleibt aus, der Aligner wird angefasst. Dass daraus LanguageUnsupported
+    # wird, ist nur die Huelle des Platzhalter-Fehlers; entscheidend ist der
+    # gezaehlte Zugriff.
+    with pytest.raises(LanguageUnsupported):
         align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [])
+    assert zugriffe == ["de"]
 
 
 def test_dauer_oder_rueckfall_liest_die_echte_wav_laenge(tmp_path):
