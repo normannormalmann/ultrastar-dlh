@@ -62,3 +62,76 @@ def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anc
                 Anchor(bekannter_index=index, zeit=gehoerte[block.b + versatz].start)
             )
     return anker
+
+
+@dataclass(frozen=True)
+class Abschnitt:
+    """Ein Textausschnitt mit dem Zeitfenster, in dem er gesungen wird.
+
+    bis_index ist exklusiv. vertrauen ist der Anteil der Woerter des
+    Abschnitts, die im Transkript wiedergefunden wurden.
+    """
+
+    von_index: int
+    bis_index: int
+    start_s: float
+    ende_s: float
+    vertrauen: float
+    beidseitig_verankert: bool
+
+
+def baue_abschnitte(
+    anzahl_woerter: int,
+    anker: list[Anchor],
+    dauer_s: float,
+    zielgroesse: int = 12,
+    saum_s: float = 0.3,
+) -> list[Abschnitt]:
+    """Schneidet den Liedtext an tragfaehigen Ankern in Abschnitte.
+
+    Nicht jeder Anker wird zur Grenze: zu enge Fenster nehmen dem Aligner den
+    Spielraum, den er braucht. Grenzen entstehen im Abstand von etwa
+    zielgroesse Woertern.
+
+    Ohne Anker entsteht genau ein Abschnitt ueber die volle Spur \u2014 bitweise
+    das bisherige Verhalten. Das Verfahren kann damit nie schlechter werden
+    als der gemessene Basiswert, sondern hoechstens sichtbar darauf
+    zurueckfallen.
+    """
+    if anzahl_woerter <= 0:
+        return []
+    if not anker:
+        return [
+            Abschnitt(0, anzahl_woerter, 0.0, dauer_s, 0.0, beidseitig_verankert=False)
+        ]
+
+    # Grenzanker im Zielabstand auswaehlen, immer beim ersten beginnend.
+    grenzen: list[Anchor] = [anker[0]]
+    for a in anker[1:]:
+        if a.bekannter_index - grenzen[-1].bekannter_index >= zielgroesse:
+            grenzen.append(a)
+
+    verankerte_indizes = {a.bekannter_index for a in anker}
+    abschnitte: list[Abschnitt] = []
+    for i, grenze in enumerate(grenzen):
+        letzter = i == len(grenzen) - 1
+        von = 0 if i == 0 else grenze.bekannter_index
+        bis = anzahl_woerter if letzter else grenzen[i + 1].bekannter_index
+        start = 0.0 if i == 0 else max(0.0, grenze.zeit - saum_s)
+        ende = dauer_s if letzter else min(dauer_s, grenzen[i + 1].zeit + saum_s)
+
+        spanne = max(1, bis - von)
+        getroffen = sum(1 for idx in range(von, bis) if idx in verankerte_indizes)
+        abschnitte.append(
+            Abschnitt(
+                von_index=von,
+                bis_index=bis,
+                start_s=start,
+                ende_s=ende,
+                vertrauen=getroffen / spanne,
+                # Erster und letzter Abschnitt reichen bis an den Rand der
+                # Spur und sind dort nicht von einem Anker begrenzt.
+                beidseitig_verankert=not (i == 0 or letzter),
+            )
+        )
+    return abschnitte

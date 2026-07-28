@@ -66,3 +66,53 @@ def test_anker_sind_in_beiden_dimensionen_streng_steigend():
     for vorher, nachher in zip(anker, anker[1:]):
         assert nachher.bekannter_index > vorher.bekannter_index
         assert nachher.zeit > vorher.zeit
+
+
+from ultrastar_pipeline.anchors import Abschnitt, baue_abschnitte
+
+
+def test_ohne_anker_entsteht_ein_abschnitt_ueber_die_ganze_spur():
+    """Der wichtigste Fall ist der schlechteste: ohne Anker faellt das
+    Verfahren auf das bisherige Verhalten zurueck \u2014 sichtbar, nicht still."""
+    abschnitte = baue_abschnitte(anzahl_woerter=10, anker=[], dauer_s=100.0)
+    assert len(abschnitte) == 1
+    a = abschnitte[0]
+    assert (a.von_index, a.bis_index) == (0, 10)
+    assert (a.start_s, a.ende_s) == (0.0, 100.0)
+    assert a.vertrauen == 0.0
+    assert a.beidseitig_verankert is False
+
+
+def test_abschnitte_decken_alle_woerter_lueckenlos_und_ueberschneidungsfrei_ab():
+    anker = [Anchor(bekannter_index=i, zeit=float(i)) for i in range(40)]
+    abschnitte = baue_abschnitte(40, anker, dauer_s=40.0, zielgroesse=12)
+
+    assert abschnitte[0].von_index == 0
+    assert abschnitte[-1].bis_index == 40
+    for vorher, nachher in zip(abschnitte, abschnitte[1:]):
+        assert nachher.von_index == vorher.bis_index
+
+
+def test_zeitfenster_sind_lueckenlos_und_die_raender_verankert():
+    anker = [Anchor(bekannter_index=i, zeit=float(i)) for i in range(40)]
+    abschnitte = baue_abschnitte(40, anker, dauer_s=50.0, zielgroesse=12, saum_s=0.3)
+
+    assert abschnitte[0].start_s == 0.0
+    assert abschnitte[-1].ende_s == 50.0
+    for vorher, nachher in zip(abschnitte, abschnitte[1:]):
+        # Ueberlappung als Sicherheitssaum ist gewollt, eine Luecke nicht.
+        assert nachher.start_s <= vorher.ende_s
+
+
+def test_vertrauen_ist_der_anteil_verankerter_woerter_im_abschnitt():
+    # 20 Woerter, aber nur die erste Haelfte ist verankert.
+    anker = [Anchor(bekannter_index=i, zeit=float(i)) for i in range(10)]
+    abschnitte = baue_abschnitte(20, anker, dauer_s=30.0, zielgroesse=5)
+
+    assert abschnitte[0].vertrauen > abschnitte[-1].vertrauen
+    assert all(0.0 <= a.vertrauen <= 1.0 for a in abschnitte)
+
+
+def test_ein_einziger_anker_ergibt_einen_einseitig_verankerten_abschnitt():
+    abschnitte = baue_abschnitte(10, [Anchor(bekannter_index=0, zeit=2.0)], dauer_s=20.0)
+    assert any(not a.beidseitig_verankert for a in abschnitte)
