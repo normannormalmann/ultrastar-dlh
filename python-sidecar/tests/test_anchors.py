@@ -1,6 +1,6 @@
 import pytest
 
-from ultrastar_pipeline.anchors import Anchor, finde_anker, normalisiere
+from ultrastar_pipeline.anchors import MAX_WOERTER_PRO_SEKUNDE, Anchor, finde_anker, normalisiere
 from ultrastar_pipeline.transcribe import TranskriptWort
 
 
@@ -134,3 +134,37 @@ def test_songlaenge_vor_dem_letzten_zeitstempel_wird_abgelehnt():
 def test_nicht_positive_songlaenge_wird_abgelehnt():
     with pytest.raises(ValueError, match="positiv"):
         baue_abschnitte(10, [], dauer_s=0.0)
+
+
+def test_verhoerter_erster_refrain_verwechselt_die_wiederholung_nicht():
+    """Der Fehlerfall des Pilotlaufs, verkleinert: der erste Refrain wurde
+    teils verhoert, der letzte sauber erkannt. Ein Matcher, der den laengsten
+    Block zuerst bindet, haengt den Text-Anfangsrefrain an die spaete
+    Wiederholung — und die gesamte Mitte verliert ihre Anker."""
+    refrain = ["glocke", "klingt", "heute", "wieder", "hell"]
+    strophe = [f"wort{i}" for i in range(20)]
+    bekannte = [*refrain, *strophe, *refrain]
+    gehoert = (
+        ["glocke", "klingelt", "heute", "wieder", "hell"]
+        + [w if i % 2 == 0 else f"anders{i}" for i, w in enumerate(strophe)]
+        + refrain
+    )
+    anker = finde_anker(bekannte, _gehoert(gehoert))
+
+    indizes = [a.bekannter_index for a in anker]
+    # Die klar gehoerten Strophenwoerter muessen verankert sein.
+    assert len([i for i in indizes if 5 <= i < 25]) >= 8
+    # Und der erste Refrain haengt vorn, nicht am Songende.
+    fruehe = [a.zeit for a in anker if a.bekannter_index in (0, 2, 3, 4)]
+    assert fruehe and max(fruehe) < 10.0
+
+
+def test_falsch_anker_grenze_faellt_statt_woerter_zu_quetschen():
+    """Ein Falsch-Anker (Fuellwort in einem ASR-Loch) darf keine Section
+    erzwingen, in der niemand singen kann. Gemessen im Pilot: 58 Woerter in
+    4,3 s. Die Grenze muss fallen, die Woerter gehen im Nachbarn auf."""
+    anker = [Anchor(0, 10.0), Anchor(12, 20.0), Anchor(70, 24.0)]
+    abschnitte = baue_abschnitte(80, anker, dauer_s=120.0)
+    for a in abschnitte:
+        rate = (a.bis_index - a.von_index) / max(a.ende_s - a.start_s, 0.01)
+        assert rate <= MAX_WOERTER_PRO_SEKUNDE

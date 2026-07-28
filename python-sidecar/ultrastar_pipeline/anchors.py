@@ -6,7 +6,6 @@ Entscheidungslogik des Alignments, und nur deshalb ist sie ohne GPU pruefbar.
 
 import unicodedata
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 
 from .transcribe import TranskriptWort
 
@@ -35,12 +34,14 @@ def normalisiere(wort: str) -> str:
 def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anchor]:
     """Ordnet bekannte Woerter den Zeiten gehoerter Woerter zu.
 
-    Der Algorithmus findet uebereinstimmende Wortfolgen mit SequenceMatcher
-    (Ratcliff/Obershelp). Die tragende Eigenschaft ist die Monotonie:
-    get_matching_blocks() gibt Bloecke mit streng steigenden Indizes zurueck,
-    womit strukturell verhindert wird, dass eine Refrainwiederholung mit
-    einer frueheren verwechselt wird. Ein verhoertes Wort faellt aus der
-    Teilfolge heraus, ohne seine Nachbarn mitzureissen.
+    Echte laengste gemeinsame Teilfolge per dynamischer Programmierung —
+    global optimal. Der fruehere greedy Ansatz (difflib, laengster Block
+    zuerst) band im Pilotlauf einen wortgleich wiederholten Refrain an die
+    falsche Stelle und liess 80 Woerter ohne Anker; einer global optimalen
+    Teilfolge kann das nicht passieren, weil die geopferten Treffer der
+    Mitte jede solche Zuordnung vom Maximum wegdruecken. Die Monotonie in
+    beiden Indizes folgt aus der Konstruktion. O(n*m) ist bei
+    Liedtextgroessen (einige hundert Woerter) unkritisch.
 
     Voraussetzung: `gehoerte` ist zeitlich aufsteigend sortiert.
     """
@@ -49,18 +50,31 @@ def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anc
 
     a = [normalisiere(w) for w in bekannte]
     b = [normalisiere(w.text) for w in gehoerte]
+    n, m = len(a), len(b)
+
+    # folge[i][j] = Laenge der laengsten gemeinsamen Teilfolge von a[i:], b[j:].
+    # Woerter, die nach der Normalisierung leer sind (reine Satzzeichen),
+    # matchen nie — sie liefern keine Zeit und gehoeren nicht verankert.
+    folge = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        zeile, naechste, ai = folge[i], folge[i + 1], a[i]
+        for j in range(m - 1, -1, -1):
+            if ai and ai == b[j]:
+                zeile[j] = naechste[j + 1] + 1
+            else:
+                zeile[j] = naechste[j] if naechste[j] >= zeile[j + 1] else zeile[j + 1]
 
     anker: list[Anchor] = []
-    # autojunk verwirft haeufige Elemente als "unbedeutend" — bei Liedtext
-    # sind genau die haeufigen Woerter aber oft die einzigen sicheren Treffer.
-    for block in SequenceMatcher(a=a, b=b, autojunk=False).get_matching_blocks():
-        for versatz in range(block.size):
-            index = block.a + versatz
-            if not a[index]:  # rein aus Satzzeichen bestehend, kein Anker
-                continue
-            anker.append(
-                Anchor(bekannter_index=index, zeit=gehoerte[block.b + versatz].start)
-            )
+    i = j = 0
+    while i < n and j < m:
+        if a[i] and a[i] == b[j]:
+            anker.append(Anchor(bekannter_index=i, zeit=gehoerte[j].start))
+            i += 1
+            j += 1
+        elif folge[i + 1][j] >= folge[i][j + 1]:
+            i += 1
+        else:
+            j += 1
     return anker
 
 
@@ -78,6 +92,12 @@ class Abschnitt:
     ende_s: float
     vertrauen: float
     beidseitig_verankert: bool
+
+
+# Schnellster echter Abschnitt im Pilotkorpus (dichter Rap): 6,9 Woerter/s.
+# Was darueber liegt, singt niemand — eine solche Grenze stammt von einem
+# Falsch-Anker (z. B. ein Fuellwort, das zufaellig in einem ASR-Loch matcht).
+MAX_WOERTER_PRO_SEKUNDE = 8.0
 
 
 def baue_abschnitte(
@@ -116,33 +136,68 @@ def baue_abschnitte(
             Abschnitt(0, anzahl_woerter, 0.0, dauer_s, 0.0, beidseitig_verankert=False)
         ]
 
+    verankerte_indizes = {a.bekannter_index for a in anker}
+
+    def _schneide(grenzen: list[Anchor]) -> list[Abschnitt]:
+        abschnitte: list[Abschnitt] = []
+        for i, grenze in enumerate(grenzen):
+            letzter = i == len(grenzen) - 1
+            von = 0 if i == 0 else grenze.bekannter_index
+            bis = anzahl_woerter if letzter else grenzen[i + 1].bekannter_index
+            start = 0.0 if i == 0 else max(0.0, grenze.zeit - saum_s)
+            ende = dauer_s if letzter else min(dauer_s, grenzen[i + 1].zeit + saum_s)
+
+            spanne = max(1, bis - von)
+            getroffen = sum(1 for idx in range(von, bis) if idx in verankerte_indizes)
+            abschnitte.append(
+                Abschnitt(
+                    von_index=von,
+                    bis_index=bis,
+                    start_s=start,
+                    ende_s=ende,
+                    vertrauen=getroffen / spanne,
+                    # Erster und letzter Abschnitt reichen bis an den Rand der
+                    # Spur und sind dort nicht von einem Anker begrenzt.
+                    beidseitig_verankert=not (i == 0 or letzter),
+                )
+            )
+        return abschnitte
+
     # Grenzanker im Zielabstand auswaehlen, immer beim ersten beginnend.
-    grenzen: list[Anchor] = [anker[0]]
+    grenzen = [anker[0]]
     for a in anker[1:]:
         if a.bekannter_index - grenzen[-1].bekannter_index >= zielgroesse:
             grenzen.append(a)
 
-    verankerte_indizes = {a.bekannter_index for a in anker}
-    abschnitte: list[Abschnitt] = []
-    for i, grenze in enumerate(grenzen):
-        letzter = i == len(grenzen) - 1
-        von = 0 if i == 0 else grenze.bekannter_index
-        bis = anzahl_woerter if letzter else grenzen[i + 1].bekannter_index
-        start = 0.0 if i == 0 else max(0.0, grenze.zeit - saum_s)
-        ende = dauer_s if letzter else min(dauer_s, grenzen[i + 1].zeit + saum_s)
+    abschnitte = _schneide(grenzen)
 
-        spanne = max(1, bis - von)
-        getroffen = sum(1 for idx in range(von, bis) if idx in verankerte_indizes)
-        abschnitte.append(
-            Abschnitt(
-                von_index=von,
-                bis_index=bis,
-                start_s=start,
-                ende_s=ende,
-                vertrauen=getroffen / spanne,
-                # Erster und letzter Abschnitt reichen bis an den Rand der
-                # Spur und sind dort nicht von einem Anker begrenzt.
-                beidseitig_verankert=not (i == 0 or letzter),
-            )
+    # Eine Grenze, die eine unsingbare Rate erzwingt, ist ein Falsch-Anker.
+    # Sie faellt, und der Abschnitt geht in dem Nachbarn auf, der die
+    # niedrigere Rate ergibt. Terminiert, weil jede Runde eine Grenze
+    # entfernt. Faellt die letzte Grenze, bleibt der eine Abschnitt ueber
+    # die volle Spur — der bekannte, sichtbare Rueckfall.
+    def _rate(a: Abschnitt) -> float:
+        return (a.bis_index - a.von_index) / max(a.ende_s - a.start_s, 1e-9)
+
+    while len(grenzen) > 1:
+        verdaechtig = next(
+            (k for k, a in enumerate(abschnitte) if _rate(a) > MAX_WOERTER_PRO_SEKUNDE),
+            None,
         )
+        if verdaechtig is None:
+            break
+        # Kandidaten: die Grenze am Anfang des Abschnitts (merge nach vorn)
+        # oder die an seinem Ende (merge nach hinten) — es gewinnt der
+        # Nachbar mit der niedrigeren resultierenden Rate.
+        kandidaten = []
+        if verdaechtig > 0:
+            kandidaten.append(grenzen[:verdaechtig] + grenzen[verdaechtig + 1 :])
+        if verdaechtig < len(grenzen) - 1:
+            kandidaten.append(grenzen[: verdaechtig + 1] + grenzen[verdaechtig + 2 :])
+        grenzen = min(
+            kandidaten,
+            key=lambda g: max((_rate(a) for a in _schneide(g)), default=0.0),
+        )
+        abschnitte = _schneide(grenzen)
+
     return abschnitte

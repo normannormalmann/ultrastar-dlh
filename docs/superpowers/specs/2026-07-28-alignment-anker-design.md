@@ -153,6 +153,10 @@ Weitere Risiken:
 - **Ein zweites Modell auf der Platte** verschärft die Positionierungsfrage aus Teilprojekt 1 weiter: aus dem schlanken Downloader wird endgültig ein Werkzeug mit GPU-Erwartung und mehreren Gigabyte Modellen.
 - **Belegt ist bisher eine Sprache.** Die Tokenisierungs-Übereinstimmung gilt gemessen für Deutsch; andere Sprachen bleiben offen.
 
+**Nachtrag 2026-07-29 — zwei Defekte aus dem Pilotlauf über 5 Songs behoben:**
+(1) `difflib.SequenceMatcher` war keine echte längste gemeinsame Teilfolge, sondern Ratcliff/Obershelp (längster Block zuerst, dann Rekursion). Bei einem Song mit wortgleichem erstem und letztem Refrain band das den Textanfang an das Songende und ließ 80 Wörter ohne Anker (58 statt 132 mögliche). `finde_anker` läuft jetzt auf echter LCS per dynamischer Programmierung, global optimal: 132 statt 58 Anker, maximale Rate 2,2 statt 49 Wörter/s.
+(2) Falsch-Anker in ASR-Löchern (Füllwörter, die zufällig in einer nicht gehörten Passage matchen) konnten eine Grenze erzwingen, die eine unsingbare Rate ergibt — gemessen 58 Wörter in 4,3 s. `baue_abschnitte` prüft jetzt jede Grenze gegen `MAX_WOERTER_PRO_SEKUNDE = 8` (Basis: 6,9 Wörter/s als schnellster echter Abschnitt im Pilot, dichter Rap) und lässt eine zu schnelle Grenze fallen, statt die Wörter zu quetschen.
+
 ## Bewusst nicht enthalten
 
 - **Duette** — unverändert vertagt.
