@@ -165,6 +165,15 @@ def align(
     # danach weiterhin ueber die Wortanzahl je Zeile rekonstruiert
     # (zeilen_zuordnen), nicht ueber diese Segmentgrenzen.
     flach = [wort for zeile in lines for wort in zeile.split()]
+    # Die Abschnittsgrenzen wurden gegen eine anderswo gebildete Wortliste
+    # berechnet. Stimmt deren Laenge nicht mit der hiesigen ueberein, greifen
+    # die Grenzen auf falsche Woerter und der Filter unten wuerde den Verlust
+    # verschlucken. Lieber hier abbrechen als still falsch ausrichten.
+    if abschnitte and abschnitte[-1].bis_index != len(flach):
+        raise AlignmentFailed(
+            f"Abschnitte decken {abschnitte[-1].bis_index} Woerter ab, "
+            f"der Text hat {len(flach)}"
+        )
     segmente = [
         {
             "text": " ".join(flach[a.von_index : a.bis_index]),
@@ -202,6 +211,16 @@ def align(
 
     if not woerter:
         raise AlignmentFailed("keine Woerter zugeordnet")
+
+    # Wir haengen die Woerter aller Segmente hintereinander und setzen dabei
+    # voraus, dass sie in Eingabereihenfolge zurueckkommen. Stimmt das nicht,
+    # waere die ganze Ausrichtung verschoben - sichtbar machen, nicht annehmen.
+    rueckwaerts = sum(1 for a, b in zip(woerter, woerter[1:]) if b.start < a.start)
+    if rueckwaerts:
+        warnungen.append(
+            f"{rueckwaerts} Woerter liegen zeitlich vor ihrem Vorgaenger; "
+            "die Segmentreihenfolge des Aligners ist nicht monoton."
+        )
 
     woerter, abweichung = zeilen_zuordnen(woerter, lines)
     _melde_abweichung(abweichung, warnungen)

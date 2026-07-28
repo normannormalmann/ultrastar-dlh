@@ -9,6 +9,7 @@ import pytest
 
 from ultrastar_pipeline import separate
 from ultrastar_pipeline.align import (
+    AlignmentFailed,
     LanguageUnsupported,
     align,
     dauer_oder_rueckfall,
@@ -226,3 +227,23 @@ def test_je_abschnitt_entsteht_ein_segment_mit_eigenem_zeitfenster(tmp_path, mon
     assert (segmente[1]["start"], segmente[1]["end"]) == (4.7, 10.0)
     assert segmente[0]["text"] == "eins zwei"
     assert segmente[1]["text"] == "drei vier"
+
+
+def test_abschnitte_gegen_falsche_wortzahl_schlagen_laut_fehl(tmp_path, monkeypatch):
+    """Die Abschnittsgrenzen wurden anderswo gegen eine Wortliste berechnet.
+    Stimmt deren Laenge nicht mit der hiesigen ueberein, darf das nicht still
+    zu einer falsch ausgerichteten (aber unbemerkt bleibenden) Section fuehren
+    -- fail loudly statt stiller Verlust."""
+
+    def load_align_model(language_code, device):
+        return object(), {}
+
+    platzhalter = types.ModuleType("whisperx")
+    platzhalter.load_align_model = load_align_model
+    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+
+    lines = ["eins zwei"]  # nur zwei Woerter
+    # bis_index nennt fuenf Woerter -- passt nicht zur tatsaechlichen Wortzahl.
+    abschnitte = [Abschnitt(0, 5, 0.0, 5.0, 1.0, False)]
+    with pytest.raises(AlignmentFailed):
+        align(Path("egal.wav"), lines, "de", tmp_path, "hashMismatch", "cpu", [], abschnitte)

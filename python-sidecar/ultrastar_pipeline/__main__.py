@@ -1,7 +1,7 @@
 """CLI des Pipeline-Kerns.
 
-Reihenfolge: tempo (billig) -> separate -> align -> pitch -> notes.
-Die drei teuren Stufen sind gecacht, notes nie: es ist billig und genau
+Reihenfolge: tempo (billig) -> separate -> transcribe -> align -> pitch -> notes.
+Die vier teuren Stufen sind gecacht, notes nie: es ist billig und genau
 das, was justiert wird.
 """
 
@@ -139,7 +139,9 @@ def main(argv: list[str] | None = None) -> int:
         # 0.0 zu erscheinen, an der baue_abschnitte mit einer irrefuehrenden
         # Fehlermeldung scheitern wuerde.
         abschnitte = anchors.baue_abschnitte(len(flach), anker, dauer_sekunden(vocals))
-        # Ein schwacher Abschnitt darf nicht still bleiben.
+        # Ein schwacher Abschnitt darf nicht still bleiben. Unterhalb der
+        # Haelfte wiedergefundener Woerter ist ein Abschnitt eher geraten als
+        # verankert.
         schwach = [a for a in abschnitte if a.vertrauen < 0.5]
         if schwach:
             warnungen.append(
