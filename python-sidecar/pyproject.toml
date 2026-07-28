@@ -6,7 +6,22 @@ dependencies = []
 
 [project.optional-dependencies]
 # Modell-Abhaengigkeiten getrennt, damit reine Tests ohne sie laufen.
-models = ["demucs", "whisperx", "swift-f0", "librosa", "torch", "torchaudio"]
+#
+# numba braucht eine Untergrenze, obwohl es niemand direkt importiert:
+# librosa zieht es nach, und moderne numba-Versionen begrenzen numpy nach
+# oben. Ohne diese Grenze weicht die Aufloesung auf numba 0.53.1 aus, das
+# keine solche Grenze kennt — und dessen llvmlite 0.36 laesst sich fuer
+# Python 3.12 nicht bauen. Mit der Grenze landet sie bei numba 0.66 und
+# nimmt numpy dafuer auf 2.4 zurueck.
+models = [
+  "demucs",
+  "whisperx",
+  "swift-f0",
+  "librosa",
+  "numba>=0.59",
+  "torch",
+  "torchaudio",
+]
 dev = ["pytest", "pyphen"]
 
 [build-system]

@@ -34,14 +34,18 @@ def track_pitch(vocals: Path, work_dir: Path, audio_hash: str) -> list[PitchPoin
         return [PitchPoint(**p) for p in json.loads(ziel.read_text(encoding="utf8"))]
 
     emit_progress("pitch", 0.0)
-    from swift_f0 import detect_voicing, extract_f0
+    from swift_f0 import SwiftF0
 
-    ergebnis = extract_f0(str(vocals))
-    stimmhaft = detect_voicing(ergebnis)
+    # SwiftF0 ist eine Klasse, keine Funktion, und PitchResult liefert die
+    # Stimmhaftigkeit schon als Wahrheitswert pro Frame — ein zweiter Aufruf
+    # dafuer existiert nicht. Felder: pitch_hz, confidence, timestamps, voicing.
+    ergebnis = SwiftF0().detect_from_file(str(vocals))
 
     punkte = [
         PitchPoint(time=float(t), midi=_hz_zu_midi(float(f)), voiced=bool(v))
-        for t, f, v in zip(ergebnis.timestamps, ergebnis.f0_values, stimmhaft)
+        for t, f, v in zip(
+            ergebnis.timestamps, ergebnis.pitch_hz, ergebnis.voicing, strict=False
+        )
     ]
 
     atomic_write_bytes(ziel, json.dumps([p.__dict__ for p in punkte]).encode("utf8"))

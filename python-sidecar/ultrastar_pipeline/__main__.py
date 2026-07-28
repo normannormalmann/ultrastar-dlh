@@ -47,10 +47,17 @@ def _waehle_device(wunsch: str, warnungen: list[str]) -> str:
 
 def _erkenne_bpm(audio: Path) -> float:
     import librosa
+    import numpy as np
 
     y, sr = librosa.load(str(audio), mono=True)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    return korrigiere_tempo(float(tempo))
+    # librosa 0.11 liefert das Tempo als Array, nicht als Skalar, und unter
+    # NumPy 2 wirft float() auf ein Array mit einem Element. Erst flach
+    # machen, dann den ersten Wert nehmen — deckt Skalar und Array ab.
+    werte = np.asarray(tempo).reshape(-1)
+    if werte.size == 0:
+        raise ValueError("Tempoerkennung lieferte keinen Wert")
+    return korrigiere_tempo(float(werte[0]))
 
 
 def _stage_versions() -> dict[str, str]:
