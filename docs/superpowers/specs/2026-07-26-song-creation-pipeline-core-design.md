@@ -313,3 +313,44 @@ Dazu vier kleinere: ein fehlendes Modellpaket meldete einen allgemeinen statt ei
 - **Ein nicht serialisierbarer Stufenparameter** wirft einen rohen `TypeError` ohne Kontext.
 - **Ein fehlendes oder beschädigtes WAV** meldet `pipeline_failed` statt einer eigenen Fehlerart.
 - **Die Tonhöhenmittelung behandelt MIDI 0 wie stimmlos** und verschmilzt damit zwei Zustände.
+
+## Nachtrag: Erster echter Modellauf und Basiswert (2026-07-28)
+
+Der erste Lauf der vollständigen Pipeline über echte Modelle ist erfolgt — bis hierhin war kein Modellaufruf je ausgeführt worden. Korpus: ein Song der lokalen Bibliothek, deutsch, 229 Silbenpaare, 156 Wörter über 35 Zeilen. Interpreter aus einer eigenen venv (`python-sidecar/.venv312`, Python 3.12), wie in Nachtrag B verlangt.
+
+### Was der Lauf geklärt hat
+
+- **`MIDI_NULLAGE` war um genau eine Oktave falsch.** Der Tonhöhenvergleich ergab bei Nullage 60 einen Median-Pitch-Offset von exakt −12,000 Halbtönen. Genau eine Oktave ist eine falsche Konstante und kein Rauschen. Korrigiert auf **48** (UltraStar-Tonhöhe 0 = C3); der Wiederholungslauf zeigt Offset **0,0**. Damit ist der Wert gemessen, nicht mehr angenommen — und Nachtrag A hat genau das geleistet, wofür er eingefügt wurde: eine reine Timing-Metrik hätte diesen Fehler prinzipiell nicht sehen können.
+- **Der geparkte Befund zur Zeilenrückgewinnung ist entschärft.** Die echte WhisperX-Ausgabe für Deutsch tokenisiert wie die Leerzeichen-Trennung: `deviation = 0`, keine Mehrwort-Tokens, keine aufgespaltenen Bindestriche, Satzzeichen bleiben am Wort. Alle 156 Tokens sind **byte-identisch** zu den übergebenen Wörtern — Forced Alignment gibt den gelieferten Text zurück. Die Wortzählung über Leerzeichen ist damit bestätigt, nicht korrigiert. Belegt für eine Sprache und einen Song; andere Sprachen bleiben offen.
+- **Drei Schnittstellen im Code waren falsch geraten**, alle erst durch die Ausführung sichtbar: SwiftF0 ist eine Klasse mit `detect_from_file` und liefert die Stimmhaftigkeit schon pro Frame mit (statt der angenommenen Funktionen `extract_f0` / `detect_voicing`); `librosa.beat.beat_track` gibt das Tempo unter NumPy 2 als Array zurück, auf dem `float()` wirft; und `numba` braucht eine Untergrenze, weil die Auflösung sonst auf eine Version ausweicht, die sich für Python 3.12 nicht bauen lässt.
+
+### Der Basiswert
+
+| Kennzahl | Wert |
+|---|---|
+| Paare | 229 |
+| Notenzahl-Differenz | 0 |
+| Median-Pitch-Offset | 0,0 Halbtöne |
+| Anteil Pitch exakt | 46 % |
+| Median-Zeitabweichung | 333 ms |
+| p90-Zeitabweichung | 1308 ms |
+| Anteil < 50 ms | 5 % |
+| Anteil < 100 ms | 10 % |
+
+**Struktur und Tonhöhe stimmen, das Timing ist unbrauchbar.** Für Karaoke braucht es Abweichungen im Bereich einiger zehn Millisekunden; 5 % der Silben erreichen das.
+
+### Warum das Timing scheitert — und warum kein Fix an einer Konstante hilft
+
+Die Kennzahl nimmt den Absolutwert und kann einen konstanten Versatz nicht von Streuung unterscheiden. Eine gesonderte, vorzeichenbehaftete Auswertung desselben Laufs beantwortet die Frage:
+
+- **Es ist kein konstanter Versatz.** Nach Abzug des Medians steigt der Anteil unter 50 ms nur von 5 % auf 7 %. Ein GAP-Korrektiv würde nichts retten.
+- **Es ist keine Drift.** Anfang und Ende passen zusammen — der letzte Onset liegt bei 165,2 s gegen 165,3 s der Referenz, beide Onset-Folgen sind monoton. Ein falscher BPM-Wert sähe anders aus.
+- **Es ist lokales Verrutschen.** Der Mittelwert je Zehntel des Songs lautet 232, 96, 118, −94, −236, −122, 1259, 1123, 2827, 391 ms. Das Vorzeichen kippt mehrfach; 88 der 229 Paare liegen über 500 ms, verteilt von Index 11 bis 219.
+
+Das ist die Signatur der gewählten Alignment-Form: **ein einziges Segment über die ganze Aufnahme, ohne Anker.** Der Aligner verteilt den bekannten Text über die volle Länge, verliert in instrumentalen und wiederholten Passagen die Spur und fängt sich danach wieder. Die frühere Bewertung „besser begründet, nicht belegt" ist damit aufgelöst: der Ansatz ist belegt — als unzureichend. Der ursprüngliche Entwurf (ein Zeitfenster je Textzeile) war falsch, der Nachfolger ist zu grob; die Lösung liegt zwischen beiden und braucht echte Anker, etwa eine Segmentierung über Sprachaktivität oder eine freie Transkription, gegen die der bekannte Text dann segmentweise ausgerichtet wird.
+
+**Konsequenz:** Die Pipeline erzeugt formal gültige, strukturell und melodisch korrekte Dateien, deren Zeitstempel nicht singbar sind. Vor einem Ausbau der Oberfläche oder der Umgebungsverwaltung ist das Alignment zu überarbeiten und der Basiswert erneut zu messen — die Messvorrichtung dafür steht und hat sich als tragfähig erwiesen.
+
+### Zwei Tests prüften die Maschine statt des Verhaltens
+
+Mit den installierten Modellpaketen fielen zwei Python-Tests um, die „das Paket ist hier nicht installiert" als Beweismittel benutzten: der Nachweis der Cache-Invalidierung bei Wechsel der `separate`-Stufenversion und der Nachweis von `env_missing` samt Paketname. Beide prüften damit den Zustand der Umgebung, nicht das Verhalten des Codes — und mussten in dem Moment umfallen, in dem die Modelle für den Bewertungslauf wirklich vorhanden waren. Ersetzt durch erzwungene Zustände: ein vorgeschaltetes Platzhalter-Modul, das jeden Zugriff mitzählt, beziehungsweise ein über `PYTHONPATH` vorgeschaltetes `torch.py`, das beim Import genau das wirft, was ein fehlendes Paket wirft. **Muster für ähnliche Fälle:** ein Test, dessen Beweis die Abwesenheit einer Abhängigkeit ist, hält nur so lange, wie niemand sie installiert.
