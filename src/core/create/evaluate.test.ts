@@ -1,5 +1,5 @@
 // src/core/create/evaluate.test.ts
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import { compareToReference, parseReferenceTxt } from "./evaluate.ts";
 
 const txt = [
@@ -145,5 +145,53 @@ describe("compareToReference - Tonhoehe", () => {
     const m = compareToReference(unser, referenz);
     expect(m.medianPitchOffset).toBe(0);
     expect(m.anteilPitchExakt).toBeCloseTo(2 / 3, 6);
+  });
+});
+
+// Nachtrag C: medianAbweichungMs nimmt den Betrag der Differenz und kann
+// deshalb einen konstanten Versatz nicht von lokalem Verrutschen
+// unterscheiden. medianVersatzMs (vorzeichenbehaftet) und driftProfil
+// (Mittelwert je Zehntel) schliessen diese Luecke.
+describe("compareToReference - Versatz und Drift", () => {
+  const songMitOnsets = (onsets: number[]) => ({
+    bpm: 60,
+    gap: 0,
+    syllables: onsets.map((onsetMs, i) => ({ syllable: `s${i}`, onsetMs, pitch: 0 })),
+  });
+
+  test("medianVersatzMs zeigt das Vorzeichen einer konstanten Verschiebung", () => {
+    const referenz = songMitOnsets([1000, 2000, 3000]);
+    expect(compareToReference(songMitOnsets([1200, 2200, 3200]), referenz).medianVersatzMs)
+      .toBeCloseTo(200, 0);
+    expect(compareToReference(songMitOnsets([800, 1800, 2800]), referenz).medianVersatzMs)
+      .toBeCloseTo(-200, 0);
+  });
+
+  test("driftProfil bleibt bei konstantem Versatz flach", () => {
+    const onsets = Array.from({ length: 100 }, (_, i) => i * 1000);
+    const referenz = songMitOnsets(onsets);
+    const konstant = songMitOnsets(onsets.map((o) => o + 200));
+    const profil = compareToReference(konstant, referenz).driftProfil;
+
+    expect(profil).toHaveLength(10);
+    expect(Math.max(...profil) - Math.min(...profil)).toBeLessThan(50);
+  });
+
+  test("driftProfil zeigt lokales Verrutschen als Ausschlag", () => {
+    const onsets = Array.from({ length: 100 }, (_, i) => i * 1000);
+    const referenz = songMitOnsets(onsets);
+    // Nur das letzte Zehntel verrutscht.
+    const verrutscht = songMitOnsets(onsets.map((o, i) => (i >= 90 ? o + 3000 : o)));
+    const profil = compareToReference(verrutscht, referenz).driftProfil;
+
+    expect(profil[9]).toBeGreaterThan(2000);
+    expect(profil[0]).toBeLessThan(50);
+  });
+
+  test("driftProfil hat auch ohne Paare zehn Eintraege ohne NaN", () => {
+    const leer = { bpm: 60, gap: 0, syllables: [] };
+    const profil = compareToReference(leer, leer).driftProfil;
+    expect(profil).toHaveLength(10);
+    expect(profil.every((w) => Number.isFinite(w))).toBe(true);
   });
 });

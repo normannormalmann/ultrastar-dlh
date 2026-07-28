@@ -142,16 +142,20 @@ const main = async (): Promise<void> => {
 
   console.log("");
   console.log(
-    "| Song | Paare | Median ms | p90 ms | <50ms | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
+    "| Song | Paare | Median ms | Versatz ms | p90 ms | <50ms | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
   );
-  console.log("|---|---|---|---|---|---|---|---|---|");
+  console.log("|---|---|---|---|---|---|---|---|---|---|");
   for (const { name, m } of ergebnisse) {
     console.log(
       `| ${name} | ${m.paare} | ${m.medianAbweichungMs.toFixed(0)} | ` +
-        `${m.p90AbweichungMs.toFixed(0)} | ${(m.anteilUnter50ms * 100).toFixed(0)}% | ` +
-        `${(m.anteilUnter100ms * 100).toFixed(0)}% | ${m.notenzahlDifferenz} | ` +
-        `${m.medianPitchOffset.toFixed(1)} | ${(m.anteilPitchExakt * 100).toFixed(0)}% |`,
+        `${m.medianVersatzMs.toFixed(0)} | ${m.p90AbweichungMs.toFixed(0)} | ` +
+        `${(m.anteilUnter50ms * 100).toFixed(0)}% | ${(m.anteilUnter100ms * 100).toFixed(0)}% | ` +
+        `${m.notenzahlDifferenz} | ${m.medianPitchOffset.toFixed(1)} | ` +
+        `${(m.anteilPitchExakt * 100).toFixed(0)}% |`,
     );
+    // Driftprofil als eigene Zeile: die Tabellenzelle waere fuer zehn Werte
+    // zu schmal, deshalb steht die Zahlenreihe direkt darunter.
+    console.log(`  Driftprofil: ${m.driftProfil.map((w) => w.toFixed(0)).join(", ")}`);
   }
 
   const mittel = (f: (m: Metrics) => number): number =>
@@ -160,6 +164,7 @@ const main = async (): Promise<void> => {
   console.log("");
   console.log(`Songs:               ${ergebnisse.length}`);
   console.log(`Median-Abweichung:   ${mittel((m) => m.medianAbweichungMs).toFixed(0)} ms`);
+  console.log(`Median-Versatz:      ${mittel((m) => m.medianVersatzMs).toFixed(0)} ms`);
   console.log(`p90-Abweichung:      ${mittel((m) => m.p90AbweichungMs).toFixed(0)} ms`);
   console.log(`Anteil <50 ms:       ${(mittel((m) => m.anteilUnter50ms) * 100).toFixed(0)}%`);
   console.log(`Anteil <100 ms:      ${(mittel((m) => m.anteilUnter100ms) * 100).toFixed(0)}%`);

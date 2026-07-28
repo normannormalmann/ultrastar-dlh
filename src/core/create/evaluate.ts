@@ -18,6 +18,19 @@ export type Metrics = {
   medianPitchOffset: number;
   /** Anteil der Paare, die nach Abzug von medianPitchOffset exakt passen. */
   anteilPitchExakt: number;
+  /**
+   * Median von (unser Onset minus Referenz-Onset), vorzeichenbehalten.
+   * medianAbweichungMs nimmt den Betrag und kann deshalb einen konstanten
+   * Versatz nicht von lokalem Verrutschen unterscheiden — dieser Wert traegt
+   * das Vorzeichen und macht die Richtung sichtbar.
+   */
+  medianVersatzMs: number;
+  /**
+   * Mittlerer Versatz je Zehntel des Songs, immer genau zehn Eintraege
+   * (auch bei weniger als zehn Paaren oder gar keinem) — nur so bleiben
+   * Songs unterschiedlicher Laenge in diesem Profil vergleichbar.
+   */
+  driftProfil: number[];
 };
 
 const zahlAusHeader = (txt: string, name: string, standard: number): number => {
@@ -80,11 +93,12 @@ const quantil = (werte: number[], q: number): number => {
 export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong): Metrics => {
   const anzahl = Math.min(unser.syllables.length, referenz.syllables.length);
   const abweichungen: number[] = [];
+  const versatz: number[] = [];
   const pitchDiffs: number[] = [];
   for (let i = 0; i < anzahl; i++) {
-    abweichungen.push(
-      Math.abs((unser.syllables[i]?.onsetMs ?? 0) - (referenz.syllables[i]?.onsetMs ?? 0)),
-    );
+    const differenz = (unser.syllables[i]?.onsetMs ?? 0) - (referenz.syllables[i]?.onsetMs ?? 0);
+    abweichungen.push(Math.abs(differenz));
+    versatz.push(differenz);
     pitchDiffs.push((unser.syllables[i]?.pitch ?? 0) - (referenz.syllables[i]?.pitch ?? 0));
   }
 
@@ -99,6 +113,17 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
       ? 0
       : pitchDiffs.filter((d) => d - medianPitchOffset === 0).length / pitchDiffs.length;
 
+  // Zehn Abschnitte fester Laenge statt fester Silbenzahl: das Profil bleibt
+  // zwischen Songs vergleichbar, unabhaengig von der jeweiligen Silbenzahl.
+  // mittel() liefert fuer einen leeren Abschnitt 0 statt NaN, damit die
+  // Laenge auch bei weniger als zehn Paaren stets zehn betraegt.
+  const mittel = (a: number[]): number =>
+    a.length === 0 ? 0 : a.reduce((s, x) => s + x, 0) / a.length;
+  const breite = versatz.length / 10;
+  const driftProfil = Array.from({ length: 10 }, (_, k) =>
+    mittel(versatz.slice(Math.floor(k * breite), Math.floor((k + 1) * breite))),
+  );
+
   return {
     paare: anzahl,
     medianAbweichungMs: quantil(abweichungen, 0.5),
@@ -108,5 +133,7 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
     notenzahlDifferenz: unser.syllables.length - referenz.syllables.length,
     medianPitchOffset,
     anteilPitchExakt,
+    medianVersatzMs: quantil(versatz, 0.5),
+    driftProfil,
   };
 };
