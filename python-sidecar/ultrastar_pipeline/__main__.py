@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         emit_progress("notes", 1.0)
 
     except LanguageUnsupported as exc:
-        emit_error("language_unsupported", language=exc.language)
+        emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
         return 1
     except AlignmentFailed as exc:
         emit_error("alignment_failed", detail=str(exc))

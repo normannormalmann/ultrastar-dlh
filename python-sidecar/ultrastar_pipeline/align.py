@@ -7,18 +7,16 @@ from pathlib import Path
 
 from . import separate
 from .cache import atomic_write_bytes, stage_path
+from .errors import LanguageUnsupported
 from .notes import AlignedWord
 from .progress import emit_progress
 
 STAGE_VERSION = "1"
 
-
-class LanguageUnsupported(Exception):
-    """Fuer diese Sprache gibt es kein Alignment-Modell."""
-
-    def __init__(self, language: str) -> None:
-        super().__init__(language)
-        self.language = language
+# Re-exportiert: bestehender Code und Tests importieren LanguageUnsupported
+# von hier, die eigentliche Definition liegt aber in errors.py (Importzyklus,
+# siehe dort).
+__all__ = ["LanguageUnsupported", "AlignmentFailed", "align"]
 
 
 class AlignmentFailed(Exception):
