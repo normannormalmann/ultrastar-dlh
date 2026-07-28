@@ -69,6 +69,9 @@ def test_leere_wortliste_ergibt_leere_liste():
 
 def _cache_pfad(work_dir: Path, audio_hash: str, lines: list[str], language: str = "de") -> Path:
     text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
+    # Diese Tests rufen align() stets mit leerer Abschnittsliste auf; der
+    # Digest muss deshalb genau den einer leeren Liste treffen.
+    abschnitt_digest = hashlib.sha256(json.dumps([]).encode("utf8")).hexdigest()[:16]
     return stage_path(
         work_dir,
         audio_hash,
@@ -77,6 +80,7 @@ def _cache_pfad(work_dir: Path, audio_hash: str, lines: list[str], language: str
             "language": language,
             "lines": len(lines),
             "text": text_digest,
+            "abschnitte": abschnitt_digest,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
@@ -97,7 +101,7 @@ def test_wortabweichung_warnung_bleibt_bei_cache_treffer_erhalten(tmp_path):
     )
 
     warnungen: list[str] = []
-    ergebnis = align(Path("egal.wav"), lines, "de", tmp_path, "hash123", "cpu", warnungen)
+    ergebnis = align(Path("egal.wav"), lines, "de", tmp_path, "hash123", "cpu", warnungen, [])
 
     assert len(ergebnis) == 1
     assert any("weniger" in w for w in warnungen)
@@ -115,7 +119,7 @@ def test_ausgeglichene_abweichung_erzeugt_bei_cache_treffer_keine_warnung(tmp_pa
     )
 
     warnungen: list[str] = []
-    align(Path("egal.wav"), lines, "de", tmp_path, "hash456", "cpu", warnungen)
+    align(Path("egal.wav"), lines, "de", tmp_path, "hash456", "cpu", warnungen, [])
     assert warnungen == []
 
 
@@ -148,7 +152,7 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
 
     # Vor dem Versionswechsel: Cache-Treffer, das Modell bleibt unberuehrt.
-    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", []) == []
+    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], []) == []
     assert zugriffe == []
 
     monkeypatch.setattr(separate, "STAGE_VERSION", "999")
@@ -157,7 +161,7 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     # wird, ist nur die Huelle des Platzhalter-Fehlers; entscheidend ist der
     # gezaehlte Zugriff.
     with pytest.raises(LanguageUnsupported):
-        align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [])
+        align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], [])
     assert zugriffe == ["de"]
 
 
@@ -175,3 +179,50 @@ def test_dauer_oder_rueckfall_faellt_bei_unlesbarer_datei_auf_den_rueckfall_zuru
     pfad = tmp_path / "kaputt.wav"
     pfad.write_bytes(b"kein echtes wav")
     assert dauer_oder_rueckfall(pfad, 4.1) == 4.1
+
+
+from ultrastar_pipeline.anchors import Abschnitt
+
+
+def test_je_abschnitt_entsteht_ein_segment_mit_eigenem_zeitfenster(tmp_path, monkeypatch):
+    """Der Kern der Ueberarbeitung: nicht mehr ein Segment ueber die ganze
+    Aufnahme, sondern eines je Abschnitt - sonst verteilt der Aligner den
+    Text blind ueber die volle Laenge."""
+    gesehen: list[list[dict]] = []
+
+    def load_align_model(language_code, device):
+        return object(), {}
+
+    def align_stub(segmente, modell, metadaten, audio, device, return_char_alignments):
+        gesehen.append(segmente)
+        return {
+            "segments": [
+                {
+                    "words": [
+                        {"word": w, "start": float(i), "end": float(i) + 0.5, "score": 0.9}
+                        for i, w in enumerate(str(s["text"]).split())
+                    ]
+                }
+                for s in segmente
+            ]
+        }
+
+    platzhalter = types.ModuleType("whisperx")
+    platzhalter.load_align_model = load_align_model
+    platzhalter.align = align_stub
+    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+
+    lines = ["eins zwei", "drei vier"]
+    abschnitte = [
+        Abschnitt(0, 2, 0.0, 5.0, 1.0, False),
+        Abschnitt(2, 4, 4.7, 10.0, 1.0, False),
+    ]
+    align(Path("egal.wav"), lines, "de", tmp_path, "hashSeg", "cpu", [], abschnitte)
+
+    assert len(gesehen) == 1, "ein einziger Modellaufruf, wie bisher"
+    segmente = gesehen[0]
+    assert len(segmente) == 2
+    assert (segmente[0]["start"], segmente[0]["end"]) == (0.0, 5.0)
+    assert (segmente[1]["start"], segmente[1]["end"]) == (4.7, 10.0)
+    assert segmente[0]["text"] == "eins zwei"
+    assert segmente[1]["text"] == "drei vier"

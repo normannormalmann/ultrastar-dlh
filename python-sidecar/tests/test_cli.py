@@ -115,6 +115,9 @@ def test_stage_versions_folgen_den_modulkonstanten(monkeypatch):
     monkeypatch.setattr(haupt, "ALIGN_STAGE_VERSION", "77")
     assert haupt._stage_versions()["align"] == "77"
 
+    monkeypatch.setattr(haupt, "TRANSCRIBE_STAGE_VERSION", "88")
+    assert haupt._stage_versions()["transcribe"] == "88"
+
 
 def test_ungeloeste_textfrage_bricht_ab(tmp_path):
     audio = tmp_path / "a.wav"

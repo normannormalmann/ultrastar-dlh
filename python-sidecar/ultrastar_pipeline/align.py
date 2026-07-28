@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from . import separate
+from .anchors import Abschnitt
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .notes import AlignedWord
@@ -106,6 +107,7 @@ def align(
     audio_hash: str,
     device: str,
     warnungen: list[str],
+    abschnitte: list[Abschnitt],
 ) -> list[AlignedWord]:
     """Bekannte Zeilen auf die Gesangsspur ausrichten."""
     # Der Text geht mit in den Cache-Schluessel ein: sonst wuerde ein
@@ -113,6 +115,14 @@ def align(
     # Ausrichtung fuer unveraendertes Audio wiederverwenden — ein leises,
     # falsches Ergebnis waere die Folge.
     text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
+    # Die Abschnittsstruktur geht ebenfalls in den Schluessel ein: sonst
+    # liefert ein Treffer eine Ausrichtung nach altem Schnitt, obwohl sich
+    # die Ankerlage (und damit die Segmentgrenzen) inzwischen geaendert hat.
+    abschnitt_digest = hashlib.sha256(
+        json.dumps(
+            [[a.von_index, a.bis_index, a.start_s, a.ende_s] for a in abschnitte]
+        ).encode("utf8")
+    ).hexdigest()[:16]
     # Die Identitaet der separate-Stufe geht mit in den Schluessel ein: sonst
     # wuerde eine geanderte Stimmtrennung (neues Modell, neue Version) eine
     # Ausrichtung wiederverwenden, die noch auf dem alten Stem beruht.
@@ -124,6 +134,7 @@ def align(
             "language": language,
             "lines": len(lines),
             "text": text_digest,
+            "abschnitte": abschnitt_digest,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
@@ -147,12 +158,26 @@ def align(
     except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
         raise LanguageUnsupported(language) from exc
 
-    # Ein einziges Segment ueber die ganze Spur: Forced Alignment mit
-    # bekanntem Text will einen Durchlauf ueber die komplette Aufnahme, nicht
-    # pro Zeile ein eigenes (und damit zwangslaeufig falsches) Zeitfenster.
-    # Die Zeilenzuordnung wird danach ueber die Wortanzahl je Zeile
-    # rekonstruiert (zeilen_zuordnen), nicht ueber Segmentgrenzen.
-    segmente = [{"text": " ".join(lines), "start": 0.0, "end": dauer_sekunden(vocals)}]
+    # Ein Segment je Abschnitt statt eines ueber die ganze Aufnahme. Der
+    # bisherige Ansatz liess den Aligner den Text blind ueber die volle
+    # Laenge verteilen; gemessen ergab das lokales Verrutschen bis in den
+    # Sekundenbereich (Zehntel-Mittel bis 2827 ms). Die Zeilenzuordnung wird
+    # danach weiterhin ueber die Wortanzahl je Zeile rekonstruiert
+    # (zeilen_zuordnen), nicht ueber diese Segmentgrenzen.
+    flach = [wort for zeile in lines for wort in zeile.split()]
+    segmente = [
+        {
+            "text": " ".join(flach[a.von_index : a.bis_index]),
+            "start": a.start_s,
+            "end": a.ende_s,
+        }
+        for a in abschnitte
+        if flach[a.von_index : a.bis_index]
+    ]
+    if not segmente:
+        segmente = [
+            {"text": " ".join(lines), "start": 0.0, "end": dauer_sekunden(vocals)}
+        ]
     ergebnis = whisperx.align(
         segmente, modell, metadaten, str(vocals), device, return_char_alignments=False
     )

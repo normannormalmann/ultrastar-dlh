@@ -10,12 +10,14 @@ import json
 import sys
 from pathlib import Path
 
+from . import anchors, transcribe
 from .align import (
     STAGE_VERSION as ALIGN_STAGE_VERSION,
     AlignmentFailed,
     LanguageUnsupported,
     align,
     dauer_oder_rueckfall,
+    dauer_sekunden,
 )
 from .cache import atomic_write_bytes, audio_fingerprint
 from .contract import baue_song_data
@@ -25,6 +27,7 @@ from .progress import emit_error, emit_progress
 from .separate import STAGE_VERSION as SEPARATE_STAGE_VERSION, separate
 from .syllables import has_dictionary
 from .tempo import korrigiere_tempo
+from .transcribe import STAGE_VERSION as TRANSCRIBE_STAGE_VERSION
 
 # Marker, die eine Aufbereitung durch lyrics.ts erfordern. Kopflos wird
 # hier nicht geraten — es wird abgebrochen.
@@ -62,11 +65,12 @@ def _erkenne_bpm(audio: Path) -> float:
 
 def _stage_versions() -> dict[str, str]:
     """Stufenversionen fuer den Bericht, aus den Modulen selbst — nicht
-    hartkodiert, damit eine Versionsbumpe in separate/align/pitch hier
-    automatisch ankommt. notes wird nie gecacht (siehe Modulkopf) und hat
-    darum keine eigene STAGE_VERSION."""
+    hartkodiert, damit eine Versionsbumpe in separate/transcribe/align/pitch
+    hier automatisch ankommt. notes wird nie gecacht (siehe Modulkopf) und
+    hat darum keine eigene STAGE_VERSION."""
     return {
         "separate": SEPARATE_STAGE_VERSION,
+        "transcribe": TRANSCRIBE_STAGE_VERSION,
         "align": ALIGN_STAGE_VERSION,
         "pitch": PITCH_STAGE_VERSION,
         "notes": "1",
@@ -124,8 +128,34 @@ def main(argv: list[str] | None = None) -> int:
 
         fingerprint = audio_fingerprint(args.audio)
         vocals = separate(args.audio, args.work_dir, fingerprint, device)
+
+        transkript = transcribe.transcribe(vocals, args.language, args.work_dir, fingerprint, device)
+        flach = [wort for zeile in zeilen for wort in zeile.split()]
+        anker = anchors.finde_anker(flach, transkript)
+        # Kein Rueckfallwert hier: die Datei hat separate() gerade selbst
+        # geschrieben, ist sie nicht lesbar, ist das ein echter Defekt und
+        # soll als solcher hochkommen (der generische except-Zweig unten
+        # faengt ihn strukturiert ab) statt als vorgetaeuschte Songlaenge
+        # 0.0 zu erscheinen, an der baue_abschnitte mit einer irrefuehrenden
+        # Fehlermeldung scheitern wuerde.
+        abschnitte = anchors.baue_abschnitte(len(flach), anker, dauer_sekunden(vocals))
+        # Ein schwacher Abschnitt darf nicht still bleiben.
+        schwach = [a for a in abschnitte if a.vertrauen < 0.5]
+        if schwach:
+            warnungen.append(
+                f"{len(schwach)} von {len(abschnitte)} Abschnitten konnten nur unsicher "
+                "verankert werden; die Zeitstempel dort sind weniger verlaesslich."
+            )
+
         woerter = align(
-            vocals, zeilen, args.language, args.work_dir, fingerprint, device, warnungen
+            vocals,
+            zeilen,
+            args.language,
+            args.work_dir,
+            fingerprint,
+            device,
+            warnungen,
+            abschnitte,
         )
         verlauf = track_pitch(vocals, args.work_dir, fingerprint)
 
