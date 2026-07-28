@@ -11,7 +11,7 @@ const lade = async () => parseSongData(JSON.parse(await readFile(FIXTURE, "utf8"
 describe("Kette JSON -> .txt ohne Modelle", () => {
   it("nimmt die vom Sidecar erzeugte Fixture an", async () => {
     const daten = await lade();
-    expect(daten.schemaVersion).toBe(1);
+    expect(daten.schemaVersion).toBe(2);
     expect(daten.notes.length).toBeGreaterThanOrEqual(4);
   });
 

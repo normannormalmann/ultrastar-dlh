@@ -17,7 +17,7 @@ def _baue(noten, umbrueche=()):
 
 
 def test_enthaelt_schema_version():
-    assert _baue([Note(0, 4, 5, "Hal", 0.9)])["schemaVersion"] == SCHEMA_VERSION == 1
+    assert _baue([Note(0, 4, 5, "Hal", 0.9)])["schemaVersion"] == SCHEMA_VERSION == 2
 
 
 def test_notenfelder_heissen_wie_im_vertrag():
@@ -49,3 +49,30 @@ def test_leere_notenliste_wirft_nicht_und_gilt_nicht_als_unsicher():
     d = _baue([])
     assert d["notes"] == []
     assert d["meta"]["lowConfidence"] is False
+
+
+def test_fehlende_sections_ergibt_leere_liste():
+    d = _baue([Note(0, 4, 5, "Hal", 0.9)])
+    assert d["sections"] == []
+
+
+def test_sections_werden_unveraendert_uebernommen():
+    eintrag = {
+        "fromNoteIndex": 0,
+        "toNoteIndex": 1,
+        "confidence": 0.75,
+        "anchoredBothSides": True,
+    }
+    d = baue_song_data(
+        bpm=120.0,
+        gap=1000,
+        language="de",
+        notes=[Note(0, 4, 5, "Hal", 0.9)],
+        line_breaks=[],
+        duration_sec=10.0,
+        device="cpu",
+        stage_versions={},
+        warnings=[],
+        sections=[eintrag],
+    )
+    assert d["sections"] == [eintrag]

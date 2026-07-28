@@ -148,5 +148,5 @@ def test_voller_lauf_erzeugt_gueltiges_json(tmp_path):
     )
     assert p.returncode == 0, p.stdout
     daten = json.loads(out.read_text(encoding="utf8"))
-    assert daten["schemaVersion"] == 1
+    assert daten["schemaVersion"] == 2
     assert len(daten["notes"]) > 0

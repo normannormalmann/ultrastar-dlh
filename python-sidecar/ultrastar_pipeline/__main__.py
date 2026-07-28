@@ -159,6 +159,21 @@ def main(argv: list[str] | None = None) -> int:
             warnungen,
             abschnitte,
         )
+        # abschnitte traegt Wortindizes bezogen auf `flach`. Weiter unten
+        # werden sie in Notenindizes uebersetzt, indem sie direkt als Index
+        # in eine ueber `woerter` gebaute Zuordnung (wort_zu_note) verwendet
+        # werden. Das ist nur gueltig, wenn `woerter` dieselbe Laenge (und
+        # damit Reihenfolge) wie `flach` hat. zeilen_zuordnen() dokumentiert
+        # bereits, dass der Aligner mehr oder weniger Woerter liefern kann,
+        # als der Text erwarten liess (dort nur als Warnung gemeldet, siehe
+        # abweichung) - fuer die Abschnittszuordnung ist das aber keine
+        # Randnotiz, sondern wuerde Abschnitte lautlos auf falsch verschobene
+        # Notenbereiche zeigen lassen. Deshalb hier abbrechen statt zu raten.
+        if len(woerter) != len(flach):
+            raise AlignmentFailed(
+                f"Alignment lieferte {len(woerter)} Wort(e) zurueck, der Text hat "
+                f"{len(flach)}; die Abschnittsgrenzen waeren damit nicht mehr gueltig."
+            )
         verlauf = track_pitch(vocals, args.work_dir, fingerprint)
 
         # Groesste nicht zugeordnete Luecke: ein Indiz dafuer, dass der
@@ -169,8 +184,24 @@ def main(argv: list[str] | None = None) -> int:
         groesste_luecke = max(0.0, max(luecken)) if luecken else 0.0
 
         emit_progress("notes", 0.0)
-        noten, umbrueche, gap = build_notes(woerter, verlauf, bpm, args.language)
+        noten, umbrueche, gap, wort_zu_note = build_notes(woerter, verlauf, bpm, args.language)
         emit_progress("notes", 1.0)
+
+        # Abschnitte tragen Wortindizes; der Vertrag braucht Notenindizes.
+        # wort_zu_note (aus build_notes, siehe dort) uebersetzt zwischen
+        # beiden, ohne die Silbenzuordnung hier ein zweites Mal
+        # nachzurechnen. Die Laengengleichheit von woerter und flach wurde
+        # oben bereits erzwungen, darum sind abschnitte-Indizes hier
+        # gueltige Indizes in wort_zu_note.
+        sections = [
+            {
+                "fromNoteIndex": wort_zu_note[a.von_index],
+                "toNoteIndex": wort_zu_note[a.bis_index],
+                "confidence": a.vertrauen,
+                "anchoredBothSides": a.beidseitig_verankert,
+            }
+            for a in abschnitte
+        ]
 
     except LanguageUnsupported as exc:
         emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
@@ -215,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
         stage_versions=_stage_versions(),
         warnings=warnungen,
         largest_gap_sec=groesste_luecke,
+        sections=sections,
     )
     atomic_write_bytes(
         args.out, json.dumps(daten, ensure_ascii=False, indent=2).encode("utf8")

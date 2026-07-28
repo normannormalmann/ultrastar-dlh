@@ -69,10 +69,24 @@ def build_notes(
     bpm: float,
     language: str,
     beats_per_bpm_unit: int = 4,
-) -> tuple[list[Note], list[LineBreak], int]:
-    """Noten, Zeilenumbrueche und GAP (ms) aus dem Alignment bauen."""
+) -> tuple[list[Note], list[LineBreak], int, list[int]]:
+    """Noten, Zeilenumbrueche, GAP (ms) und Wort->Note-Zuordnung bauen.
+
+    Die vierte Rueckgabe (wort_zu_note) nennt zu jedem Eingabewort den Index
+    seiner ersten Note, mit einem abschliessenden Element gleich der
+    Gesamtzahl der Noten (bei n Woertern also n + 1 Eintraege). Ein
+    Wortbereich [von, bis) entspricht damit dem Notenbereich
+    [wort_zu_note[von], wort_zu_note[bis]).
+
+    Diese Zuordnung wird hier mitgeliefert statt anderswo nachgerechnet:
+    die Silbenzahl je Wort ist nicht konstant (siehe unten) und ein Wort
+    kann null Silben ergeben, in welchem Fall zwei aufeinanderfolgende
+    Eintraege gleich sind. Nur hier, direkt beim Silben-Splitting, ist diese
+    Zuordnung ohne zweite, potenziell abweichende Berechnung bekannt; eine
+    Nachberechnung ausserhalb waere eine zweite Quelle derselben Wahrheit.
+    """
     if not words:
-        return [], [], 0
+        return [], [], 0, [0]
 
     bps = _beats_pro_sekunde(bpm, beats_per_bpm_unit)
     gap_sekunden = words[0].start
@@ -84,9 +98,16 @@ def build_notes(
 
     noten: list[Note] = []
     umbrueche: list[LineBreak] = []
+    wort_zu_note: list[int] = []
     letzte_zeile = words[0].line_index
 
     for wort in words:
+        # Vor dem Silben-Splitting festhalten: der erste Notenindex dieses
+        # Wortes ist der aktuelle Notenstand. Ergibt das Wort keine Silben,
+        # bleibt dieser Wert unveraendert und der naechste Eintrag ist gleich
+        # (siehe Docstring).
+        wort_zu_note.append(len(noten))
+
         # Silben zuerst bestimmen: ein Wort ohne Silben (z. B. leerer Text)
         # erzeugt keine Note. Wuerde die Zeile trotzdem verbucht, entstuende
         # beim naechsten echten Zeilenwechsel ein zweiter Umbruch mit
@@ -160,4 +181,9 @@ def build_notes(
         )
     umbrueche = geklemmt
 
-    return noten, umbrueche, gap_ms
+    # Abschliessendes Element: Gesamtzahl der Noten, damit ein Wortbereich
+    # [von, bis) sich als [wort_zu_note[von], wort_zu_note[bis]) lesen laesst
+    # auch dann, wenn bis das letzte Wort ist.
+    wort_zu_note.append(len(noten))
+
+    return noten, umbrueche, gap_ms, wort_zu_note

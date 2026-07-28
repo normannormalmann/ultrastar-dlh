@@ -1,6 +1,6 @@
 // src/core/create/songData.ts
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type Note = {
   beat: number;
@@ -11,6 +11,13 @@ export type Note = {
 };
 
 export type LineBreak = { afterNoteIndex: number; beat: number };
+
+export type Section = {
+  fromNoteIndex: number;
+  toNoteIndex: number; // exklusiv
+  confidence: number;
+  anchoredBothSides: boolean;
+};
 
 export type SongDataMeta = {
   durationSec: number;
@@ -28,6 +35,7 @@ export type SongData = {
   language: string;
   notes: Note[];
   lineBreaks: LineBreak[];
+  sections: Section[];
   meta: SongDataMeta;
 };
 
@@ -100,6 +108,36 @@ export const parseSongData = (input: unknown): SongData => {
     };
   });
 
+  const sections: Section[] = [];
+  const rohSections = (input as { sections?: unknown }).sections ?? [];
+  if (!Array.isArray(rohSections)) throw new Error("songData: sections muss ein Array sein");
+  rohSections.forEach((eintrag, i) => {
+    if (!istObjekt(eintrag)) throw new Error(`songData: sections[${i}] muss ein Objekt sein`);
+    const von = zahl(eintrag.fromNoteIndex, `sections[${i}].fromNoteIndex`);
+    const bis = zahl(eintrag.toNoteIndex, `sections[${i}].toNoteIndex`);
+    if (!Number.isInteger(von) || !Number.isInteger(bis)) {
+      throw new Error(`sections[${i}]: fromNoteIndex und toNoteIndex muessen ganze Zahlen sein`);
+    }
+    // Bereichspruefung: der bestehende Vertrag laesst lineBreaks[].afterNoteIndex
+    // ausserhalb des Bereichs still durchrutschen. Hier nicht.
+    if (von < 0 || von >= bis || bis > notes.length) {
+      throw new Error(`sections[${i}]: Bereich ${von}..${bis} liegt ausserhalb von 0..${notes.length}`);
+    }
+    const vertrauen = zahl(eintrag.confidence, `sections[${i}].confidence`);
+    if (vertrauen < 0 || vertrauen > 1) {
+      throw new Error(`sections[${i}]: confidence muss in 0..1 liegen`);
+    }
+    if (typeof eintrag.anchoredBothSides !== "boolean") {
+      throw new Error(`sections[${i}]: anchoredBothSides muss ein Wahrheitswert sein`);
+    }
+    sections.push({
+      fromNoteIndex: von,
+      toNoteIndex: bis,
+      confidence: vertrauen,
+      anchoredBothSides: eintrag.anchoredBothSides,
+    });
+  });
+
   const rohMeta = istObjekt(input.meta) ? input.meta : {};
   const meta: SongDataMeta = {
     durationSec: typeof rohMeta.durationSec === "number" ? rohMeta.durationSec : 0,
@@ -127,6 +165,7 @@ export const parseSongData = (input: unknown): SongData => {
     language: text(input.language, "language"),
     notes,
     lineBreaks,
+    sections,
     meta,
   };
 };

@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { parseSongData, SCHEMA_VERSION } from "./songData.ts";
 
 const gueltig = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   bpm: 294.5,
   gap: 1200,
   language: "de",
@@ -23,11 +23,11 @@ describe("parseSongData", () => {
     const d = parseSongData(gueltig);
     expect(d.bpm).toBe(294.5);
     expect(d.notes[0]?.syllable).toBe("Hal");
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
   });
 
   it("lehnt unbekannte schemaVersion ab, ohne teilweise zu parsen", () => {
-    expect(() => parseSongData({ ...gueltig, schemaVersion: 2 })).toThrow(/schemaVersion/);
+    expect(() => parseSongData({ ...gueltig, schemaVersion: 3 })).toThrow(/schemaVersion/);
   });
 
   it("lehnt fehlende Noten ab", () => {
@@ -76,5 +76,55 @@ describe("parseSongData", () => {
       meta: { ...gueltig.meta, stageVersions: { separate: 1 } },
     });
     expect(d.meta.stageVersions).toEqual({ separate: "1" });
+  });
+
+  it("liest fehlendes sections als leere Liste", () => {
+    expect(parseSongData(gueltig).sections).toEqual([]);
+  });
+
+  it("nimmt gueltige sections an", () => {
+    const mit = {
+      ...gueltig,
+      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 0.75, anchoredBothSides: true }],
+    };
+    expect(parseSongData(mit).sections).toEqual([
+      { fromNoteIndex: 0, toNoteIndex: 1, confidence: 0.75, anchoredBothSides: true },
+    ]);
+  });
+
+  it("lehnt sections mit Index ausserhalb der Notenanzahl ab", () => {
+    const kaputt = {
+      ...gueltig,
+      sections: [{ fromNoteIndex: 0, toNoteIndex: 999, confidence: 1, anchoredBothSides: true }],
+    };
+    expect(() => parseSongData(kaputt)).toThrow();
+  });
+
+  it("lehnt sections mit verdrehten Grenzen ab", () => {
+    const kaputt = {
+      ...gueltig,
+      sections: [{ fromNoteIndex: 3, toNoteIndex: 1, confidence: 1, anchoredBothSides: true }],
+    };
+    expect(() => parseSongData(kaputt)).toThrow();
+  });
+
+  it("lehnt confidence ausserhalb von 0..1 ab", () => {
+    const kaputt = {
+      ...gueltig,
+      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 1.5, anchoredBothSides: true }],
+    };
+    expect(() => parseSongData(kaputt)).toThrow();
+  });
+
+  it("lehnt nicht-boolesches anchoredBothSides ab", () => {
+    const kaputt = {
+      ...gueltig,
+      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 1, anchoredBothSides: "ja" }],
+    };
+    expect(() => parseSongData(kaputt)).toThrow();
+  });
+
+  it("lehnt nicht-Array sections ab", () => {
+    expect(() => parseSongData({ ...gueltig, sections: "nope" })).toThrow(/sections/);
   });
 });

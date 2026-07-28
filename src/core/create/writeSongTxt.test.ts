@@ -4,7 +4,7 @@ import type { SongData } from "./songData.ts";
 import { renderSongTxt } from "./writeSongTxt.ts";
 
 const daten: SongData = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   bpm: 294.5,
   gap: 1200,
   language: "German",
@@ -14,6 +14,7 @@ const daten: SongData = {
     { beat: 16, length: 8, pitch: 9, syllable: "Welt" },
   ],
   lineBreaks: [{ afterNoteIndex: 1, beat: 12 }],
+  sections: [],
   meta: {
     durationSec: 10,
     device: "cpu",
@@ -77,7 +78,7 @@ describe("renderSongTxt", () => {
     // dieses trailing space wuerden "Hallo" und "Welt" beim Zusammenfuegen
     // der Silben zu "HalloWelt" verschmelzen.
     const zweiWoerterEineZeile: SongData = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       bpm: 120,
       gap: 0,
       language: "de",
@@ -87,6 +88,7 @@ describe("renderSongTxt", () => {
         { beat: 4, length: 4, pitch: 4, syllable: "Welt" },
       ],
       lineBreaks: [],
+      sections: [],
       meta: {
         durationSec: 1,
         device: "cpu",

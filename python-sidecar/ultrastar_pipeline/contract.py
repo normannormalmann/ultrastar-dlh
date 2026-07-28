@@ -9,7 +9,7 @@ from typing import Any
 
 from .notes import LineBreak, Note
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Unter diesem Median gilt das Gesamtergebnis als unsicher.
 KONFIDENZ_SCHWELLE = 0.5
@@ -29,6 +29,7 @@ def baue_song_data(
     stage_versions: dict[str, str],
     warnings: list[str],
     largest_gap_sec: float = 0.0,
+    sections: list[dict[str, Any]] = (),
 ) -> dict[str, Any]:
     """Vertragsobjekt bauen, inklusive aggregierter Konfidenz."""
     konfidenzen = [n.confidence for n in notes]
@@ -57,6 +58,11 @@ def baue_song_data(
         "lineBreaks": [
             {"afterNoteIndex": b.after_note_index, "beat": b.beat} for b in line_breaks
         ],
+        # sections kommt bereits fertig als Liste von Vertrags-Dicts an: die
+        # Umrechnung Wortindex -> Notenindex braucht wort_zu_note aus
+        # build_notes und gehoert deshalb dem Aufrufer (__main__.py), nicht
+        # diesem reinen Serialisierungsschritt.
+        "sections": list(sections),
         "meta": {
             "durationSec": duration_sec,
             "device": device,

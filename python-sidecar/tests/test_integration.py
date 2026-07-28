@@ -24,7 +24,7 @@ def _lade():
 
 def _baue():
     woerter, verlauf = _lade()
-    noten, umbrueche, gap = build_notes(woerter, verlauf, bpm=120.0, language="de")
+    noten, umbrueche, gap, _ = build_notes(woerter, verlauf, bpm=120.0, language="de")
     daten = baue_song_data(
         bpm=120.0,
         gap=gap,
@@ -41,7 +41,7 @@ def _baue():
 
 def test_kette_erzeugt_vertragskonformes_json():
     _, _, daten = _baue()
-    assert daten["schemaVersion"] == 1
+    assert daten["schemaVersion"] == 2
     assert len(daten["notes"]) >= 4
     assert daten["gap"] == 1000
     assert daten["meta"]["lowConfidence"] is False

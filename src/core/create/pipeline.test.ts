@@ -23,7 +23,7 @@ const basis = (dir: string) => ({
 });
 
 const gueltigesJson = JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   bpm: 120,
   gap: 0,
   language: "de",
