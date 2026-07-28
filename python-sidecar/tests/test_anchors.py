@@ -14,9 +14,9 @@ def test_normalisierung_entfernt_schreibweise_satzzeichen_und_diakritika():
     assert normalisiere("HALLO") == "hallo"
     assert normalisiere("wort,") == "wort"
     assert normalisiere("—") == ""
-    # Escape statt Literalzeichen: der Quelltext bleibt reines ASCII, der
-    # NFKD-Pfad wird trotzdem durchlaufen. "é" ist ein vorkomponiertes
-    # e mit Akut — genau die Form, in der Diakritika in echtem Text stehen.
+    # Escape statt Literalzeichen: der Quelltext bleibt ASCII, der NFKD-Pfad
+    # wird trotzdem durchlaufen. e mit Akut ist ein vorkomponiertes Zeichen -
+    # genau die Form, in der Diakritika in echtem Text stehen.
     assert normalisiere("Café") == "cafe"
 
 
