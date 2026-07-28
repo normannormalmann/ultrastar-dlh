@@ -99,6 +99,11 @@ class Abschnitt:
 # Falsch-Anker (z. B. ein Fuellwort, das zufaellig in einem ASR-Loch matcht).
 MAX_WOERTER_PRO_SEKUNDE = 8.0
 
+# Vorlauf fuer unverankerte Woerter am Rand. Der Median im Pilot lag bei
+# 1,2-1,35 Woertern/s; eine Sekunde je Wort ist grosszuegig, ohne dem
+# Aligner wieder ein halbes Intro zu schenken.
+RAND_SEKUNDEN_JE_WORT = 1.0
+
 
 def baue_abschnitte(
     anzahl_woerter: int,
@@ -112,6 +117,11 @@ def baue_abschnitte(
     Nicht jeder Anker wird zur Grenze: zu enge Fenster nehmen dem Aligner den
     Spielraum, den er braucht. Grenzen entstehen im Abstand von etwa
     zielgroesse Woertern.
+
+    Die aeusseren Raender reichen nicht bis an den Spurrand, sondern klemmen
+    an den ersten bzw. letzten Anker (mit Vorlauf fuer unverankerte Randwoerter):
+    ein langes Intro oder Outro gehoert nicht ins Fenster, es gibt dem Aligner
+    sonst nur Raum, Woerter dorthin zu verschieben.
 
     Ohne Anker entsteht genau ein Abschnitt ueber die volle Spur \u2014 bitweise
     das bisherige Verhalten. Das Verfahren kann damit nie schlechter werden
@@ -144,8 +154,23 @@ def baue_abschnitte(
             letzter = i == len(grenzen) - 1
             von = 0 if i == 0 else grenze.bekannter_index
             bis = anzahl_woerter if letzter else grenzen[i + 1].bekannter_index
-            start = 0.0 if i == 0 else max(0.0, grenze.zeit - saum_s)
-            ende = dauer_s if letzter else min(dauer_s, grenzen[i + 1].zeit + saum_s)
+            if i == 0:
+                # Das Fenster folgt der Evidenz, nicht der Spur: ein Intro gibt
+                # dem Aligner nur Raum, die Woerter dorthin zu verschieben.
+                # Unverankerte Woerter vor dem ersten Anker bekommen Vorlauf.
+                vorlauf = anker[0].bekannter_index * RAND_SEKUNDEN_JE_WORT
+                start = max(0.0, anker[0].zeit - saum_s - vorlauf)
+            else:
+                start = max(0.0, grenze.zeit - saum_s)
+            if letzter:
+                # Die Ankerzeit ist der Wortanfang - das letzte verankerte Wort
+                # braucht selbst noch Raum, dazu die unverankerten danach.
+                nachlauf = (
+                    anzahl_woerter - anker[-1].bekannter_index
+                ) * RAND_SEKUNDEN_JE_WORT
+                ende = min(dauer_s, anker[-1].zeit + saum_s + nachlauf)
+            else:
+                ende = min(dauer_s, grenzen[i + 1].zeit + saum_s)
 
             spanne = max(1, bis - von)
             getroffen = sum(1 for idx in range(von, bis) if idx in verankerte_indizes)
@@ -156,8 +181,9 @@ def baue_abschnitte(
                     start_s=start,
                     ende_s=ende,
                     vertrauen=getroffen / spanne,
-                    # Erster und letzter Abschnitt reichen bis an den Rand der
-                    # Spur und sind dort nicht von einem Anker begrenzt.
+                    # Erster und letzter Abschnitt sind an ihrem Aussenrand aus
+                    # einem einzelnen Anker (plus Vorlauf/Nachlauf) extrapoliert,
+                    # nicht von einer zweiten Grenze gehalten wie innen.
                     beidseitig_verankert=not (i == 0 or letzter),
                 )
             )

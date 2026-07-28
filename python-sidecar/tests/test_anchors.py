@@ -96,11 +96,15 @@ def test_abschnitte_decken_alle_woerter_lueckenlos_und_ueberschneidungsfrei_ab()
 
 
 def test_zeitfenster_sind_lueckenlos_und_die_raender_verankert():
+    """Die Raender folgen der Evidenz, nicht der Spur: das erste Fenster
+    beginnt beim ersten Anker (hier zufaellig 0,0, kein Vorlauf noetig), das
+    letzte endet beim letzten Anker plus Saum und Nachlauf fuer das letzte
+    verankerte Wort selbst - nicht am Spurende."""
     anker = [Anchor(bekannter_index=i, zeit=float(i)) for i in range(40)]
     abschnitte = baue_abschnitte(40, anker, dauer_s=50.0, zielgroesse=12, saum_s=0.3)
 
     assert abschnitte[0].start_s == 0.0
-    assert abschnitte[-1].ende_s == 50.0
+    assert abschnitte[-1].ende_s == pytest.approx(40.3)
     for vorher, nachher in zip(abschnitte, abschnitte[1:]):
         # Ueberlappung als Sicherheitssaum ist gewollt, eine Luecke nicht.
         assert nachher.start_s <= vorher.ende_s
@@ -157,6 +161,31 @@ def test_verhoerter_erster_refrain_verwechselt_die_wiederholung_nicht():
     # Und der erste Refrain haengt vorn, nicht am Songende.
     fruehe = [a.zeit for a in anker if a.bekannter_index in (0, 2, 3, 4)]
     assert fruehe and max(fruehe) < 10.0
+
+
+def test_rand_fenster_klemmen_an_die_anker_nicht_an_die_spur():
+    """Ein langes Intro oder Outro gehoert nicht ins Fenster: es gibt dem
+    Aligner nur Raum, die Woerter dorthin zu verschieben (gemessen: erste
+    Strophe 12 s zu spaet). Die Raender folgen der Evidenz, nicht der Spur."""
+    anker = [Anchor(bekannter_index=i, zeit=50.0 + i) for i in range(10)]
+    abschnitte = baue_abschnitte(10, anker, dauer_s=300.0)
+    # Erster Anker bei 50 s, kein unverankertes Wort davor: 50 - Saum.
+    assert abschnitte[0].start_s == pytest.approx(49.7)
+    # Letzter Anker bei 59 s, keins danach: 59 + Saum + 1 s fuer das Wort selbst.
+    assert abschnitte[-1].ende_s == pytest.approx(60.3)
+
+
+def test_unverankerte_randwoerter_bekommen_vorlauf():
+    """Unverankerte Woerter vor dem ersten Anker werden trotzdem gesungen -
+    das Fenster muss ihnen Zeit einraeumen, eine Sekunde je Wort."""
+    anker = [Anchor(bekannter_index=4, zeit=50.0), Anchor(bekannter_index=5, zeit=51.0)]
+    abschnitte = baue_abschnitte(10, anker, dauer_s=300.0)
+    assert len(abschnitte) == 1  # zwei Anker im Abstand 1 ergeben keine Grenze
+    # 4 unverankerte davor: 50 - 0.3 - 4 * 1.0
+    assert abschnitte[0].start_s == pytest.approx(45.7)
+    # 4 unverankerte danach (Indizes 6-9) plus das verankerte Wort selbst:
+    # 51 + 0.3 + 5 * 1.0
+    assert abschnitte[0].ende_s == pytest.approx(56.3)
 
 
 def test_falsch_anker_grenze_faellt_statt_woerter_zu_quetschen():

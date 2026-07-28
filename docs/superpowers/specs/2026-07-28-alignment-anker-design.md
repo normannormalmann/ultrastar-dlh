@@ -157,6 +157,8 @@ Weitere Risiken:
 (1) `difflib.SequenceMatcher` war keine echte längste gemeinsame Teilfolge, sondern Ratcliff/Obershelp (längster Block zuerst, dann Rekursion). Bei einem Song mit wortgleichem erstem und letztem Refrain band das den Textanfang an das Songende und ließ 80 Wörter ohne Anker (58 statt 132 mögliche). `finde_anker` läuft jetzt auf echter LCS per dynamischer Programmierung, global optimal: 132 statt 58 Anker, maximale Rate 2,2 statt 49 Wörter/s.
 (2) Falsch-Anker in ASR-Löchern (Füllwörter, die zufällig in einer nicht gehörten Passage matchen) konnten eine Grenze erzwingen, die eine unsingbare Rate ergibt — gemessen 58 Wörter in 4,3 s. `baue_abschnitte` prüft jetzt jede Grenze gegen `MAX_WOERTER_PRO_SEKUNDE = 8` (Basis: 6,9 Wörter/s als schnellster echter Abschnitt im Pilot, dichter Rap) und lässt eine zu schnelle Grenze fallen, statt die Wörter zu quetschen.
 
+**Nachtrag 2026-07-29 (Fix-Task C) - Rand-Fenster klemmen an die Anker statt an die Spur:** Gemessener Anlass war eine erste Strophe, die der Aligner 12 s zu spaet in ein 24,7 s breites Intro-Fenster legte (erster Anker bei 6,4 s, Fensterstart aber 0 s). `baue_abschnitte` klemmt das erste bzw. letzte Fenster jetzt an den ersten bzw. letzten Anker, plus 1 s Vorlauf je unverankertem Randwort (`RAND_SEKUNDEN_JE_WORT`). Der ankerlose Fall (volle Spur als ein Abschnitt) bleibt unveraendert.
+
 ## Bewusst nicht enthalten
 
 - **Duette** — unverändert vertagt.
