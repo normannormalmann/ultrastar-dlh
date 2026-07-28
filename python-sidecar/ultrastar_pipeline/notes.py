@@ -42,9 +42,12 @@ class LineBreak:
     beat: int
 
 
-# UltraStar-Tonhoehe 0 entspricht C4 (MIDI 60). Eine Annahme, keine Messung
-# (siehe Aufgabenbeschreibung) — bewusst benannt und isoliert, nicht inlinen.
-MIDI_NULLAGE = 60
+# Gemessen, nicht mehr angenommen: der erste echte Lauf gegen eine von
+# Menschen gesyncte Referenz ergab bei Nullage 60 einen Median-Pitch-Offset
+# von genau -12,000 Halbtoenen. Genau eine Oktave ist eine falsche Konstante
+# und kein Rauschen, also 12 tiefer ansetzen. UltraStar-Tonhoehe 0
+# entspricht damit C3 (MIDI 48). Benannt und isoliert lassen, nicht inlinen.
+MIDI_NULLAGE = 48
 
 
 def _beats_pro_sekunde(bpm: float, beats_per_bpm_unit: int) -> float:

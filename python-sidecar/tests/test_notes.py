@@ -109,7 +109,7 @@ def test_tonhoehe_kommt_aus_dem_pitch_verlauf():
         [w("Hallo", 1.0, 1.5)], flacher_pitch(midi=62.0), bpm=120, language="de"
     )
     assert len({n.pitch for n in noten}) == 1
-    assert noten[0].pitch == 2  # 62 MIDI - Nullage 60
+    assert noten[0].pitch == 14  # 62 MIDI - gemessene Nullage 48
 
 
 def test_unvoiced_pitch_faellt_auf_rueckfall_zurueck():
