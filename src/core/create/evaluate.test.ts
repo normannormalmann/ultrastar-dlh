@@ -195,3 +195,59 @@ describe("compareToReference - Versatz und Drift", () => {
     expect(profil.every((w) => Number.isFinite(w))).toBe(true);
   });
 });
+
+// Fix-Task B: die Silbenfolgen von uns und Referenz stimmen in der Praxis
+// nicht 1:1 ueberein (Silbentrennung ist eine menschliche Entscheidung) —
+// die Paarung muss deshalb inhaltlich per LCS statt nach Position erfolgen.
+describe("compareToReference - inhaltliche Paarung", () => {
+  const songMitSilben = (silben: [string, number][]) => ({
+    bpm: 60,
+    gap: 0,
+    syllables: silben.map(([syllable, onsetMs]) => ({ syllable, onsetMs, pitch: 0 })),
+  });
+
+  test("eine eingeschobene Silbe verschiebt die Paarung nicht", () => {
+    // Positionale Paarung vergleicht nach dem Einschub verschiedene Woerter;
+    // inhaltliche Paarung ueberspringt den Einschub und misst weiter richtig.
+    const referenz = songMitSilben([
+      ["Han", 0], ["de ", 500], ["hoch ", 1000], ["das ", 1500], ["ist ", 2000], ["gut ", 2500],
+    ]);
+    const unser = songMitSilben([
+      ["Han", 0], ["de ", 500], ["extra ", 750], ["hoch ", 1000], ["das ", 1500], ["ist ", 2000], ["gut ", 2500],
+    ]);
+    const m = compareToReference(unser, referenz);
+    expect(m.paare).toBe(6);
+    expect(m.medianAbweichungMs).toBe(0);
+    expect(m.anteilUnter50ms).toBe(1);
+  });
+
+  test("anteilGepaart macht fehlende Uebereinstimmung sichtbar", () => {
+    const referenz = songMitSilben([
+      ["eins ", 0], ["zwei ", 500], ["drei ", 1000], ["vier ", 1500],
+    ]);
+    const unser = songMitSilben([["eins ", 0], ["zwei ", 500]]);
+    const m = compareToReference(unser, referenz);
+    expect(m.paare).toBe(2);
+    expect(m.anteilGepaart).toBeCloseTo(0.5, 5);
+  });
+
+  test("Paarung ignoriert Schreibweise, Satzzeichen und das Worttrenn-Leerzeichen", () => {
+    const referenz = songMitSilben([["HOCH! ", 1000]]);
+    const unser = songMitSilben([["hoch", 1040]]);
+    const m = compareToReference(unser, referenz);
+    expect(m.paare).toBe(1);
+    expect(m.medianAbweichungMs).toBe(40);
+  });
+
+  test("wiederholte Silben werden monoton gepaart, nicht kreuzweise", () => {
+    // la-la-la: jede Paarung muss in beiden Folgen vorwaerts laufen, sonst
+    // wuerde ein spaetes la mit einem fruehen verglichen und die Abweichung
+    // saehe riesig aus, obwohl alles stimmt.
+    const referenz = songMitSilben([["la ", 0], ["la ", 500], ["la ", 1000]]);
+    const unser = songMitSilben([["la ", 10], ["la ", 510], ["la ", 1010]]);
+    const m = compareToReference(unser, referenz);
+    expect(m.paare).toBe(3);
+    expect(m.medianAbweichungMs).toBe(10);
+    expect(m.p90AbweichungMs).toBe(10);
+  });
+});
