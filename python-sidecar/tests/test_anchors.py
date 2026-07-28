@@ -1,3 +1,5 @@
+import pytest
+
 from ultrastar_pipeline.anchors import Anchor, finde_anker, normalisiere
 from ultrastar_pipeline.transcribe import TranskriptWort
 
@@ -113,6 +115,22 @@ def test_vertrauen_ist_der_anteil_verankerter_woerter_im_abschnitt():
     assert all(0.0 <= a.vertrauen <= 1.0 for a in abschnitte)
 
 
-def test_ein_einziger_anker_ergibt_einen_einseitig_verankerten_abschnitt():
+def test_ein_einziger_anker_ergibt_einen_abschnitt_ohne_verankerte_raender():
+    """Ein einzelner Anker kann keine Grenze zwischen zwei Abschnitten sein.
+    Es bleibt ein Abschnitt, dessen beide Raender am Spurrand liegen."""
     abschnitte = baue_abschnitte(10, [Anchor(bekannter_index=0, zeit=2.0)], dauer_s=20.0)
-    assert any(not a.beidseitig_verankert for a in abschnitte)
+    assert len(abschnitte) == 1
+    assert abschnitte[0].beidseitig_verankert is False
+
+
+def test_songlaenge_vor_dem_letzten_zeitstempel_wird_abgelehnt():
+    """Beide Zeitquellen muessen zusammenpassen. Tun sie es nicht, entstuenden
+    umgedrehte Fenster \u2014 das darf nicht still passieren."""
+    anker = [Anchor(bekannter_index=i, zeit=float(i)) for i in range(5)]
+    with pytest.raises(ValueError, match="widerspruechlich"):
+        baue_abschnitte(10, anker, dauer_s=2.0)
+
+
+def test_nicht_positive_songlaenge_wird_abgelehnt():
+    with pytest.raises(ValueError, match="positiv"):
+        baue_abschnitte(10, [], dauer_s=0.0)

@@ -98,6 +98,17 @@ def baue_abschnitte(
     als der gemessene Basiswert, sondern hoechstens sichtbar darauf
     zurueckfallen.
     """
+    # Zwei Zeitquellen muessen zusammenpassen: die Ankerzeiten stammen aus dem
+    # Transkript, dauer_s aus der Audiodatei. Passen sie nicht zusammen, waeren
+    # alle Fenster falsch - und der Deckel weiter unten wuerde daraus lautlos
+    # umgedrehte Fenster machen (Start nach Ende). Lieber hier abbrechen.
+    if dauer_s <= 0.0:
+        raise ValueError(f"Songlaenge muss positiv sein, war {dauer_s}")
+    if anker and dauer_s < anker[-1].zeit:
+        raise ValueError(
+            f"Songlaenge {dauer_s}s liegt vor dem letzten Zeitstempel "
+            f"{anker[-1].zeit}s - widerspruechlich"
+        )
     if anzahl_woerter <= 0:
         return []
     if not anker:
