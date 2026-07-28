@@ -35,10 +35,14 @@ def normalisiere(wort: str) -> str:
 def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anchor]:
     """Ordnet bekannte Woerter den Zeiten gehoerter Woerter zu.
 
-    Grundlage ist die laengste gemeinsame Teilfolge. Deren Monotonie ist die
-    tragende Eigenschaft: sie verbietet strukturell, dass eine
-    Refrainwiederholung mit einer frueheren verwechselt wird. Ein verhoertes
-    Wort faellt aus der Teilfolge heraus, ohne seine Nachbarn mitzureissen.
+    Der Algorithmus findet uebereinstimmende Wortfolgen mit SequenceMatcher
+    (Ratcliff/Obershelp). Die tragende Eigenschaft ist die Monotonie:
+    get_matching_blocks() gibt Bloecke mit streng steigenden Indizes zurueck,
+    womit strukturell verhindert wird, dass eine Refrainwiederholung mit
+    einer frueheren verwechselt wird. Ein verhoertes Wort faellt aus der
+    Teilfolge heraus, ohne seine Nachbarn mitzureissen.
+
+    Voraussetzung: `gehoerte` ist zeitlich aufsteigend sortiert.
     """
     if not bekannte or not gehoerte:
         return []
