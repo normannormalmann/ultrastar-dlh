@@ -145,6 +145,8 @@ Die Messvorrichtung wird geschärft: `compareToReference` bekommt den **vorzeich
 
 **Das ist prüfbar, bevor irgendetwas gebaut wird**: Transkript für den bereits vermessenen Song erzeugen und die Ankerausbeute zählen. Diese Probe steht als erster Schritt des Umsetzungsplans und dient als Abbruchkriterium — fällt sie schlecht aus, ist der Entwurf zu überdenken statt umzusetzen.
 
+**Nachtrag 2026-07-28 — Probe durchgeführt:** `scripts/probe-ankerausbeute.py` gegen die bereits getrennte Gesangsspur des Referenzsongs und dessen Liedtext (156 bekannte Wörter) gelaufen, Sprache `de`, Gerät `cpu` (`compute_type=int8` — auf dieser Maschine kein CUDA verfügbar). Ergebnis: 160 gehörte Wörter, 110 Anker, **71 % Ausbeute**, 6 Segmente. Das fällt in die oberste Bewertungsstufe der Entscheidungstabelle (`> 60 %` — reichlich Anker, auch bei grober Abschnittsbildung). Das Hauptrisiko dieses Abschnitts ist damit für die belegte Sprache (Deutsch) entkräftet; der Plan wird wie entworfen fortgesetzt.
+
 Weitere Risiken:
 
 - **Die Abschnittsgröße ist ein Stellparameter ohne Vorbild.** Zu große Abschnitte lassen das Verrutschen zurückkehren, zu kleine nehmen dem Aligner den Spielraum, den er braucht. Der Wert ist zu messen, nicht zu raten.
