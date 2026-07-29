@@ -181,6 +181,45 @@ def test_sections_ueberspringen_notenlose_laeufe():
     assert all(s["fromNoteIndex"] != s["toNoteIndex"] for s in sections)
 
 
+def test_lrc_wird_bei_zu_vielen_konflikten_verworfen():
+    """Ein .lrc, das fast allen Messungen widerspricht, ist vermutlich die
+    falsche Edition - dann darf es keinen einzigen Anker kosten."""
+    import ultrastar_pipeline.__main__ as haupt
+    from ultrastar_pipeline.anchors import GemessenesWort
+
+    zeilen = [f"w{i}" for i in range(10)]
+    lrc_text = "\n".join(f"[00:1{i}.00]w{i}" for i in range(10))
+    anker: list = [GemessenesWort(100.0 + i, 100.2 + i, 0.9, "anchor") for i in range(10)]
+    anker_vorher = list(anker)
+    warnungen: list[str] = []
+
+    haupt._wende_lrc_an(anker, zeilen, lrc_text, 200.0, warnungen)
+
+    assert anker == anker_vorher
+    assert len(warnungen) == 1
+    assert warnungen[0].startswith("LRC verworfen")
+
+
+def test_lrc_wird_bei_wenigen_konflikten_angewendet():
+    """Passt das .lrc ueberwiegend zu den Messungen, wird es normal
+    angewendet: entlarven bei Ausreissern, saeen in den Luecken."""
+    import ultrastar_pipeline.__main__ as haupt
+    from ultrastar_pipeline.anchors import GemessenesWort
+
+    zeilen = [f"w{i}" for i in range(10)]
+    lrc_text = "\n".join(f"[00:1{i}.00]w{i}" for i in range(10))
+    anker: list = [GemessenesWort(10.0 + i, 10.2 + i, 0.9, "anchor") for i in range(10)]
+    anker[5] = None
+    warnungen: list[str] = []
+
+    haupt._wende_lrc_an(anker, zeilen, lrc_text, 200.0, warnungen)
+
+    assert anker[5] is not None
+    assert anker[5].quelle == "lrc"
+    assert len(warnungen) == 1
+    assert warnungen[0].startswith("LRC:")
+
+
 @pytest.mark.slow
 def test_voller_lauf_erzeugt_gueltiges_json(tmp_path):
     """Braucht Modelle. Aufruf: bun run test:py:slow"""

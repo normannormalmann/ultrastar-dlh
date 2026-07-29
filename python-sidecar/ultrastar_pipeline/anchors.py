@@ -228,6 +228,12 @@ def berechne_anker(
     return anker
 
 
+# Oberhalb dieser Konfliktquote widerspricht das .lrc den Messungen so
+# breit, dass es selbst die falsche Edition sein muss: im Pilot richteten
+# 6-11 Prozent Konflikte keinen Schaden an (Median verbesserte sich),
+# rund 30 Prozent rissen die Songraender um Sekunden.
+MAX_LRC_KONFLIKT_QUOTE = 0.2
+
 _LRC_ZEITSTEMPEL = re.compile(r"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]")
 
 
@@ -288,19 +294,21 @@ def ordne_lrc_zeilen(
     return [(starts[zi], lrc_zeilen[li][0]) for zi, li in _lcs_paare(a, b)]
 
 
-def entlarve_mit_lrc(
+def finde_lrc_konflikte(
     anker: list[GemessenesWort | None],
     pfosten: list[tuple[int, float]],
     audio_dauer: float,
     toleranz: float = 3.0,
-) -> int:
-    """Verwirft gemessene Anker, die implausibel weit (> toleranz) von der
+) -> list[int]:
+    """Indizes gemessener Anker, die implausibel weit (> toleranz) von der
     linear interpolierten Erwartung zwischen zwei LRC-Pfosten liegen. Die
     Toleranz ist bewusst grob: der Zeilenanfang im .lrc hat selbst Spiel -
     das hier faengt nur Abweichungen, die kein Zufall mehr sind. Das
     Audio-Ende wirkt als synthetischer letzter Pfosten, sonst blieben
     Woerter nach dem letzten echten Pfosten ungeprueft (im Vorbild als
-    realer blinder Fleck gemessen).
+    realer blinder Fleck gemessen). Bewusst ohne Mutation: erst das
+    Gesamtbild (Konfliktquote) entscheidet, ob die Anker fallen oder das
+    .lrc als Ganzes verworfen wird.
 
     Voraussetzung: `pfosten` ist nach Wortindex aufsteigend sortiert - das
     ist durch ordne_lrc_zeilen konstruktiv garantiert.
@@ -311,9 +319,9 @@ def entlarve_mit_lrc(
     if audio_dauer > 0 and (not posts or audio_dauer > posts[-1][1]):
         posts = posts + [(n, audio_dauer)]
     if len(posts) < 2:
-        return 0
+        return []
 
-    entlarvt = 0
+    konflikte: list[int] = []
     for i in range(n):
         a = anker[i]
         if a is None:
@@ -331,9 +339,23 @@ def entlarve_mit_lrc(
         anteil = (i - davor[0]) / (danach[0] - davor[0])
         erwartet = davor[1] + anteil * (danach[1] - davor[1])
         if abs(a.start - erwartet) > toleranz:
-            anker[i] = None
-            entlarvt += 1
-    return entlarvt
+            konflikte.append(i)
+    return konflikte
+
+
+def entlarve_mit_lrc(
+    anker: list[GemessenesWort | None],
+    pfosten: list[tuple[int, float]],
+    audio_dauer: float,
+    toleranz: float = 3.0,
+) -> int:
+    """Verwirft die von finde_lrc_konflikte benannten Anker. Getrennt von
+    der Suche, damit der Aufrufer die Quote pruefen kann, bevor er
+    Messungen opfert."""
+    konflikte = finde_lrc_konflikte(anker, pfosten, audio_dauer, toleranz)
+    for i in konflikte:
+        anker[i] = None
+    return len(konflikte)
 
 
 def saee_lrc_anker(

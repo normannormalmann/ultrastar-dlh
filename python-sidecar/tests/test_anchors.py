@@ -4,6 +4,7 @@ from ultrastar_pipeline.anchors import (
     GemessenesWort,
     berechne_anker,
     entlarve_mit_lrc,
+    finde_lrc_konflikte,
     lese_lrc,
     normalisiere,
     ordne_lrc_zeilen,
@@ -234,6 +235,16 @@ def test_entlarve_mit_lrc_verwirft_weit_abweichende_messungen():
     entlarvt = entlarve_mit_lrc(anker, pfosten, audio_dauer=200.0)
     assert entlarvt == 1
     assert anker[5] is None
+
+
+def test_finde_lrc_konflikte_zaehlt_ohne_zu_mutieren():
+    """finde_lrc_konflikte benennt nur - der Aufrufer entscheidet anhand der
+    Quote, ob entlarvt wird. Der Anker muss danach unveraendert dastehen."""
+    anker: list = [None] * 10
+    anker[5] = GemessenesWort(50.0, 50.1, 0.9, "anchor")
+    pfosten = [(0, 10.0), (9, 19.0)]  # erwartet bei Wort 5: 15.0
+    assert finde_lrc_konflikte(anker, pfosten, audio_dauer=200.0) == [5]
+    assert anker[5] is not None
 
 
 def test_entlarve_mit_lrc_laesst_plausible_messungen_stehen():

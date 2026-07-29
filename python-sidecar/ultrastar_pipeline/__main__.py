@@ -77,6 +77,27 @@ def _stage_versions() -> dict[str, str]:
     }
 
 
+def _wende_lrc_an(anker, zeilen, lrc_text, audio_dauer, warnungen) -> None:
+    """Wendet die LRC-Anker an - oder verwirft das .lrc als Ganzes, wenn es
+    einem zu grossen Teil der Messungen widerspricht (dann ist es die
+    falsche Edition; gemessen: 78 entlarvte Anker rissen die Songraender
+    um Sekunden). Erst entlarven, dann saeen: entlarvte Luecken sollen
+    neu besaet werden koennen."""
+    lrc_zeilen = anchors.lese_lrc(lrc_text)
+    pfosten = anchors.ordne_lrc_zeilen(zeilen, lrc_zeilen)
+    gemessen = sum(1 for a in anker if a is not None)
+    konflikte = anchors.finde_lrc_konflikte(anker, pfosten, audio_dauer)
+    if gemessen and len(konflikte) / gemessen > anchors.MAX_LRC_KONFLIKT_QUOTE:
+        warnungen.append(
+            f"LRC verworfen: {len(konflikte)} von {gemessen} gemessenen Ankern "
+            "widersprechen den Zeilenzeiten - vermutlich eine andere Edition."
+        )
+        return
+    entlarvt = anchors.entlarve_mit_lrc(anker, pfosten, audio_dauer)
+    gesaeht = anchors.saee_lrc_anker(anker, pfosten)
+    warnungen.append(f"LRC: {entlarvt} Anker entlarvt, {gesaeht} Zeilenanfaenge gesaeht.")
+
+
 def _baue_sections(woerter, wort_zu_note: list[int]) -> list[dict]:
     """Sections beschreiben Laeufe gleicher Messbarkeit: zusammenhaengend
     gemessene Strecken (anchor/fuzzy/realign/lrc) mit mittlerem
@@ -169,16 +190,12 @@ def main(argv: list[str] | None = None) -> int:
         anker = anchors.berechne_anker(flach, transkript)
         if args.synced_lyrics is not None:
             if args.synced_lyrics.is_file():
-                lrc_zeilen = anchors.lese_lrc(
-                    args.synced_lyrics.read_text(encoding="utf8")
-                )
-                pfosten = anchors.ordne_lrc_zeilen(zeilen, lrc_zeilen)
-                # Erst entlarven, dann saeen: entlarvte Luecken sollen neu
-                # besaet werden koennen.
-                entlarvt = anchors.entlarve_mit_lrc(anker, pfosten, dauer_sekunden(vocals))
-                gesaeht = anchors.saee_lrc_anker(anker, pfosten)
-                warnungen.append(
-                    f"LRC: {entlarvt} Anker entlarvt, {gesaeht} Zeilenanfaenge gesaeht."
+                _wende_lrc_an(
+                    anker,
+                    zeilen,
+                    args.synced_lyrics.read_text(encoding="utf8"),
+                    dauer_sekunden(vocals),
+                    warnungen,
                 )
             else:
                 warnungen.append(
