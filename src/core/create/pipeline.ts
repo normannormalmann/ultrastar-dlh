@@ -25,6 +25,8 @@ export type PipelineInput = {
   workDir?: string;
   /** Interpreter bzw. Skript. Tests setzen hier einen Ersatz-Sidecar ein. */
   pythonBin?: string;
+  /** Pfad zu einer synchronisierten .lrc (LRCLIB) als zweite Evidenzquelle. */
+  syncedLyricsPath?: string;
   onProgress?: (stage: string, percent: number) => void;
   signal?: AbortSignal;
 };
@@ -73,6 +75,7 @@ const baueArgumente = (input: PipelineInput): string[] => {
   if (input.bpm !== undefined) args.push("--bpm", String(input.bpm));
   if (input.device) args.push("--device", input.device);
   if (input.workDir) args.push("--work-dir", input.workDir);
+  if (input.syncedLyricsPath) args.push("--synced-lyrics", input.syncedLyricsPath);
   return args;
 };
 

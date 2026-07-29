@@ -10,6 +10,7 @@ import { Effect } from "effect";
 import { compareToReference, type Metrics, parseReferenceTxt } from "../src/core/create/evaluate.ts";
 import { runPipeline } from "../src/core/create/pipeline.ts";
 import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
+import { cachedLyricsPfad, holeSyncedLyrics } from "../src/core/create/lrclib.ts";
 
 type Eintrag = { artist: string; title: string; songDir: string };
 
@@ -87,7 +88,7 @@ const main = async (): Promise<void> => {
   // Environment. Der Interpreter kommt daher aus der Umgebung, nicht aus
   // einer Konstante — so zeigt der Aufruf ohne Codeaenderung auf die venv.
   const pythonBin = process.env.PIPELINE_PYTHON ?? "python";
-  const ergebnisse: { name: string; m: Metrics }[] = [];
+  const ergebnisse: { name: string; m: Metrics; lrc: boolean }[] = [];
 
   for (const song of manifest.songs) {
     const referenzTxt = await readFile(join(song.songDir, "song.txt"), "utf8");
@@ -101,21 +102,43 @@ const main = async (): Promise<void> => {
     const lyricsPfad = join(song.songDir, ".eval-lyrics.txt");
     await writeFile(lyricsPfad, `${lyricsAusReferenz(referenzTxt).join("\n")}\n`, "utf8");
 
-    const ergebnis = await Effect.runPromise(
-      Effect.either(
-        runPipeline({
-          audioPath: audio,
-          lyricsPath: lyricsPfad,
-          language: sprache,
-          outPath: join(song.songDir, ".eval-song-data.json"),
-          device: "auto",
-          pythonBin,
-          onProgress: (stage, p) =>
-            process.stderr.write(`\r${song.title}: ${stage} ${Math.round(p * 100)}%    `),
-        }),
-      ),
-    );
+    const lauf = (syncedLyricsPath?: string) =>
+      Effect.runPromise(
+        Effect.either(
+          runPipeline({
+            audioPath: audio,
+            lyricsPath: lyricsPfad,
+            language: sprache,
+            outPath: join(song.songDir, ".eval-song-data.json"),
+            device: "auto",
+            pythonBin,
+            ...(syncedLyricsPath ? { syncedLyricsPath } : {}),
+            onProgress: (stage, p) =>
+              process.stderr.write(`\r${song.title}: ${stage} ${Math.round(p * 100)}%    `),
+          }),
+        ),
+      );
+
+    // Cache zuerst: bei wiederholten Bewertungslaeufen liegt die .lrc
+    // schon im Songverzeichnis und es braucht nur einen Pipeline-Lauf.
+    let lrcPfad = await cachedLyricsPfad(song.songDir);
+    let ergebnis = await lauf(lrcPfad ?? undefined);
     process.stderr.write("\n");
+
+    if (ergebnis._tag === "Right" && !lrcPfad) {
+      // Die Dauer ist erst jetzt bekannt -- holen und bei Treffer neu
+      // ausrichten (nur align rechnet neu, der Rest kommt aus dem Cache).
+      lrcPfad = await holeSyncedLyrics({
+        artist: song.artist,
+        title: song.title,
+        durationSec: ergebnis.right.meta.durationSec,
+        songDir: song.songDir,
+      });
+      if (lrcPfad) {
+        ergebnis = await lauf(lrcPfad);
+        process.stderr.write("\n");
+      }
+    }
 
     if (ergebnis._tag === "Left") {
       console.error(`${song.title}: FEHLER ${ergebnis.left.kind} ${ergebnis.left.detail ?? ""}`);
@@ -132,6 +155,7 @@ const main = async (): Promise<void> => {
     ergebnisse.push({
       name: `${song.artist} - ${song.title}`,
       m: compareToReference(unser, referenz),
+      lrc: lrcPfad !== null,
     });
   }
 
@@ -142,12 +166,12 @@ const main = async (): Promise<void> => {
 
   console.log("");
   console.log(
-    "| Song | Paare | Gepaart | Median ms | Versatz ms | p90 ms | <50ms | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
+    "| Song | LRC | Paare | Gepaart | Median ms | Versatz ms | p90 ms | <50ms | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
   );
-  console.log("|---|---|---|---|---|---|---|---|---|---|---|");
-  for (const { name, m } of ergebnisse) {
+  console.log("|---|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const { name, m, lrc } of ergebnisse) {
     console.log(
-      `| ${name} | ${m.paare} | ${(m.anteilGepaart * 100).toFixed(0)}% | ` +
+      `| ${name} | ${lrc ? "ja" : "nein"} | ${m.paare} | ${(m.anteilGepaart * 100).toFixed(0)}% | ` +
         `${m.medianAbweichungMs.toFixed(0)} | ${m.medianVersatzMs.toFixed(0)} | ` +
         `${m.p90AbweichungMs.toFixed(0)} | ${(m.anteilUnter50ms * 100).toFixed(0)}% | ` +
         `${(m.anteilUnter100ms * 100).toFixed(0)}% | ${m.notenzahlDifferenz} | ` +
@@ -161,8 +185,11 @@ const main = async (): Promise<void> => {
   const mittel = (f: (m: Metrics) => number): number =>
     ergebnisse.reduce((s, z) => s + f(z.m), 0) / ergebnisse.length;
 
+  const mitLrc = ergebnisse.filter((z) => z.lrc).length;
+
   console.log("");
   console.log(`Songs:               ${ergebnisse.length}`);
+  console.log(`Songs mit LRC:       ${mitLrc}/${ergebnisse.length}`);
   console.log(`Anteil gepaart:      ${(mittel((m) => m.anteilGepaart) * 100).toFixed(0)}%`);
   console.log(`Median-Abweichung:   ${mittel((m) => m.medianAbweichungMs).toFixed(0)} ms`);
   console.log(`Median-Versatz:      ${mittel((m) => m.medianVersatzMs).toFixed(0)} ms`);

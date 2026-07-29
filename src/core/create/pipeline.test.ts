@@ -138,6 +138,23 @@ describe("runPipeline", () => {
     } else throw new Error("haette fehlschlagen muessen");
   });
 
+  it("reicht syncedLyricsPath als --synced-lyrics durch", async () => {
+    const { bin, dir } = await fakeSidecar(`
+      const i = process.argv.indexOf("--synced-lyrics");
+      if (i === -1 || !process.argv[i + 1].endsWith("songtext.lrc")) process.exit(1);
+      const out = process.argv[process.argv.indexOf("--out") + 1];
+      await Bun.write(out, ${JSON.stringify(gueltigesJson)});
+    `);
+    const daten = await Effect.runPromise(
+      runPipeline({
+        ...basis(dir),
+        pythonBin: bin,
+        syncedLyricsPath: join(dir, "songtext.lrc"),
+      }),
+    );
+    expect(daten.bpm).toBe(120);
+  });
+
   it("listet bei lyrics_unresolved die gefundenen Marker im detail auf", async () => {
     const { bin, dir } = await fakeSidecar(`
       console.log('@@ERROR {"kind":"lyrics_unresolved","markers":["(2x)","[chorus]"]}');
