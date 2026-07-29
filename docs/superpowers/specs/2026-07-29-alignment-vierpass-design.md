@@ -34,6 +34,26 @@ Unverändert: **80 % der Silben unter 50 ms**, gemessen über 30+ gemischte
 Referenzsongs, je Song einzeln ausgewiesen, mit `anteilGepaart` als
 Gültigkeitsmaß der Messung.
 
+**Nachtrag 2026-07-29 (nach der 30+-Korpus-Messung) — Ziel neu gefasst:**
+Das 80-%-<50-ms-Ziel ist gegen menschliche Referenzen mit diesem Stack
+nicht erreichbar und wird ausgemustert: Selbst nach *perfekter*
+Per-Song-Kalibrierung (Diagnosespalte `kal.<50`) liegt der Korpusschnitt
+bei 37 % — der Rest ist lokaler Jitter zwischen wav2vec-Phonem-Onsets und
+beat-quantisierten menschlichen Syncs, kein Alignment-Fehler. Auch 80 %
+< 100 ms bleibt außer Reichweite (kal.<100: 60 % im Mittel).
+
+Neue Abnahme ist der Korpusbericht selbst, als Regressions-Gate gegen die
+gemessene Basislinie vom 2026-07-29 (30 gültige Songs, nach der
+Onset-Korrektur um 60 ms): Median-Abweichung 289/105 ms (Mittel/Median),
+Median-Versatz +1 ms (zentriert), 25 % < 50 ms, 46 % < 100 ms, 87 %
+gepaart. Eine Änderung an der Pipeline gilt als Verbesserung, wenn sie
+diese Werte über den gültigen Korpus hebt, und als Regression, wenn sie
+sie senkt; der Versatz muss zentriert bleiben (|Median| ≤ 20 ms).
+Ungültige Referenzen (Editions-Check: |Versatz| > 2 s) zählen nicht in
+das Aggregat. Die kal.-Spalten beziffern den verbleibenden Hebel einer
+künftigen Per-Song-Kalibrierung (+11 Punkte auf < 50 ms, +14 auf
+< 100 ms) — ein eigenes Teilprojekt, falls der Hebel gewollt ist.
+
 ## Ansatz: vier Pässe plus eine zweite Evidenzquelle
 
 Grundsatz: **Gemessene Zeit schlägt geschätzte Zeit, und geschätzt wird nie
