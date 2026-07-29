@@ -51,7 +51,7 @@ def _lcs_paare(a: list[str], b: list[str]) -> list[tuple[int, int]]:
     """Indexpaare der echten laengsten gemeinsamen Teilfolge (DP, global
     optimal, monoton in beiden Folgen). Leere Strings matchen nie - sie
     tragen keine Information und gehoeren nicht gepaart. Warum echte LCS
-    statt greedy difflib: siehe finde_anker (der greedy Ansatz band einen
+    statt greedy difflib: siehe berechne_anker (der greedy Ansatz band einen
     wiederholten Refrain an die falsche Stelle)."""
     n, m = len(a), len(b)
     folge = [[0] * (m + 1) for _ in range(n + 1)]
@@ -371,43 +371,3 @@ def saee_lrc_anker(
         anker[wortindex] = GemessenesWort(zeit, ende, 0.0, QUELLE_LRC)
         gesaeht += 1
     return gesaeht
-
-
-    # Grenzanker im Zielabstand auswaehlen, immer beim ersten beginnend.
-    grenzen = [anker[0]]
-    for a in anker[1:]:
-        if a.bekannter_index - grenzen[-1].bekannter_index >= zielgroesse:
-            grenzen.append(a)
-
-    abschnitte = _schneide(grenzen)
-
-    # Eine Grenze, die eine unsingbare Rate erzwingt, ist ein Falsch-Anker.
-    # Sie faellt, und der Abschnitt geht in dem Nachbarn auf, der die
-    # niedrigere Rate ergibt. Terminiert, weil jede Runde eine Grenze
-    # entfernt. Faellt die letzte Grenze, bleibt der eine Abschnitt ueber
-    # die volle Spur — der bekannte, sichtbare Rueckfall.
-    def _rate(a: Abschnitt) -> float:
-        return (a.bis_index - a.von_index) / max(a.ende_s - a.start_s, 1e-9)
-
-    while len(grenzen) > 1:
-        verdaechtig = next(
-            (k for k, a in enumerate(abschnitte) if _rate(a) > MAX_WOERTER_PRO_SEKUNDE),
-            None,
-        )
-        if verdaechtig is None:
-            break
-        # Kandidaten: die Grenze am Anfang des Abschnitts (merge nach vorn)
-        # oder die an seinem Ende (merge nach hinten) — es gewinnt der
-        # Nachbar mit der niedrigeren resultierenden Rate.
-        kandidaten = []
-        if verdaechtig > 0:
-            kandidaten.append(grenzen[:verdaechtig] + grenzen[verdaechtig + 1 :])
-        if verdaechtig < len(grenzen) - 1:
-            kandidaten.append(grenzen[: verdaechtig + 1] + grenzen[verdaechtig + 2 :])
-        grenzen = min(
-            kandidaten,
-            key=lambda g: max((_rate(a) for a in _schneide(g)), default=0.0),
-        )
-        abschnitte = _schneide(grenzen)
-
-    return abschnitte

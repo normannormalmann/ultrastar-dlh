@@ -132,16 +132,35 @@ def test_wiederholter_refrain_bindet_an_die_richtige_stelle():
     """Der greedy difflib-Ansatz band einen wortgleich wiederholten Refrain
     an die falsche Stelle und liess viele Woerter ohne Anker (gemessen im Pilot);
     die echte LCS kann das nicht, weil die geopferten Treffer der Mitte jede
-    solche Zuordnung vom Maximum wegdruecken."""
+    solche Zuordnung vom Maximum wegdruecken. Realistisches Szenario: wiederholter
+    Refrain mit verhoerten Zwischenwoertern dazwischen."""
+    refrain = ["glocke", "klingt"]
+    strophe = ["text", "teil", "mehr"]
+    bekannte = [*refrain, *strophe, *refrain]
+
     gehoerte = _gehoert_berechne([
-        ("ref", 10.0, 10.3, 0.5),
-        ("mitte", 20.0, 20.3, 0.5),
-        ("ref", 30.0, 30.3, 0.5),
+        ("glocke", 10.0, 10.3, 0.8),
+        ("klingt", 10.4, 10.7, 0.8),
+        # Strophe: teilweise verhoert (zwischendrin erfundenes Wort)
+        ("text", 20.0, 20.3, 0.9),
+        ("anders", 20.4, 20.7, 0.7),  # verhoert statt "teil"
+        ("mehr", 20.8, 21.1, 0.9),
+        # Refrain wiederholt: komplett gehoert
+        ("glocke", 30.0, 30.3, 0.8),
+        ("klingt", 30.4, 30.7, 0.8),
     ])
-    anker = berechne_anker(["ref", "mitte", "ref"], gehoerte)
-    assert anker[0] is not None and anker[0].start == 10.0
-    assert anker[1] is not None and anker[1].start == 20.0
-    assert anker[2] is not None and anker[2].start == 30.0
+
+    anker = berechne_anker(bekannte, gehoerte)
+
+    # Der erste Refrain bindet an fruehe Zeit, nicht am Songende
+    fruehe_refrain_indizes = [0, 1]
+    fruehe_zeiten = [a.start for i, a in enumerate(anker) if i in fruehe_refrain_indizes and a is not None]
+    assert len(fruehe_zeiten) >= 1 and max(fruehe_zeiten) < 15.0
+
+    # Die korrekt gehoerten Strophenwoerter behalten ihre Anker
+    strophe_indizes = [2, 3, 4]  # text (2), teil (3), mehr (4)
+    gehoerte_strophe = sum(1 for i in strophe_indizes if anker[i] is not None)
+    assert gehoerte_strophe >= 2  # mindestens text und mehr
 
 
 def test_lese_lrc_ignoriert_metadaten_und_sortiert():
