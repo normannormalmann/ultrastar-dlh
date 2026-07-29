@@ -7,6 +7,7 @@ Teile portiert aus UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarK
 """
 
 import difflib
+import re
 import unicodedata
 from dataclasses import dataclass
 
@@ -255,6 +256,151 @@ def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anc
     return [
         Anchor(bekannter_index=i, zeit=gehoerte[j].start) for i, j in _lcs_paare(a, b)
     ]
+
+
+_LRC_ZEITSTEMPEL = re.compile(r"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]")
+
+
+def lese_lrc(text: str) -> list[tuple[float, str]]:
+    """Synchronisierte Lyrics (.lrc, LRCLIB-Format) als sortierte Liste
+    (Sekunden, Zeilentext). Metadatenzeilen ([ar:], [ti:], ...) haben kein
+    Zeitstempel-Muster und fallen von selbst raus; eine Zeile mit mehreren
+    Zeitstempeln (wiederholter Refrain) ergibt je Stempel einen Eintrag."""
+    eintraege: list[tuple[float, str]] = []
+    for zeile in text.splitlines():
+        stempel = list(_LRC_ZEITSTEMPEL.finditer(zeile))
+        if not stempel:
+            continue
+        inhalt = zeile[stempel[-1].end():].strip()
+        if not inhalt:
+            continue
+        for m in stempel:
+            minuten = int(m.group(1))
+            sekunden = int(m.group(2))
+            bruch = float(f"0.{m.group(3) or '0'}")
+            eintraege.append((minuten * 60 + sekunden + bruch, inhalt))
+    eintraege.sort(key=lambda e: e[0])
+    return eintraege
+
+
+def _normalisiere_zeile(zeile: str) -> str:
+    """Vergleichsform einer ganzen Zeile: wortweise normalisiert, damit
+    Satzzeichen und Schreibweise den Zeilenvergleich nicht stoeren."""
+    teile = [normalisiere(w) for w in zeile.split()]
+    return " ".join(t for t in teile if t)
+
+
+def zeilen_startindizes(zeilen: list[str]) -> list[int]:
+    """Index des ersten Wortes jeder Zeile in der flachen Wortliste -
+    dieselbe Zerlegung (split je Zeile) wie beim Aufrufer, damit die
+    Indizes zur flachen Liste passen."""
+    indizes: list[int] = []
+    lauf = 0
+    for zeile in zeilen:
+        indizes.append(lauf)
+        lauf += len(zeile.split())
+    return indizes
+
+
+def ordne_lrc_zeilen(
+    zeilen: list[str], lrc_zeilen: list[tuple[float, str]]
+) -> list[tuple[int, float]]:
+    """Pfosten aus dem .lrc: (Wortindex des Zeilenanfangs, Zeit). Zuordnung
+    ueber echte LCS auf normalisierten Zeilentexten - nur exakt gleiche
+    Zeilen zaehlen. Abweichend geschriebene Zeilen (andere Edition, andere
+    Refrain-Schreibweise) bekommen schlicht keinen Pfosten, statt falsch
+    zu matchen."""
+    if not zeilen or not lrc_zeilen:
+        return []
+    a = [_normalisiere_zeile(z) for z in zeilen]
+    b = [_normalisiere_zeile(t) for _, t in lrc_zeilen]
+    starts = zeilen_startindizes(zeilen)
+    return [(starts[zi], lrc_zeilen[li][0]) for zi, li in _lcs_paare(a, b)]
+
+
+def entlarve_mit_lrc(
+    anker: list[GemessenesWort | None],
+    pfosten: list[tuple[int, float]],
+    audio_dauer: float,
+    toleranz: float = 3.0,
+) -> int:
+    """Verwirft gemessene Anker, die implausibel weit (> toleranz) von der
+    linear interpolierten Erwartung zwischen zwei LRC-Pfosten liegen. Die
+    Toleranz ist bewusst grob: der Zeilenanfang im .lrc hat selbst Spiel -
+    das hier faengt nur Abweichungen, die kein Zufall mehr sind. Das
+    Audio-Ende wirkt als synthetischer letzter Pfosten, sonst blieben
+    Woerter nach dem letzten echten Pfosten ungeprueft (im Vorbild als
+    realer blinder Fleck gemessen).
+
+    Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
+    n = len(anker)
+    posts = [p for p in pfosten if p[0] < n]
+    if audio_dauer > 0 and (not posts or audio_dauer > posts[-1][1]):
+        posts = posts + [(n, audio_dauer)]
+    if len(posts) < 2:
+        return 0
+
+    entlarvt = 0
+    for i in range(n):
+        a = anker[i]
+        if a is None:
+            continue
+        davor: tuple[int, float] | None = None
+        danach: tuple[int, float] | None = None
+        for p_idx, p_zeit in posts:
+            if p_idx <= i:
+                davor = (p_idx, p_zeit)
+            elif danach is None:
+                danach = (p_idx, p_zeit)
+                break
+        if davor is None or danach is None or danach[0] <= davor[0]:
+            continue
+        anteil = (i - davor[0]) / (danach[0] - davor[0])
+        erwartet = davor[1] + anteil * (danach[1] - davor[1])
+        if abs(a.start - erwartet) > toleranz:
+            anker[i] = None
+            entlarvt += 1
+    return entlarvt
+
+
+def saee_lrc_anker(
+    anker: list[GemessenesWort | None],
+    pfosten: list[tuple[int, float]],
+    toleranz: float = 0.6,
+) -> int:
+    """Saet Zeilenanfangs-Anker in Luecken, die der ASR nicht gemessen hat.
+    Gemessene Anker haben Vorrang (praeziser als ein Zeilenanfang); der
+    Wert des .lrc liegt genau in den ASR-Loechern - kuerzere Interpolation,
+    bessere Fenstergrenzen fuer Pass 3. Monotonie gegen die gemessenen
+    Nachbarn wird geprueft, sonst wuerde ein Pfosten einer anderen Edition
+    die Reihenfolge brechen.
+
+    Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
+    n = len(anker)
+    gesaeht = 0
+    for wortindex, zeit in pfosten:
+        if wortindex >= n or anker[wortindex] is not None:
+            continue
+        vor_ende: float | None = None
+        for k in range(wortindex - 1, -1, -1):
+            if anker[k] is not None:
+                vor_ende = anker[k].ende
+                break
+        nach_start: float | None = None
+        for k in range(wortindex + 1, n):
+            if anker[k] is not None:
+                nach_start = anker[k].start
+                break
+        if vor_ende is not None and zeit < vor_ende - toleranz:
+            continue
+        if nach_start is not None and zeit > nach_start + toleranz:
+            continue
+        ende = zeit + 0.25
+        if nach_start is not None:
+            ende = min(ende, max(zeit + 0.02, nach_start - 0.02))
+        anker[wortindex] = GemessenesWort(zeit, ende, 0.0, QUELLE_LRC)
+        gesaeht += 1
+    return gesaeht
 
 
 @dataclass(frozen=True)

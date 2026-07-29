@@ -5,8 +5,13 @@ from ultrastar_pipeline.anchors import (
     Anchor,
     GemessenesWort,
     berechne_anker,
+    entlarve_mit_lrc,
     finde_anker,
+    lese_lrc,
     normalisiere,
+    ordne_lrc_zeilen,
+    saee_lrc_anker,
+    zeilen_startindizes,
 )
 from ultrastar_pipeline.transcribe import TranskriptWort
 
@@ -307,3 +312,92 @@ def test_kurzes_wort_mit_gemessenem_nachbarn_bleibt():
 def test_leere_eingaben_ergeben_nur_none():
     assert berechne_anker([], []) == []
     assert berechne_anker(["wort"], []) == [None]
+
+
+def test_lese_lrc_ignoriert_metadaten_und_sortiert():
+    text = "\n".join([
+        "[ar:Kuenstler]",
+        "[00:45.50]zweite zeile",
+        "[00:12.00]erste zeile",
+        "[99:99]",
+    ])
+    assert lese_lrc(text) == [(12.0, "erste zeile"), (45.5, "zweite zeile")]
+
+
+def test_lese_lrc_mehrere_zeitstempel_je_zeile():
+    # Ein wiederholter Refrain steht im .lrc als eine Zeile mit mehreren
+    # Zeitstempeln - jede Wiederholung ist ein eigener Pfosten.
+    eintraege = lese_lrc("[00:10.00][01:10.00]refrain zeile\n")
+    assert eintraege == [(10.0, "refrain zeile"), (70.0, "refrain zeile")]
+
+
+def test_zeilen_startindizes_zaehlen_woerter_kumulativ():
+    assert zeilen_startindizes(["a b c", "d e", "f"]) == [0, 3, 5]
+
+
+def test_ordne_lrc_zeilen_matcht_nur_gleiche_zeilen():
+    zeilen = ["hallo welt", "voellig anders", "gute nacht"]
+    lrc = [(5.0, "Hallo Welt!"), (20.0, "etwas fremdes"), (30.0, "gute Nacht")]
+    assert ordne_lrc_zeilen(zeilen, lrc) == [(0, 5.0), (4, 30.0)]
+
+
+def test_saee_lrc_anker_fuellt_nur_luecken_monoton():
+    anker: list = [None] * 6
+    anker[0] = GemessenesWort(1.0, 1.3, 0.5, "anchor")
+    # Pfosten bei Wort 2 (plausibel) und Wort 4 (vor dem Vorgaenger: unplausibel).
+    pfosten = [(2, 5.0), (4, 0.5)]
+    gesaeht = saee_lrc_anker(anker, pfosten)
+    assert gesaeht == 1
+    assert anker[2] == GemessenesWort(5.0, 5.25, 0.0, "lrc")
+    assert anker[4] is None
+
+
+def test_saee_lrc_anker_ueberschreibt_keine_messung():
+    anker: list = [GemessenesWort(1.0, 1.3, 0.5, "anchor")]
+    assert saee_lrc_anker(anker, [(0, 9.0)]) == 0
+    assert anker[0].quelle == "anchor"
+
+
+def test_saee_lrc_anker_kappt_das_ende_vor_dem_naechsten_gemessenen():
+    anker: list = [None, GemessenesWort(5.1, 5.4, 0.5, "anchor")]
+    saee_lrc_anker(anker, [(0, 5.0)])
+    assert anker[0] is not None
+    assert anker[0].ende <= 5.1 - 0.02 + 1e-9
+
+
+def test_entlarve_mit_lrc_verwirft_weit_abweichende_messungen():
+    """Ein zufaellig matchendes Fuellwort in einem ASR-Loch traegt eine
+    Zeit, die zwischen den LRC-Pfosten nichts zu suchen hat (> 3 s von der
+    interpolierten Erwartung) - genau der Falsch-Anker-Typ aus dem Pilot."""
+    anker: list = [None] * 10
+    anker[5] = GemessenesWort(50.0, 50.1, 0.9, "anchor")
+    pfosten = [(0, 10.0), (9, 19.0)]  # erwartet bei Wort 5: 15.0
+    entlarvt = entlarve_mit_lrc(anker, pfosten, audio_dauer=200.0)
+    assert entlarvt == 1
+    assert anker[5] is None
+
+
+def test_entlarve_mit_lrc_laesst_plausible_messungen_stehen():
+    anker: list = [None] * 10
+    anker[5] = GemessenesWort(15.5, 15.8, 0.2, "anchor")
+    pfosten = [(0, 10.0), (9, 19.0)]
+    assert entlarve_mit_lrc(anker, pfosten, audio_dauer=200.0) == 0
+    assert anker[5] is not None
+
+
+def test_entlarve_mit_lrc_nutzt_das_songende_als_letzten_pfosten():
+    """Woerter nach dem letzten Pfosten haetten sonst keinen Vergleichswert
+    - genau dort (Schlusschor ueber dem Lead) braucht es die Pruefung am
+    dringendsten. Das Audio-Ende schliesst das Loch."""
+    anker: list = [None] * 10
+    anker[8] = GemessenesWort(90.0, 90.2, 0.9, "anchor")
+    pfosten = [(0, 10.0)]  # nur ein echter Pfosten am Anfang
+    # Audio endet bei 20 s -> erwartet bei Wort 8: 18.0; 90.0 ist absurd.
+    assert entlarve_mit_lrc(anker, pfosten, audio_dauer=20.0) == 1
+    assert anker[8] is None
+
+
+def test_entlarve_mit_lrc_ohne_genug_pfosten_tut_nichts():
+    anker: list = [GemessenesWort(50.0, 50.1, 0.9, "anchor")]
+    assert entlarve_mit_lrc(anker, [], audio_dauer=0.0) == 0
+    assert anker[0] is not None
