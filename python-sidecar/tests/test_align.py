@@ -182,7 +182,147 @@ def test_dauer_oder_rueckfall_faellt_bei_unlesbarer_datei_auf_den_rueckfall_zuru
     assert dauer_oder_rueckfall(pfad, 4.1) == 4.1
 
 
-from ultrastar_pipeline.anchors import Abschnitt
+from ultrastar_pipeline.anchors import Abschnitt, GemessenesWort
+from ultrastar_pipeline.align import (
+    WortZeit,
+    silbengewicht,
+    interpoliere,
+    stille_grenzen,
+    _ctc_tokens,
+    _fasse_zusammen,
+    _pruefe_fenster,
+)
+
+
+def test_silbengewicht_zaehlt_vokalgruppen():
+    assert silbengewicht("und", "de") == 1
+    assert silbengewicht("melodie", "de") == 3
+    # Akzentfaltung: Umlaute bleiben Vokale (o-Umlaut -> o).
+    # Unicode-Escape waehrt ASCII-Pflicht.
+    assert silbengewicht("sch\u00f6n", "de") == 1
+
+
+def test_silbengewicht_zaehlt_zahlen_wie_gesungen():
+    # "20" hat keine Vokale und woegte 1; gesungen wird "zwanzig" (2 Gruppen).
+    assert silbengewicht("20", "de") == 2
+
+
+def test_silbengewicht_ist_nie_null():
+    assert silbengewicht("pst", "de") == 1
+
+
+def _anker_liste(n: int, **feste) -> list:
+    anker = [None] * n
+    for i, wert in feste.items():
+        anker[int(i[1:])] = wert
+    return anker
+
+
+def test_interpoliere_verteilt_nach_silbengewicht():
+    """Luecke zwischen zwei Messungen: "melodie" (3 Gruppen) bekommt dreimal
+    so viel Zeit wie "und" (1 Gruppe), und vor dem naechsten gemessenen
+    Wort bleibt eine Atempause."""
+    anker = [
+        GemessenesWort(0.0, 1.0, 0.5, "anchor"),
+        None,
+        None,
+        GemessenesWort(9.0, 9.5, 0.5, "anchor"),
+    ]
+    zeiten = interpoliere(anker, ["start", "und", "melodie", "ende"], "de", 20.0)
+    assert [z.quelle for z in zeiten] == ["anchor", "interpolated", "interpolated", "anchor"]
+    dauer_und = zeiten[1].ende - zeiten[1].start
+    dauer_melodie = zeiten[2].ende - zeiten[2].start
+    assert dauer_melodie == pytest.approx(3 * dauer_und)
+    assert zeiten[1].start == pytest.approx(1.0)
+    # Atempause: das letzte interpolierte Wort endet vor der Messung bei 9.0.
+    assert zeiten[2].ende < 9.0
+    assert all(z.score == 0.0 for z in zeiten[1:3])
+
+
+def test_interpoliere_kette_am_ende_bleibt_im_audio():
+    """Ohne Deckel liefe die Kette hinter das Songende (im Vorbild gemessen:
+    163 Woerter bis 207,6 s bei 199 s Audio) - Noten nach dem Ende sind
+    objektiver Muell."""
+    anker = [GemessenesWort(9.0, 9.4, 0.5, "anchor")] + [None] * 20
+    woerter = ["a"] + ["lalala"] * 20
+    zeiten = interpoliere(anker, woerter, "de", 10.0)
+    assert zeiten[-1].ende <= 10.0 + 1e-9
+
+
+def test_interpoliere_kette_am_anfang_endet_an_der_ersten_messung():
+    anker = [None, None, GemessenesWort(5.0, 5.4, 0.5, "anchor")]
+    zeiten = interpoliere(anker, ["eins", "zwei", "drei"], "de", 20.0)
+    assert zeiten[1].ende == pytest.approx(5.0)
+    assert zeiten[0].start >= 0.0
+    assert zeiten[0].ende == pytest.approx(zeiten[1].start)
+
+
+def test_interpoliere_ohne_jeden_anker_beginnt_bei_null():
+    zeiten = interpoliere([None, None], ["eins", "zwei"], "de", 100.0)
+    assert zeiten[0].start == 0.0
+    assert all(z.quelle == "interpolated" for z in zeiten)
+
+
+def test_stille_grenzen_trimmt_raender():
+    import numpy as np
+
+    abtastrate = 16000
+    rahmen = int(abtastrate * 0.02)
+    stille = np.zeros(rahmen * 10, dtype=np.float32)
+    ton = np.full(rahmen * 5, 0.5, dtype=np.float32)
+    audio = np.concatenate([stille, ton, stille])
+    von, bis = stille_grenzen(audio, 0, len(audio))
+    # Ein Rahmen Vorlauf bleibt: der Konsonantenansatz hat weniger Energie
+    # als der Vokal, gehoert aber zum Wort.
+    assert von == rahmen * 9
+    assert bis <= rahmen * 16
+
+
+def test_stille_grenzen_ohne_energie_bleibt_unveraendert():
+    import numpy as np
+
+    audio = np.zeros(16000, dtype=np.float32)
+    assert stille_grenzen(audio, 100, 8000) == (100, 8000)
+
+
+def test_ctc_tokens_schreiben_zahlen_aus_und_lassen_rest_stehen():
+    assert _ctc_tokens("20", "de") == ["zwanzig"]
+    assert _ctc_tokens("Haus,", "de") == ["Haus,"]
+
+
+def test_fasse_zusammen_vereinigt_expandierte_tokens():
+    roh = [
+        {"word": "twenty", "start": 1.0, "end": 1.4, "score": 0.5},
+        {"word": "one", "start": 1.5, "end": 1.8, "score": 0.3},
+    ]
+    ergebnis = _fasse_zusammen(roh, [0, 0], 1)
+    assert ergebnis is not None
+    assert ergebnis[0]["start"] == 1.0
+    assert ergebnis[0]["end"] == 1.8
+    assert ergebnis[0]["score"] == 0.3
+
+
+def test_fasse_zusammen_meldet_fehlende_zeitstempel():
+    roh = [{"word": "x", "start": None, "end": None}]
+    assert _fasse_zusammen(roh, [0], 1) is None
+
+
+def test_pruefe_fenster_akzeptiert_monotone_zeiten_im_fenster():
+    roh = [
+        {"word": "a", "start": 1.0, "end": 1.2, "score": 0.4},
+        {"word": "b", "start": 1.3, "end": 1.6, "score": 0.2},
+    ]
+    assert _pruefe_fenster(roh, 0.9, 2.0) == [(1.0, 1.2, 0.4), (1.3, 1.6, 0.2)]
+
+
+def test_pruefe_fenster_verwirft_ausbrecher_und_rueckwaertslauf():
+    ausserhalb = [{"word": "a", "start": 5.0, "end": 5.2, "score": 0.4}]
+    assert _pruefe_fenster(ausserhalb, 0.9, 2.0) is None
+    rueckwaerts = [
+        {"word": "a", "start": 1.5, "end": 1.7, "score": 0.4},
+        {"word": "b", "start": 1.0, "end": 1.2, "score": 0.4},
+    ]
+    assert _pruefe_fenster(rueckwaerts, 0.9, 2.0) is None
 
 
 def test_je_abschnitt_entsteht_ein_segment_mit_eigenem_zeitfenster(tmp_path, monkeypatch):

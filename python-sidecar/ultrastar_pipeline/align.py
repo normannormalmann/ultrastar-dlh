@@ -1,15 +1,21 @@
-"""Forced Alignment ueber WhisperX. Duenner Adapter."""
+"""Forced Alignment ueber WhisperX. Duenner Adapter.
+
+Teile portiert aus UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarKaraokeMaker, MIT, (c) walterfr).
+"""
 
 import hashlib
 import json
-from dataclasses import replace
+import re
+import unicodedata
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import separate
-from .anchors import Abschnitt
+from .anchors import Abschnitt, GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .notes import AlignedWord
+from .numerals import erweitere_zahlwort
 from .progress import emit_progress
 
 STAGE_VERSION = "1"
@@ -18,6 +24,214 @@ STAGE_VERSION = "1"
 # von hier, die eigentliche Definition liegt aber in errors.py (Importzyklus,
 # siehe dort).
 __all__ = ["LanguageUnsupported", "AlignmentFailed", "align"]
+
+
+@dataclass
+class WortZeit:
+    """Ein Textwort mit Zeit, Score und Herkunft der Zeit. Bewusst
+    veraenderlich: Pass 3 befoerdert interpolierte Eintraege in place zu
+    gemessenen."""
+
+    text: str
+    start: float
+    ende: float
+    score: float
+    quelle: str
+
+
+_VOKALGRUPPE = re.compile(r"[aeiouy]+")
+
+
+def silbengewicht(wort: str, sprache: str) -> int:
+    """Grobe Silbenzahl (Vokalgruppen) als Interpolationsgewicht - keine
+    Silbentrennung, nur die Erkenntnis, dass "melodie" laenger klingt als
+    "und". Akzente werden gefaltet (Umlaute bleiben Vokale), Zahlen zaehlen
+    wie gesungen, nicht wie geschrieben ("20" hat keine Vokale, "zwanzig"
+    zwei Gruppen). Mindestens 1."""
+    zerlegt = unicodedata.normalize("NFKD", wort.casefold())
+    gefaltet = "".join(z for z in zerlegt if not unicodedata.combining(z))
+    kern = "".join(z for z in gefaltet if z.isalnum())
+    ausgeschrieben = " ".join(erweitere_zahlwort(kern, sprache))
+    return max(1, len(_VOKALGRUPPE.findall(ausgeschrieben)))
+
+
+def interpoliere(
+    anker: list[GemessenesWort | None],
+    woerter: list[str],
+    sprache: str,
+    audio_ende: float,
+) -> list[WortZeit]:
+    """Pass 4, letzter Rueckfall: Woerter ohne Messung werden zwischen den
+    gemessenen Nachbarn interpoliert, gewichtet nach geschaetzter
+    Silbenzahl, mit einer Atempause vor der naechsten Messung. Ketten an
+    den Raendern sind durch Audioanfang und -ende begrenzt (im Vorbild
+    gemessen: ohne Deckel liefen 163 Woerter bis 207,6 s bei 199 s Audio).
+    Interpolierte Eintraege tragen Score 0,0 - ein anderes Signal als
+    "phonetisch unsicher gemessen".
+
+    Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
+    n = len(woerter)
+    zeiten: list[WortZeit | None] = [None] * n
+    for i in range(n):
+        a = anker[i]
+        if a is not None:
+            zeiten[i] = WortZeit(woerter[i], a.start, a.ende, a.score, a.quelle)
+
+    i = 0
+    while i < n:
+        if zeiten[i] is not None:
+            i += 1
+            continue
+        lauf_start = i
+        while i < n and zeiten[i] is None:
+            i += 1
+        lauf = list(range(lauf_start, i))
+        gewichte = [silbengewicht(woerter[k], sprache) for k in lauf]
+        davor = anker[lauf_start - 1] if lauf_start > 0 else None
+        danach = anker[i] if i < n else None
+
+        if davor is not None and danach is not None:
+            spanne = max(0.05 * (len(lauf) + 1), danach.start - davor.ende)
+            atem = sum(gewichte) / len(gewichte)
+            summe = sum(gewichte) + atem
+            t = davor.ende
+            for k, g in zip(lauf, gewichte):
+                dauer = spanne * g / summe
+                zeiten[k] = WortZeit(woerter[k], t, t + dauer, 0.0, QUELLE_INTERPOLIERT)
+                t += dauer
+        elif davor is not None:
+            # Songende ohne weitere Messung: nach vorn ketten, ~0,15 s je
+            # Silbengruppe, aber nie ueber das Audio hinaus.
+            t = davor.ende
+            dauern = [min(0.8, max(0.2, 0.15 * g)) for g in gewichte]
+            uebrig = audio_ende - t
+            noetig = sum(dauern)
+            if noetig > uebrig > 0:
+                faktor = uebrig / noetig
+                dauern = [d * faktor for d in dauern]
+            for k, dauer in zip(lauf, dauern):
+                zeiten[k] = WortZeit(woerter[k], t, t + dauer, 0.0, QUELLE_INTERPOLIERT)
+                t += dauer
+        elif danach is not None:
+            # Songanfang ohne Messung davor: rueckwaerts ketten, endet an
+            # der ersten Messung, beginnt fruehestens bei 0.
+            t = danach.start
+            for k, g in zip(reversed(lauf), reversed(gewichte)):
+                dauer = min(0.8, max(0.2, 0.15 * g))
+                start = max(0.0, t - dauer)
+                zeiten[k] = WortZeit(woerter[k], start, t, 0.0, QUELLE_INTERPOLIERT)
+                t = start
+        else:
+            # Kein einziger Anker im Song: ab 0 ketten, im Audio bleiben.
+            # Pass 3 macht daraus anschliessend ein Fenster ueber die
+            # volle Spur.
+            t = 0.0
+            dauern = [min(0.8, max(0.2, 0.15 * g)) for g in gewichte]
+            if sum(dauern) > audio_ende > 0:
+                faktor = audio_ende / sum(dauern)
+                dauern = [d * faktor for d in dauern]
+            for k, dauer in zip(lauf, dauern):
+                zeiten[k] = WortZeit(woerter[k], t, t + dauer, 0.0, QUELLE_INTERPOLIERT)
+                t += dauer
+
+    fertig = [z for z in zeiten if z is not None]
+    if len(fertig) != n:
+        # Kann nur ein Programmierfehler sein - laut scheitern statt still
+        # Woerter verlieren.
+        raise AlignmentFailed("Interpolation hat Woerter verloren")
+    return fertig
+
+
+def stille_grenzen(
+    audio,
+    von_sample: int,
+    bis_sample: int,
+    abtastrate: int = 16000,
+    energie_schwelle: float = 0.01,
+    rahmen_ms: float = 20.0,
+) -> tuple[int, int]:
+    """Trimmt ein Fenster auf den Bereich mit echter Gesangsenergie (RMS je
+    Rahmen). Ein Fenster voller Randstille gibt dem CTC keinen Hinweis, wo
+    darin das Singen beginnt - er schmiert Woerter in die Stille. Ein
+    Rahmen Vorlauf bleibt stehen (Konsonantenansatz). Ohne einen einzigen
+    Rahmen ueber der Schwelle bleiben die Grenzen unveraendert.
+
+    Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
+    import numpy as np
+
+    rahmen_laenge = max(1, int(abtastrate * rahmen_ms / 1000))
+    ausschnitt = audio[von_sample:bis_sample]
+    if ausschnitt.size < rahmen_laenge:
+        return von_sample, bis_sample
+
+    anzahl = ausschnitt.size // rahmen_laenge
+    rahmen = ausschnitt[: anzahl * rahmen_laenge].reshape(anzahl, rahmen_laenge)
+    rms = np.sqrt(np.mean(rahmen.astype(np.float64) ** 2, axis=1))
+    stimmhaft = np.where(rms >= energie_schwelle)[0]
+    if stimmhaft.size == 0:
+        return von_sample, bis_sample
+
+    erster = max(0, int(stimmhaft[0]) - 1)
+    letzter = int(stimmhaft[-1]) + 1
+    neu_von = von_sample + erster * rahmen_laenge
+    neu_bis = min(bis_sample, von_sample + letzter * rahmen_laenge)
+    return neu_von, neu_bis
+
+
+def _ctc_tokens(wort: str, sprache: str) -> list[str]:
+    """Tokens, die dieses Wort gegenueber dem CTC vertreten: Zahlen
+    ausgeschrieben, alles andere unveraendert (Satzzeichen verwirft
+    whisperx selbst)."""
+    kern = "".join(z for z in wort.casefold() if z.isalnum())
+    teile = erweitere_zahlwort(kern, sprache)
+    return teile if teile != [kern] else [wort]
+
+
+def _fasse_zusammen(
+    roh: list[dict], herkunft: list[int], anzahl: int
+) -> list[dict] | None:
+    """Fuegt expandierte Tokens wieder zu einer Messung je Ursprungswort
+    zusammen (Start des ersten, Ende des letzten, schwaechster Score).
+    None, sobald ein Token ohne Zeitstempel dabei ist - dann faellt die
+    ganze Luecke sicher auf die Interpolation zurueck."""
+    gruppen: list[dict | None] = [None] * anzahl
+    for w, pos in zip(roh, herkunft):
+        ws, we = w.get("start"), w.get("end")
+        if ws is None or we is None:
+            return None
+        aktuell = gruppen[pos]
+        if aktuell is None:
+            gruppen[pos] = dict(w)
+        else:
+            aktuell["start"] = min(float(aktuell["start"]), float(ws))
+            aktuell["end"] = max(float(aktuell["end"]), float(we))
+            aktuell["score"] = min(
+                float(aktuell.get("score", 0.0)), float(w.get("score", 0.0))
+            )
+    if any(g is None for g in gruppen):
+        return None
+    return [g for g in gruppen if g is not None]
+
+
+def _pruefe_fenster(
+    woerter_roh: list[dict], fenster_start: float, fenster_ende: float
+) -> list[tuple[float, float, float]] | None:
+    """Validierung eines Fensterergebnisses: Zeiten vorhanden, im Fenster
+    (mit 0,5 s Spiel), monoton steigend. None heisst: Ergebnis verwerfen,
+    die Luecke behaelt die Interpolation - ein Fensterfehler reisst nie
+    die Pipeline."""
+    zeiten: list[tuple[float, float, float]] = []
+    letzter_start = fenster_start - 0.001
+    for w in woerter_roh:
+        ws, we = w.get("start"), w.get("end")
+        if ws is None or we is None:
+            return None
+        ws, we = float(ws), float(we)
+        if ws < fenster_start - 0.5 or we > fenster_ende + 0.5 or ws < letzter_start:
+            return None
+        letzter_start = ws
+        zeiten.append((ws, max(we, ws + 0.02), float(w.get("score", 0.0))))
+    return zeiten
 
 
 class AlignmentFailed(Exception):
