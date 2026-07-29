@@ -159,6 +159,8 @@ Weitere Risiken:
 
 **Nachtrag 2026-07-29 (Fix-Task C) - Rand-Fenster klemmen an die Anker statt an die Spur:** Gemessener Anlass war eine erste Strophe, die der Aligner 12 s zu spaet in ein 24,7 s breites Intro-Fenster legte (erster Anker bei 6,4 s, Fensterstart aber 0 s). `baue_abschnitte` klemmt das erste bzw. letzte Fenster jetzt an den ersten bzw. letzten Anker, plus 1 s Vorlauf je unverankertem Randwort (`RAND_SEKUNDEN_JE_WORT`). Der ankerlose Fall (volle Spur als ein Abschnitt) bleibt unveraendert.
 
+**Nachtrag 2026-07-29 (Task 7) - Abschnitte durch Vierpass ersetzt:** Die Abschnitts-Maschinerie (Pass 1-2 Fenster-Aggregation, Ratenwaechter, Rand-Klemmung) ist obsolet: das Vierpass-Modell liefert praezisere Fenstergrenzen direkt aus den gemessenen Ankern (Pass 3) und belegt sie mit Phonem-Konfidenz (Pass 4). `Anchor`, `finde_anker`, `Abschnitt`, `baue_abschnitte` samt `MAX_WOERTER_PRO_SEKUNDE` und `RAND_SEKUNDEN_JE_WORT` sind entfernt; die echte LCS und die Messharness leben in `berechne_anker()` weiter.
+
 ## Bewusst nicht enthalten
 
 - **Duette** — unverändert vertagt.

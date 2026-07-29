@@ -1,7 +1,8 @@
 """Anker zwischen bekanntem Liedtext und gehoertem Transkript.
 
-Rein: kein Audio, kein Modell, keine Nebenwirkung. Hier liegt die
-Entscheidungslogik des Alignments, und nur deshalb ist sie ohne GPU pruefbar.
+Entscheidungslogik des Alignments, implementiert ohne Audio oder Modell und ohne
+GPU-Anforderung. Pass 1-2 aus dem Vierpass-Modell (exakte und Fuzzy-Anker plus
+Misstrauensregeln); Pass 3 und 4 leben in der Verarbeitungs-Pipeline danach.
 
 Teile portiert aus UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarKaraokeMaker, MIT, (c) walterfr).
 """
@@ -12,14 +13,6 @@ import unicodedata
 from dataclasses import dataclass
 
 from .transcribe import TranskriptWort
-
-
-@dataclass(frozen=True)
-class Anchor:
-    """Ein bekanntes Wort und die Zeit, zu der es gehoert wurde."""
-
-    bekannter_index: int
-    zeit: float
 
 
 # Zeitquellen, von der verlaesslichsten zur unsichersten. Die Strings sind
@@ -235,29 +228,6 @@ def berechne_anker(
     return anker
 
 
-def finde_anker(bekannte: list[str], gehoerte: list[TranskriptWort]) -> list[Anchor]:
-    """Ordnet bekannte Woerter den Zeiten gehoerter Woerter zu.
-
-    Echte laengste gemeinsame Teilfolge per dynamischer Programmierung -
-    global optimal. Der fruehere greedy Ansatz (difflib, laengster Block
-    zuerst) band im Pilotlauf einen wortgleich wiederholten Refrain an die
-    falsche Stelle und liess 80 Woerter ohne Anker; einer global optimalen
-    Teilfolge kann das nicht passieren, weil die geopferten Treffer der
-    Mitte jede solche Zuordnung vom Maximum wegdruecken. Die Monotonie in
-    beiden Indizes folgt aus der Konstruktion. O(n*m) ist bei
-    Liedtextgroessen (einige hundert Woerter) unkritisch.
-
-    Voraussetzung: `gehoerte` ist zeitlich aufsteigend sortiert.
-    """
-    if not bekannte or not gehoerte:
-        return []
-    a = [normalisiere(w) for w in bekannte]
-    b = [normalisiere(w.text) for w in gehoerte]
-    return [
-        Anchor(bekannter_index=i, zeit=gehoerte[j].start) for i, j in _lcs_paare(a, b)
-    ]
-
-
 _LRC_ZEITSTEMPEL = re.compile(r"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]")
 
 
@@ -402,117 +372,6 @@ def saee_lrc_anker(
         gesaeht += 1
     return gesaeht
 
-
-@dataclass(frozen=True)
-class Abschnitt:
-    """Ein Textausschnitt mit dem Zeitfenster, in dem er gesungen wird.
-
-    bis_index ist exklusiv. vertrauen ist der Anteil der Woerter des
-    Abschnitts, die im Transkript wiedergefunden wurden.
-    """
-
-    von_index: int
-    bis_index: int
-    start_s: float
-    ende_s: float
-    vertrauen: float
-    beidseitig_verankert: bool
-
-
-# Schnellster echter Abschnitt im Pilotkorpus (dichter Rap): 6,9 Woerter/s.
-# Was darueber liegt, singt niemand — eine solche Grenze stammt von einem
-# Falsch-Anker (z. B. ein Fuellwort, das zufaellig in einem ASR-Loch matcht).
-MAX_WOERTER_PRO_SEKUNDE = 8.0
-
-# Vorlauf fuer unverankerte Woerter am Rand. Der Median im Pilot lag bei
-# 1,2-1,35 Woertern/s; eine Sekunde je Wort ist grosszuegig, ohne dem
-# Aligner wieder ein halbes Intro zu schenken.
-RAND_SEKUNDEN_JE_WORT = 1.0
-
-
-def baue_abschnitte(
-    anzahl_woerter: int,
-    anker: list[Anchor],
-    dauer_s: float,
-    zielgroesse: int = 12,
-    saum_s: float = 0.3,
-) -> list[Abschnitt]:
-    """Schneidet den Liedtext an tragfaehigen Ankern in Abschnitte.
-
-    Nicht jeder Anker wird zur Grenze: zu enge Fenster nehmen dem Aligner den
-    Spielraum, den er braucht. Grenzen entstehen im Abstand von etwa
-    zielgroesse Woertern.
-
-    Die aeusseren Raender reichen nicht bis an den Spurrand, sondern klemmen
-    an den ersten bzw. letzten Anker (mit Vorlauf fuer unverankerte Randwoerter):
-    ein langes Intro oder Outro gehoert nicht ins Fenster, es gibt dem Aligner
-    sonst nur Raum, Woerter dorthin zu verschieben.
-
-    Ohne Anker entsteht genau ein Abschnitt ueber die volle Spur \u2014 bitweise
-    das bisherige Verhalten. Das Verfahren kann damit nie schlechter werden
-    als der gemessene Basiswert, sondern hoechstens sichtbar darauf
-    zurueckfallen.
-    """
-    # Zwei Zeitquellen muessen zusammenpassen: die Ankerzeiten stammen aus dem
-    # Transkript, dauer_s aus der Audiodatei. Passen sie nicht zusammen, waeren
-    # alle Fenster falsch - und der Deckel weiter unten wuerde daraus lautlos
-    # umgedrehte Fenster machen (Start nach Ende). Lieber hier abbrechen.
-    if dauer_s <= 0.0:
-        raise ValueError(f"Songlaenge muss positiv sein, war {dauer_s}")
-    if anker and dauer_s < anker[-1].zeit:
-        raise ValueError(
-            f"Songlaenge {dauer_s}s liegt vor dem letzten Zeitstempel "
-            f"{anker[-1].zeit}s - widerspruechlich"
-        )
-    if anzahl_woerter <= 0:
-        return []
-    if not anker:
-        return [
-            Abschnitt(0, anzahl_woerter, 0.0, dauer_s, 0.0, beidseitig_verankert=False)
-        ]
-
-    verankerte_indizes = {a.bekannter_index for a in anker}
-
-    def _schneide(grenzen: list[Anchor]) -> list[Abschnitt]:
-        abschnitte: list[Abschnitt] = []
-        for i, grenze in enumerate(grenzen):
-            letzter = i == len(grenzen) - 1
-            von = 0 if i == 0 else grenze.bekannter_index
-            bis = anzahl_woerter if letzter else grenzen[i + 1].bekannter_index
-            if i == 0:
-                # Das Fenster folgt der Evidenz, nicht der Spur: ein Intro gibt
-                # dem Aligner nur Raum, die Woerter dorthin zu verschieben.
-                # Unverankerte Woerter vor dem ersten Anker bekommen Vorlauf.
-                vorlauf = anker[0].bekannter_index * RAND_SEKUNDEN_JE_WORT
-                start = max(0.0, anker[0].zeit - saum_s - vorlauf)
-            else:
-                start = max(0.0, grenze.zeit - saum_s)
-            if letzter:
-                # Die Ankerzeit ist der Wortanfang - das letzte verankerte Wort
-                # braucht selbst noch Raum, dazu die unverankerten danach.
-                nachlauf = (
-                    anzahl_woerter - anker[-1].bekannter_index
-                ) * RAND_SEKUNDEN_JE_WORT
-                ende = min(dauer_s, anker[-1].zeit + saum_s + nachlauf)
-            else:
-                ende = min(dauer_s, grenzen[i + 1].zeit + saum_s)
-
-            spanne = max(1, bis - von)
-            getroffen = sum(1 for idx in range(von, bis) if idx in verankerte_indizes)
-            abschnitte.append(
-                Abschnitt(
-                    von_index=von,
-                    bis_index=bis,
-                    start_s=start,
-                    ende_s=ende,
-                    vertrauen=getroffen / spanne,
-                    # Erster und letzter Abschnitt sind an ihrem Aussenrand aus
-                    # einem einzelnen Anker (plus Vorlauf/Nachlauf) extrapoliert,
-                    # nicht von einer zweiten Grenze gehalten wie innen.
-                    beidseitig_verankert=not (i == 0 or letzter),
-                )
-            )
-        return abschnitte
 
     # Grenzanker im Zielabstand auswaehlen, immer beim ersten beginnend.
     grenzen = [anker[0]]
