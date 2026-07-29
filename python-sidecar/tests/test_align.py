@@ -177,19 +177,12 @@ def test_silbengewicht_zaehlt_vokalgruppen():
 
 
 def test_silbengewicht_zaehlt_zahlen_wie_gesungen():
-    # "20" hat keine Vokale und woegte 1; gesungen wird "zwanzig" (2 Gruppen).
+    # "20" hat keine Vokale und woege 1; gesungen wird "zwanzig" (2 Gruppen).
     assert silbengewicht("20", "de") == 2
 
 
 def test_silbengewicht_ist_nie_null():
     assert silbengewicht("pst", "de") == 1
-
-
-def _anker_liste(n: int, **feste) -> list:
-    anker = [None] * n
-    for i, wert in feste.items():
-        anker[int(i[1:])] = wert
-    return anker
 
 
 def test_interpoliere_verteilt_nach_silbengewicht():
@@ -287,6 +280,15 @@ def test_pruefe_fenster_akzeptiert_monotone_zeiten_im_fenster():
         {"word": "b", "start": 1.3, "end": 1.6, "score": 0.2},
     ]
     assert _pruefe_fenster(roh, 0.9, 2.0) == [(1.0, 1.2, 0.4), (1.3, 1.6, 0.2)]
+
+
+def test_pruefe_fenster_toleriert_das_erste_wort_am_fensterrand():
+    """Die dokumentierte Toleranz von 0,5 s gilt auch fuer das erste Wort,
+    nicht nur fuer die Monotonie der Folgewoerter."""
+    knapp_davor = [{"word": "a", "start": 0.7, "end": 0.9, "score": 0.4}]
+    assert _pruefe_fenster(knapp_davor, 1.0, 2.0) == [(0.7, 0.9, 0.4)]
+    zu_frueh = [{"word": "a", "start": 0.4, "end": 0.6, "score": 0.4}]
+    assert _pruefe_fenster(zu_frueh, 1.0, 2.0) is None
 
 
 def test_pruefe_fenster_verwirft_ausbrecher_und_rueckwaertslauf():

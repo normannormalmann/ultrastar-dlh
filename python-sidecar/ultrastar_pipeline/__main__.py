@@ -92,16 +92,21 @@ def _baue_sections(woerter, wort_zu_note: list[int]) -> list[dict]:
         j = i
         while j < n and (woerter[j].quelle != "interpolated") == gemessen:
             j += 1
-        sections.append(
-            {
-                "fromNoteIndex": wort_zu_note[i],
-                "toNoteIndex": wort_zu_note[j],
-                "confidence": (
-                    sum(w.confidence for w in woerter[i:j]) / (j - i) if gemessen else 0.0
-                ),
-                "anchoredBothSides": True if gemessen else (i > 0 and j < n),
-            }
-        )
+        # Woerter mit 0 Silben duplizieren ihren Notenindex in wort_zu_note
+        # (siehe notes.py); ein Lauf nur aus solchen Woertern haette
+        # fromNoteIndex == toNoteIndex - keinen Notenbereich, den eine
+        # Section beschreiben koennte. songData.ts lehnt das ab.
+        if wort_zu_note[j] > wort_zu_note[i]:
+            sections.append(
+                {
+                    "fromNoteIndex": wort_zu_note[i],
+                    "toNoteIndex": wort_zu_note[j],
+                    "confidence": (
+                        sum(w.confidence for w in woerter[i:j]) / (j - i) if gemessen else 0.0
+                    ),
+                    "anchoredBothSides": True if gemessen else (i > 0 and j < n),
+                }
+            )
         i = j
     return sections
 
@@ -170,8 +175,11 @@ def main(argv: list[str] | None = None) -> int:
                 pfosten = anchors.ordne_lrc_zeilen(zeilen, lrc_zeilen)
                 # Erst entlarven, dann saeen: entlarvte Luecken sollen neu
                 # besaet werden koennen.
-                anchors.entlarve_mit_lrc(anker, pfosten, dauer_sekunden(vocals))
-                anchors.saee_lrc_anker(anker, pfosten)
+                entlarvt = anchors.entlarve_mit_lrc(anker, pfosten, dauer_sekunden(vocals))
+                gesaeht = anchors.saee_lrc_anker(anker, pfosten)
+                warnungen.append(
+                    f"LRC: {entlarvt} Anker entlarvt, {gesaeht} Zeilenanfaenge gesaeht."
+                )
             else:
                 warnungen.append(
                     "Synchronisierte Lyrics nicht lesbar, weiter ohne LRC-Anker."

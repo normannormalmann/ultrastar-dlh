@@ -157,6 +157,30 @@ def test_sections_beschreiben_laeufe_gleicher_messbarkeit():
     ]
 
 
+def test_sections_ueberspringen_notenlose_laeufe():
+    """Ein Wort mit 0 Silben dupliziert seinen Notenindex in wort_zu_note
+    (siehe notes.py). Ein Lauf, der nur aus solchen Woertern besteht, haette
+    fromNoteIndex == toNoteIndex - kein Notenbereich, den eine Section
+    beschreiben koennte, und songData.ts lehnt das ab. Hier ist Wort 'b'
+    (isoliert durch den Quellenwechsel auf beiden Seiten) notenlos."""
+    import ultrastar_pipeline.__main__ as haupt
+    from ultrastar_pipeline.notes import AlignedWord
+
+    woerter = [
+        AlignedWord("a", 0.0, 0.5, 0.4, 0, quelle="anchor"),
+        AlignedWord("b", 0.5, 0.5, 0.0, 0, quelle="interpolated"),
+        AlignedWord("c", 0.5, 1.0, 0.4, 0, quelle="anchor"),
+    ]
+    wort_zu_note = [0, 1, 1, 2]
+    sections = haupt._baue_sections(woerter, wort_zu_note)
+    assert sections == [
+        {"fromNoteIndex": 0, "toNoteIndex": 1, "confidence": pytest.approx(0.4), "anchoredBothSides": True},
+        {"fromNoteIndex": 1, "toNoteIndex": 2, "confidence": pytest.approx(0.4), "anchoredBothSides": True},
+    ]
+    # Keine Section beschreibt einen leeren Notenbereich.
+    assert all(s["fromNoteIndex"] != s["toNoteIndex"] for s in sections)
+
+
 @pytest.mark.slow
 def test_voller_lauf_erzeugt_gueltiges_json(tmp_path):
     """Braucht Modelle. Aufruf: bun run test:py:slow"""

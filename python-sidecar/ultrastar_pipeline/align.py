@@ -225,7 +225,11 @@ def _pruefe_fenster(
     die Luecke behaelt die Interpolation - ein Fensterfehler reisst nie
     die Pipeline."""
     zeiten: list[tuple[float, float, float]] = []
-    letzter_start = fenster_start - 0.001
+    # Die 0,5 s Toleranz gelten auch fuer das erste Wort - sonst wird es
+    # schon bei einem winzigen Vorlauf vor Fensterstart verworfen. Die
+    # Monotonie der Folgewoerter bleibt trotzdem gewahrt, weil letzter_start
+    # danach auf den tatsaechlichen Start jedes Wortes weiterrueckt.
+    letzter_start = fenster_start - 0.5
     for w in woerter_roh:
         ws, we = w.get("start"), w.get("end")
         if ws is None or we is None:
@@ -466,8 +470,14 @@ def align(
 
     try:
         modell, metadaten = whisperx.load_align_model(language_code=language, device=device)
-    except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
-        raise LanguageUnsupported(language) from exc
+    except MemoryError:
+        raise
+    except Exception as exc:
+        if "out of memory" in str(exc).lower():
+            # GPU-Speicher voll ist keine Sprachfrage - der generische
+            # Handler in __main__ gibt dafuer den richtigen Rat.
+            raise
+        raise LanguageUnsupported(language) from exc  # kein Alignment-Modell fuer diese Sprache
 
     audio = whisperx.load_audio(str(vocals))
     audio_dauer = float(len(audio)) / 16000.0

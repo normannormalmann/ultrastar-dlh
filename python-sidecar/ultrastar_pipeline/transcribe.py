@@ -64,8 +64,14 @@ def transcribe(
         modell = whisperx.load_model(
             MODELL, device, compute_type="float16" if device == "cuda" else "int8", language=sprache
         )
-    except Exception as exc:  # kein ASR-Modell fuer diese Sprache
-        raise LanguageUnsupported(sprache, stufe="transcribe") from exc
+    except MemoryError:
+        raise
+    except Exception as exc:
+        if "out of memory" in str(exc).lower():
+            # GPU-Speicher voll ist keine Sprachfrage - der generische
+            # Handler in __main__ gibt dafuer den richtigen Rat.
+            raise
+        raise LanguageUnsupported(sprache, stufe="transcribe") from exc  # kein ASR-Modell fuer diese Sprache
     ergebnis = modell.transcribe(str(vocals), language=sprache)
 
     # Pass 1 des Vierpass-Modells: das Transkript selbst wird ausgerichtet.
@@ -76,8 +82,14 @@ def transcribe(
         align_modell, metadaten = whisperx.load_align_model(
             language_code=sprache, device=device
         )
-    except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
-        raise LanguageUnsupported(sprache, stufe="transcribe") from exc
+    except MemoryError:
+        raise
+    except Exception as exc:
+        if "out of memory" in str(exc).lower():
+            # GPU-Speicher voll ist keine Sprachfrage - der generische
+            # Handler in __main__ gibt dafuer den richtigen Rat.
+            raise
+        raise LanguageUnsupported(sprache, stufe="transcribe") from exc  # kein Alignment-Modell fuer diese Sprache
     ausgerichtet = whisperx.align(
         ergebnis.get("segments", []),
         align_modell,

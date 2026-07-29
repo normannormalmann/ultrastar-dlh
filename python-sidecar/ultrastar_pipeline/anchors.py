@@ -302,6 +302,9 @@ def entlarve_mit_lrc(
     Woerter nach dem letzten echten Pfosten ungeprueft (im Vorbild als
     realer blinder Fleck gemessen).
 
+    Voraussetzung: `pfosten` ist nach Wortindex aufsteigend sortiert - das
+    ist durch ordne_lrc_zeilen konstruktiv garantiert.
+
     Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
     n = len(anker)
     posts = [p for p in pfosten if p[0] < n]
@@ -343,7 +346,9 @@ def saee_lrc_anker(
     Wert des .lrc liegt genau in den ASR-Loechern - kuerzere Interpolation,
     bessere Fenstergrenzen fuer Pass 3. Monotonie gegen die gemessenen
     Nachbarn wird geprueft, sonst wuerde ein Pfosten einer anderen Edition
-    die Reihenfolge brechen.
+    die Reihenfolge brechen: gegen den Vorgaenger mit Toleranz (eine leicht
+    fruehe Saat bricht die Startreihenfolge nicht), gegen den Nachfolger
+    dagegen streng (echte Gleichheit oder Ueberholen wird verworfen).
 
     Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
     n = len(anker)
@@ -363,7 +368,10 @@ def saee_lrc_anker(
                 break
         if vor_ende is not None and zeit < vor_ende - toleranz:
             continue
-        if nach_start is not None and zeit > nach_start + toleranz:
+        # Streng gegen den Nachfolger: Toleranz hier wuerde die Saat hinter
+        # den gemessenen Nachfolger-Start setzen und die Interpolation
+        # danach rueckwaerts laufen lassen.
+        if nach_start is not None and zeit >= nach_start:
             continue
         ende = zeit + 0.25
         if nach_start is not None:

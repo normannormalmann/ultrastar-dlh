@@ -201,6 +201,16 @@ def test_saee_lrc_anker_fuellt_nur_luecken_monoton():
     assert anker[4] is None
 
 
+def test_saee_lrc_anker_verwirft_saat_hinter_dem_nachfolger_start():
+    """Ein Pfosten, dessen Zeit (11.4) gleichauf oder hinter dem gemessenen
+    Nachfolger-Start (11.0) liegt, darf nicht gesaet werden - sonst setzt
+    die Saat die Luecke hinter den Nachfolger und bricht die Monotonie."""
+    anker: list = [None, GemessenesWort(11.0, 11.3, 0.5, "anchor")]
+    gesaeht = saee_lrc_anker(anker, [(0, 11.4)])
+    assert gesaeht == 0
+    assert anker[0] is None
+
+
 def test_saee_lrc_anker_ueberschreibt_keine_messung():
     anker: list = [GemessenesWort(1.0, 1.3, 0.5, "anchor")]
     assert saee_lrc_anker(anker, [(0, 9.0)]) == 0

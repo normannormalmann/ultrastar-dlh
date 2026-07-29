@@ -87,6 +87,22 @@ def test_fehlende_asr_sprache_nennt_die_stufe(tmp_path, monkeypatch):
     assert fehler.value.stufe == "transcribe"
 
 
+def test_gpu_speicher_voll_wird_nicht_zu_language_unsupported(tmp_path, monkeypatch):
+    """Ein Speicherfehler ist keine Sprachfrage - der generische Handler in
+    __main__ gibt dafuer den passenden Rat (--device cpu), das darf nicht
+    hinter LanguageUnsupported verschwinden."""
+
+    def load_model(*args, **kwargs):
+        raise RuntimeError("CUDA out of memory")
+
+    modul = types.ModuleType("whisperx")
+    modul.load_model = load_model
+    monkeypatch.setitem(sys.modules, "whisperx", modul)
+
+    with pytest.raises(RuntimeError):
+        transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashOOM", "cpu")
+
+
 def _stub_mit_alignment() -> types.ModuleType:
     """whisperx-Platzhalter: Transkription plus Forced Alignment des
     Transkripts, ohne ein Modell zu laden."""

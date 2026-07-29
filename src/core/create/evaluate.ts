@@ -84,9 +84,10 @@ const quantil = (werte: number[], q: number): number => {
 
 // Vergleichsform einer Silbe: ohne Schreibweise, Diakritika, Satzzeichen und
 // das Worttrenn-Leerzeichen. Ausschliesslich fuer die Paarung — ausgegeben
-// wird immer der Originaltext. Gleiche Semantik wie normalisiere() im
-// Python-Sidecar (anchors.py), damit beide Seiten dasselbe unter
-// "gleicher Text" verstehen.
+// wird immer der Originaltext. Nah an der Semantik von normalisiere() im
+// Python-Sidecar (anchors.py), aber nicht identisch: toLowerCase() ist
+// nicht casefold() (z.B. wird "ß" in Python zu "ss", hier nicht). Fuer die
+// Silbenpaarung ist das praktisch folgenlos.
 const normalisiere = (s: string): string =>
   s.normalize("NFKD").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 
