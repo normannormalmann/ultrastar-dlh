@@ -231,7 +231,7 @@ def test_unerkannte_woerter_bleiben_none():
 
 def test_fuzzy_anker_fangen_abweichende_schreibweise():
     """Das akustische Ereignis ist dasselbe, nur die Schreibweise weicht ab
-    ("is" gehoert, "ist" im Text) — der gemessene Zeitstempel ist gut und
+    ("is" gehoert, "ist" im Text) - der gemessene Zeitstempel ist gut und
     darf nicht verloren gehen, nur weil die exakte LCS ihn nicht matcht."""
     gehoerte = _gehoert_berechne([
         ("gestern", 1.0, 1.3, 0.7),
@@ -282,7 +282,7 @@ def test_ziffern_tokens_liefern_nie_einen_anker():
 
 def test_kurzes_isoliertes_wort_mit_schwachem_score_wird_entlarvt():
     """Ein "in" mitten in einem grossen ASR-Loch mit Score < 0,3 ist eher
-    die falsche Vorkommnis als eine Messung — im Pilot erzeugte genau so
+    die falsche Vorkommnis als eine Messung - im Pilot erzeugte genau so
     ein Falsch-Anker eine Section mit 13,6 Woertern/s."""
     gehoerte = _gehoert_berechne([("in", 50.0, 50.1, 0.1)])
     bekannte = ["a", "b", "c", "in", "d", "e", "f"]
