@@ -132,6 +132,31 @@ def test_ungeloeste_textfrage_bricht_ab(tmp_path):
     assert _fehler_kind(p.stdout) == "lyrics_unresolved"
 
 
+def test_sections_beschreiben_laeufe_gleicher_messbarkeit():
+    """Zusammenhaengend gemessene Strecken bilden Abschnitte mit mittlerem
+    Score, interpolierte Laeufe bekommen confidence 0 - so sieht der
+    Nutzer, welchen Teilen des Songs zu trauen ist."""
+    import ultrastar_pipeline.__main__ as haupt
+    from ultrastar_pipeline.notes import AlignedWord
+
+    woerter = [
+        AlignedWord("a", 0.0, 0.5, 0.4, 0, quelle="anchor"),
+        AlignedWord("b", 0.5, 1.0, 0.2, 0, quelle="realign"),
+        AlignedWord("c", 1.0, 1.5, 0.0, 0, quelle="interpolated"),
+        AlignedWord("d", 1.5, 2.0, 0.6, 0, quelle="fuzzy"),
+        AlignedWord("e", 2.0, 2.5, 0.0, 0, quelle="interpolated"),
+    ]
+    wort_zu_note = [0, 1, 2, 3, 4, 5]
+    sections = haupt._baue_sections(woerter, wort_zu_note)
+    assert sections == [
+        {"fromNoteIndex": 0, "toNoteIndex": 2, "confidence": pytest.approx(0.3), "anchoredBothSides": True},
+        {"fromNoteIndex": 2, "toNoteIndex": 3, "confidence": 0.0, "anchoredBothSides": True},
+        {"fromNoteIndex": 3, "toNoteIndex": 4, "confidence": pytest.approx(0.6), "anchoredBothSides": True},
+        # Interpolierter Lauf am Songende: nur einseitig begrenzt.
+        {"fromNoteIndex": 4, "toNoteIndex": 5, "confidence": 0.0, "anchoredBothSides": False},
+    ]
+
+
 @pytest.mark.slow
 def test_voller_lauf_erzeugt_gueltiges_json(tmp_path):
     """Braucht Modelle. Aufruf: bun run test:py:slow"""

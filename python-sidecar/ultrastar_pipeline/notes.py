@@ -18,6 +18,9 @@ class AlignedWord:
     end: float
     confidence: float
     line_index: int
+    # Herkunft des Zeitstempels (anchor/fuzzy/realign/lrc/interpolated).
+    # Der Standardwert haelt bestehende Fixtures und Aufrufer gueltig.
+    quelle: str = "anchor"
 
 
 @dataclass(frozen=True)

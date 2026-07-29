@@ -68,11 +68,17 @@ def test_leere_wortliste_ergibt_leere_liste():
     assert abweichung == -2  # zwei erwartete Woerter, keines geliefert
 
 
-def _cache_pfad(work_dir: Path, audio_hash: str, lines: list[str], language: str = "de") -> Path:
+def _cache_pfad(
+    work_dir: Path, audio_hash: str, lines: list[str], anker: list, language: str = "de"
+) -> Path:
     text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
-    # Diese Tests rufen align() stets mit leerer Abschnittsliste auf; der
-    # Digest muss deshalb genau den einer leeren Liste treffen.
-    abschnitt_digest = hashlib.sha256(json.dumps([]).encode("utf8")).hexdigest()[:16]
+    # Die Anker gehen in den Schluessel ein, wie in align() selbst - der
+    # Digest muss deshalb genau demselben Verfahren folgen.
+    anker_digest = hashlib.sha256(
+        json.dumps(
+            [None if a is None else [a.start, a.ende, a.score, a.quelle] for a in anker]
+        ).encode("utf8")
+    ).hexdigest()[:16]
     return stage_path(
         work_dir,
         audio_hash,
@@ -81,47 +87,13 @@ def _cache_pfad(work_dir: Path, audio_hash: str, lines: list[str], language: str
             "language": language,
             "lines": len(lines),
             "text": text_digest,
-            "abschnitte": abschnitt_digest,
+            "anker": anker_digest,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
-        "1",
+        "2",
         ".json",
     )
-
-
-def test_wortabweichung_warnung_bleibt_bei_cache_treffer_erhalten(tmp_path):
-    """align() darf die Abweichungswarnung nicht nur beim ersten Lauf melden
-    — sie ist mitgecacht, muss also auch beim zweiten (Cache-Treffer) wieder
-    in den Warnungen landen."""
-    lines = ["eins zwei"]
-    woerter = [{"text": "eins", "start": 0.0, "end": 0.5, "confidence": 0.9, "line_index": 0}]
-    atomic_write_bytes(
-        _cache_pfad(tmp_path, "hash123", lines),
-        json.dumps({"words": woerter, "deviation": -1}, ensure_ascii=False).encode("utf8"),
-    )
-
-    warnungen: list[str] = []
-    ergebnis = align(Path("egal.wav"), lines, "de", tmp_path, "hash123", "cpu", warnungen, [])
-
-    assert len(ergebnis) == 1
-    assert any("weniger" in w for w in warnungen)
-
-
-def test_ausgeglichene_abweichung_erzeugt_bei_cache_treffer_keine_warnung(tmp_path):
-    lines = ["eins zwei"]
-    woerter = [
-        {"text": "eins", "start": 0.0, "end": 0.5, "confidence": 0.9, "line_index": 0},
-        {"text": "zwei", "start": 0.6, "end": 1.0, "confidence": 0.9, "line_index": 0},
-    ]
-    atomic_write_bytes(
-        _cache_pfad(tmp_path, "hash456", lines),
-        json.dumps({"words": woerter, "deviation": 0}, ensure_ascii=False).encode("utf8"),
-    )
-
-    warnungen: list[str] = []
-    align(Path("egal.wav"), lines, "de", tmp_path, "hash456", "cpu", warnungen, [])
-    assert warnungen == []
 
 
 def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypatch):
@@ -133,13 +105,14 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
 
     Der Fehlschlag wird an einem vorgeschalteten Platzhalter-whisperx
     abgelesen, der jeden Zugriff mitzaehlt. Vorher diente der Importfehler des
-    echten Pakets als Beweis — das prueft die Umgebung statt des Caches und
+    echten Pakets als Beweis - das prueft die Umgebung statt des Caches und
     faellt in dem Moment um, in dem die Modelle wirklich installiert sind.
     """
     lines = ["eins"]
-    ziel = _cache_pfad(tmp_path, "hashXYZ", lines)
+    anker = [None]
+    ziel = _cache_pfad(tmp_path, "hashXYZ", lines, anker)
     atomic_write_bytes(
-        ziel, json.dumps({"words": [], "deviation": 0}, ensure_ascii=False).encode("utf8")
+        ziel, json.dumps({"words": [], "warnungen": []}, ensure_ascii=False).encode("utf8")
     )
 
     zugriffe: list[str] = []
@@ -153,7 +126,7 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
 
     # Vor dem Versionswechsel: Cache-Treffer, das Modell bleibt unberuehrt.
-    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], []) == []
+    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], anker) == []
     assert zugriffe == []
 
     monkeypatch.setattr(separate, "STAGE_VERSION", "999")
@@ -162,7 +135,7 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     # wird, ist nur die Huelle des Platzhalter-Fehlers; entscheidend ist der
     # gezaehlte Zugriff.
     with pytest.raises(LanguageUnsupported):
-        align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], [])
+        align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], anker)
     assert zugriffe == ["de"]
 
 
@@ -182,7 +155,7 @@ def test_dauer_oder_rueckfall_faellt_bei_unlesbarer_datei_auf_den_rueckfall_zuru
     assert dauer_oder_rueckfall(pfad, 4.1) == 4.1
 
 
-from ultrastar_pipeline.anchors import Abschnitt, GemessenesWort
+from ultrastar_pipeline.anchors import GemessenesWort
 from ultrastar_pipeline.align import (
     WortZeit,
     silbengewicht,
@@ -191,6 +164,7 @@ from ultrastar_pipeline.align import (
     _ctc_tokens,
     _fasse_zusammen,
     _pruefe_fenster,
+    richte_fenster_aus,
 )
 
 
@@ -325,65 +299,118 @@ def test_pruefe_fenster_verwirft_ausbrecher_und_rueckwaertslauf():
     assert _pruefe_fenster(rueckwaerts, 0.9, 2.0) is None
 
 
-def test_je_abschnitt_entsteht_ein_segment_mit_eigenem_zeitfenster(tmp_path, monkeypatch):
-    """Der Kern der Ueberarbeitung: nicht mehr ein Segment ueber die ganze
-    Aufnahme, sondern eines je Abschnitt - sonst verteilt der Aligner den
-    Text blind ueber die volle Laenge."""
-    gesehen: list[list[dict]] = []
+def _vierpass_platzhalter(
+    align_aufrufe: list, fenster_woerter: list[dict]
+) -> types.ModuleType:
+    """whisperx-Stub fuer den Vierpass-Weg: 30 s stilles Audio, ein
+    vorgegebenes Fensterergebnis."""
+    import numpy as np
 
-    def load_align_model(language_code, device):
-        return object(), {}
+    modul = types.ModuleType("whisperx")
+    modul.load_align_model = lambda **k: ("modell", {"meta": True})
+    modul.load_audio = lambda pfad: np.zeros(16000 * 30, dtype=np.float32)
 
-    def align_stub(segmente, modell, metadaten, audio, device, return_char_alignments):
-        gesehen.append(segmente)
-        return {
-            "segments": [
-                {
-                    "words": [
-                        {"word": w, "start": float(i), "end": float(i) + 0.5, "score": 0.9}
-                        for i, w in enumerate(str(s["text"]).split())
-                    ]
-                }
-                for s in segmente
-            ]
-        }
+    def align_fn(segmente, modell, metadaten, audio, device,
+                 interpolate_method=None, return_char_alignments=False):
+        align_aufrufe.append(segmente)
+        return {"segments": [{"words": fenster_woerter}]}
 
-    platzhalter = types.ModuleType("whisperx")
-    platzhalter.load_align_model = load_align_model
-    platzhalter.align = align_stub
-    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+    modul.align = align_fn
+    return modul
 
-    lines = ["eins zwei", "drei vier"]
-    abschnitte = [
-        Abschnitt(0, 2, 0.0, 5.0, 1.0, False),
-        Abschnitt(2, 4, 4.7, 10.0, 1.0, False),
+
+def _drei_woerter_anker() -> list:
+    return [
+        GemessenesWort(1.0, 1.4, 0.5, "anchor"),
+        None,
+        GemessenesWort(9.0, 9.4, 0.5, "anchor"),
     ]
-    align(Path("egal.wav"), lines, "de", tmp_path, "hashSeg", "cpu", [], abschnitte)
-
-    assert len(gesehen) == 1, "ein einziger Modellaufruf, wie bisher"
-    segmente = gesehen[0]
-    assert len(segmente) == 2
-    assert (segmente[0]["start"], segmente[0]["end"]) == (0.0, 5.0)
-    assert (segmente[1]["start"], segmente[1]["end"]) == (4.7, 10.0)
-    assert segmente[0]["text"] == "eins zwei"
-    assert segmente[1]["text"] == "drei vier"
 
 
-def test_abschnitte_gegen_falsche_wortzahl_schlagen_laut_fehl(tmp_path, monkeypatch):
-    """Die Abschnittsgrenzen wurden anderswo gegen eine Wortliste berechnet.
-    Stimmt deren Laenge nicht mit der hiesigen ueberein, darf das nicht still
-    zu einer falsch ausgerichteten (aber unbemerkt bleibenden) Section fuehren
-    -- fail loudly statt stiller Verlust."""
+def test_align_misst_luecken_im_fenster_zwischen_den_nachbarn(tmp_path, monkeypatch):
+    aufrufe: list = []
+    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+        aufrufe, [{"word": "zwei", "start": 4.0, "end": 4.5, "score": 0.2}]
+    ))
+    warnungen: list[str] = []
+    woerter = align(
+        Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashG", "cpu",
+        warnungen, _drei_woerter_anker(),
+    )
+    assert [w.quelle for w in woerter] == ["anchor", "realign", "anchor"]
+    assert woerter[1].start == 4.0 and woerter[1].confidence == 0.2
+    assert warnungen == []
+    # Das Fenster liegt zwischen Ende des Vorgaengers und Start des
+    # Nachfolgers - nicht ueber der ganzen Spur.
+    assert aufrufe[0][0]["start"] >= 1.4 - 1e-9
+    assert aufrufe[0][0]["end"] <= 9.0 + 1e-9
 
-    def load_align_model(language_code, device):
-        return object(), {}
 
-    platzhalter = types.ModuleType("whisperx")
-    platzhalter.load_align_model = load_align_model
-    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+def test_align_faellt_bei_ausbrechern_auf_interpolation_zurueck(tmp_path, monkeypatch):
+    aufrufe: list = []
+    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+        aufrufe, [{"word": "zwei", "start": 25.0, "end": 25.5, "score": 0.9}]
+    ))
+    warnungen: list[str] = []
+    woerter = align(
+        Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashH", "cpu",
+        warnungen, _drei_woerter_anker(),
+    )
+    assert woerter[1].quelle == "interpolated"
+    assert woerter[1].confidence == 0.0
+    assert 1.4 <= woerter[1].start <= 9.0
+    assert len(warnungen) == 1 and "Wort" in warnungen[0]
 
-    lines = ["eins zwei"]  # nur zwei Woerter
-    # bis_index nennt fuenf Woerter -- passt nicht zur tatsaechlichen Wortzahl.
-    abschnitte = [Abschnitt(0, 5, 0.0, 5.0, 1.0, False)]
+
+def test_align_cache_traegt_quelle_und_warnungen(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+        [], [{"word": "zwei", "start": 25.0, "end": 25.5, "score": 0.9}]
+    ))
+    erste: list[str] = []
+    align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashI", "cpu",
+          erste, _drei_woerter_anker())
+
+    kaputt = types.ModuleType("whisperx")  # jeder Zugriff waere ein Fehler
+    monkeypatch.setitem(sys.modules, "whisperx", kaputt)
+    zweite: list[str] = []
+    woerter = align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashI",
+                    "cpu", zweite, _drei_woerter_anker())
+    assert [w.quelle for w in woerter] == ["anchor", "interpolated", "anchor"]
+    assert zweite == erste and len(zweite) == 1
+
+
+def test_geaenderte_anker_invalidieren_den_align_cache(tmp_path, monkeypatch):
+    """Die Anker tragen den Einfluss von Transkript und LRC - ein
+    geaenderter Anker darf nie eine alte Ausrichtung wiederverwenden."""
+    aufrufe: list = []
+    stub = _vierpass_platzhalter(aufrufe, [{"word": "zwei", "start": 4.0, "end": 4.5, "score": 0.2}])
+    monkeypatch.setitem(sys.modules, "whisperx", stub)
+    align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashJ", "cpu",
+          [], _drei_woerter_anker())
+    andere = _drei_woerter_anker()
+    andere[0] = GemessenesWort(2.0, 2.4, 0.5, "anchor")
+    align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashJ", "cpu",
+          [], andere)
+    assert len(aufrufe) == 2
+
+
+def test_anker_laenge_muss_zur_wortzahl_passen(tmp_path):
     with pytest.raises(AlignmentFailed):
-        align(Path("egal.wav"), lines, "de", tmp_path, "hashMismatch", "cpu", [], abschnitte)
+        align(Path("egal.wav"), ["eins zwei"], "de", tmp_path, "hashK", "cpu",
+              [], [None])
+
+
+def test_song_ohne_anker_bekommt_ein_fenster_ueber_die_volle_spur(tmp_path, monkeypatch):
+    aufrufe: list = []
+    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+        aufrufe,
+        [
+            {"word": "eins", "start": 0.5, "end": 1.0, "score": 0.3},
+            {"word": "zwei", "start": 1.1, "end": 1.6, "score": 0.3},
+        ],
+    ))
+    woerter = align(Path("egal.wav"), ["eins zwei"], "de", tmp_path, "hashL", "cpu",
+                    [], [None, None])
+    assert [w.quelle for w in woerter] == ["realign", "realign"]
+    assert aufrufe[0][0]["start"] == 0.0
+    assert aufrufe[0][0]["end"] == pytest.approx(30.0)

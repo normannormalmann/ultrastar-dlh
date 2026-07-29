@@ -1,8 +1,8 @@
 """CLI des Pipeline-Kerns.
 
-Reihenfolge: tempo (billig) -> separate -> transcribe -> align -> pitch -> notes.
-Die vier teuren Stufen sind gecacht, notes nie: es ist billig und genau
-das, was justiert wird.
+Reihenfolge: tempo (billig) -> separate -> transcribe -> anchors -> align ->
+pitch -> notes. Die vier teuren Stufen sind gecacht, notes nie: es ist
+billig und genau das, was justiert wird.
 """
 
 import argparse
@@ -77,6 +77,35 @@ def _stage_versions() -> dict[str, str]:
     }
 
 
+def _baue_sections(woerter, wort_zu_note: list[int]) -> list[dict]:
+    """Sections beschreiben Laeufe gleicher Messbarkeit: zusammenhaengend
+    gemessene Strecken (anchor/fuzzy/realign/lrc) mit mittlerem
+    phonetischem Score, interpolierte Laeufe mit confidence 0.
+    anchoredBothSides heisst: beidseitig von gemessenen Woertern begrenzt
+    - fuer gemessene Laeufe trivial wahr, fuer interpolierte genau dann,
+    wenn sie nicht am Songanfang oder -ende liegen."""
+    sections: list[dict] = []
+    i = 0
+    n = len(woerter)
+    while i < n:
+        gemessen = woerter[i].quelle != "interpolated"
+        j = i
+        while j < n and (woerter[j].quelle != "interpolated") == gemessen:
+            j += 1
+        sections.append(
+            {
+                "fromNoteIndex": wort_zu_note[i],
+                "toNoteIndex": wort_zu_note[j],
+                "confidence": (
+                    sum(w.confidence for w in woerter[i:j]) / (j - i) if gemessen else 0.0
+                ),
+                "anchoredBothSides": True if gemessen else (i > 0 and j < n),
+            }
+        )
+        i = j
+    return sections
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ultrastar_pipeline")
     p.add_argument("--audio", required=True, type=Path)
@@ -86,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--work-dir", type=Path, default=Path(".pipeline-cache"))
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--synced-lyrics", type=Path, default=None)
     args = p.parse_args(argv)
 
     warnungen: list[str] = []
@@ -131,23 +161,21 @@ def main(argv: list[str] | None = None) -> int:
 
         transkript = transcribe.transcribe(vocals, args.language, args.work_dir, fingerprint, device)
         flach = [wort for zeile in zeilen for wort in zeile.split()]
-        anker = anchors.finde_anker(flach, transkript)
-        # Kein Rueckfallwert hier: die Datei hat separate() gerade selbst
-        # geschrieben, ist sie nicht lesbar, ist das ein echter Defekt und
-        # soll als solcher hochkommen (der generische except-Zweig unten
-        # faengt ihn strukturiert ab) statt als vorgetaeuschte Songlaenge
-        # 0.0 zu erscheinen, an der baue_abschnitte mit einer irrefuehrenden
-        # Fehlermeldung scheitern wuerde.
-        abschnitte = anchors.baue_abschnitte(len(flach), anker, dauer_sekunden(vocals))
-        # Ein schwacher Abschnitt darf nicht still bleiben. Unterhalb der
-        # Haelfte wiedergefundener Woerter ist ein Abschnitt eher geraten als
-        # verankert.
-        schwach = [a for a in abschnitte if a.vertrauen < 0.5]
-        if schwach:
-            warnungen.append(
-                f"{len(schwach)} von {len(abschnitte)} Abschnitten konnten nur unsicher "
-                "verankert werden; die Zeitstempel dort sind weniger verlaesslich."
-            )
+        anker = anchors.berechne_anker(flach, transkript)
+        if args.synced_lyrics is not None:
+            if args.synced_lyrics.is_file():
+                lrc_zeilen = anchors.lese_lrc(
+                    args.synced_lyrics.read_text(encoding="utf8")
+                )
+                pfosten = anchors.ordne_lrc_zeilen(zeilen, lrc_zeilen)
+                # Erst entlarven, dann saeen: entlarvte Luecken sollen neu
+                # besaet werden koennen.
+                anchors.entlarve_mit_lrc(anker, pfosten, dauer_sekunden(vocals))
+                anchors.saee_lrc_anker(anker, pfosten)
+            else:
+                warnungen.append(
+                    "Synchronisierte Lyrics nicht lesbar, weiter ohne LRC-Anker."
+                )
 
         woerter = align(
             vocals,
@@ -157,22 +185,24 @@ def main(argv: list[str] | None = None) -> int:
             fingerprint,
             device,
             warnungen,
-            abschnitte,
+            anker,
         )
-        # abschnitte traegt Wortindizes bezogen auf `flach`. Weiter unten
-        # werden sie in Notenindizes uebersetzt, indem sie direkt als Index
-        # in eine ueber `woerter` gebaute Zuordnung (wort_zu_note) verwendet
-        # werden. Das ist nur gueltig, wenn `woerter` dieselbe Laenge (und
-        # damit Reihenfolge) wie `flach` hat. zeilen_zuordnen() dokumentiert
-        # bereits, dass der Aligner mehr oder weniger Woerter liefern kann,
-        # als der Text erwarten liess (dort nur als Warnung gemeldet, siehe
-        # abweichung) - fuer die Abschnittszuordnung ist das aber keine
-        # Randnotiz, sondern wuerde Abschnitte lautlos auf falsch verschobene
-        # Notenbereiche zeigen lassen. Deshalb hier abbrechen statt zu raten.
+        # Weiter unten wird wort_zu_note (aus build_notes) benutzt, um
+        # Wortindizes in `woerter` auf Notenindizes zu uebersetzen - das ist
+        # nur gueltig, wenn `woerter` dieselbe Laenge (und damit Reihenfolge)
+        # wie `flach` hat. Die Konstruktion von align() macht eine Abweichung
+        # eigentlich unmoeglich (siehe dort), aber ein stiller Programmierfehler
+        # darf hier trotzdem nicht zu lautlos falsch verschobenen sections
+        # fuehren. Deshalb hier abbrechen statt zu raten.
         if len(woerter) != len(flach):
             raise AlignmentFailed(
                 f"Alignment lieferte {len(woerter)} Wort(e) zurueck, der Text hat "
-                f"{len(flach)}; die Abschnittsgrenzen waeren damit nicht mehr gueltig."
+                f"{len(flach)}; die Wort-zu-Note-Zuordnung waere damit nicht mehr gueltig."
+            )
+        interpoliert = sum(1 for w in woerter if w.quelle == "interpolated")
+        if interpoliert:
+            warnungen.append(
+                f"{interpoliert} von {len(woerter)} Woertern ohne Messung (interpoliert)."
             )
         verlauf = track_pitch(vocals, args.work_dir, fingerprint)
 
@@ -187,21 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         noten, umbrueche, gap, wort_zu_note = build_notes(woerter, verlauf, bpm, args.language)
         emit_progress("notes", 1.0)
 
-        # Abschnitte tragen Wortindizes; der Vertrag braucht Notenindizes.
-        # wort_zu_note (aus build_notes, siehe dort) uebersetzt zwischen
-        # beiden, ohne die Silbenzuordnung hier ein zweites Mal
-        # nachzurechnen. Die Laengengleichheit von woerter und flach wurde
-        # oben bereits erzwungen, darum sind abschnitte-Indizes hier
-        # gueltige Indizes in wort_zu_note.
-        sections = [
-            {
-                "fromNoteIndex": wort_zu_note[a.von_index],
-                "toNoteIndex": wort_zu_note[a.bis_index],
-                "confidence": a.vertrauen,
-                "anchoredBothSides": a.beidseitig_verankert,
-            }
-            for a in abschnitte
-        ]
+        sections = _baue_sections(woerter, wort_zu_note)
 
     except LanguageUnsupported as exc:
         emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)

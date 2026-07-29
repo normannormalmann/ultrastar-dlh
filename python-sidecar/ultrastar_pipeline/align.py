@@ -1,4 +1,8 @@
-"""Forced Alignment ueber WhisperX. Duenner Adapter.
+"""Forced Alignment ueber WhisperX: Paesse 3 und 4 des Vierpass-Modells.
+
+Die reine Entscheidungslogik (Interpolation, Fenstergrenzen, Validierung)
+liegt in den testbaren Bausteinen; hier sind nur die Modellaufrufe selbst
+duenn.
 
 Teile portiert aus UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarKaraokeMaker, MIT, (c) walterfr).
 """
@@ -11,14 +15,14 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import separate
-from .anchors import Abschnitt, GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
+from .anchors import GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .notes import AlignedWord
 from .numerals import erweitere_zahlwort
 from .progress import emit_progress
 
-STAGE_VERSION = "1"
+STAGE_VERSION = "2"
 
 # Re-exportiert: bestehender Code und Tests importieren LanguageUnsupported
 # von hier, die eigentliche Definition liegt aber in errors.py (Importzyklus,
@@ -299,18 +303,107 @@ def zeilen_zuordnen(
     return zugeordnet, abweichung
 
 
-def _melde_abweichung(abweichung: int, warnungen: list[str]) -> None:
-    """Meldet eine Wortabweichung als Warnung — bei Neuberechnung wie bei
-    Cache-Treffer, denn sie ist dasselbe Indiz in beiden Faellen: Text und
-    Audio passen nicht zusammen (fehlende Strophe, falscher Song)."""
-    if abweichung > 0:
-        warnungen.append(
-            f"Alignment lieferte {abweichung} Wort(e) mehr, als der Liedtext erwarten liess."
+def richte_fenster_aus(
+    zeiten: list[WortZeit],
+    modell,
+    metadaten,
+    audio,
+    device: str,
+    sprache: str,
+    warnungen: list[str],
+) -> int:
+    """Pass 3: je zusammenhaengendem interpoliertem Lauf genau ein
+    whisperx.align im Fenster zwischen den gemessenen Nachbarn (bzw.
+    Audio-Anfang/-Ende). Vorher wird Randstille getrimmt und Zahlen fuer
+    den CTC ausgeschrieben; das Ergebnis wird validiert und bei Verstoss
+    verworfen - ein Fensterfehler reisst nie die Pipeline, die Luecke
+    behaelt dann sichtbar die Interpolation. Mutiert `zeiten` in place,
+    liefert die Zahl befoerderter Woerter.
+
+    Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
+    import whisperx
+
+    abtastrate = 16000  # whisperx.audio.SAMPLE_RATE
+    audio_dauer = float(len(audio)) / abtastrate
+    n = len(zeiten)
+    befoerdert = 0
+    i = 0
+    while i < n:
+        if zeiten[i].quelle != QUELLE_INTERPOLIERT:
+            i += 1
+            continue
+        lauf_start = i
+        while i < n and zeiten[i].quelle == QUELLE_INTERPOLIERT:
+            i += 1
+        lauf = list(range(lauf_start, i))
+
+        fenster_start = zeiten[lauf_start - 1].ende if lauf_start > 0 else 0.0
+        fenster_ende = zeiten[i].start if i < n else audio_dauer
+        fenster_start = max(0.0, min(fenster_start, audio_dauer))
+        fenster_ende = max(0.0, min(fenster_ende, audio_dauer))
+
+        von_sample, bis_sample = stille_grenzen(
+            audio,
+            int(fenster_start * abtastrate),
+            int(fenster_ende * abtastrate),
+            abtastrate,
         )
-    elif abweichung < 0:
-        warnungen.append(
-            f"Alignment lieferte {-abweichung} Wort(e) weniger, als der Liedtext erwarten liess."
-        )
+        fenster_start = von_sample / abtastrate
+        fenster_ende = bis_sample / abtastrate
+
+        tokens: list[str] = []
+        herkunft: list[int] = []
+        for pos, k in enumerate(lauf):
+            for teil in _ctc_tokens(zeiten[k].text, sprache):
+                tokens.append(teil)
+                herkunft.append(pos)
+
+        # Zu knappes Fenster: bewusst stiller Verzicht - zwischen zwei
+        # nahen Messungen ist die Interpolation ohnehin eng begrenzt, und
+        # die Quelle bleibt ueber sections sichtbar.
+        if fenster_ende - fenster_start < 0.10 + 0.08 * len(tokens):
+            continue
+
+        segment = {"start": fenster_start, "end": fenster_ende, "text": " ".join(tokens)}
+        try:
+            ergebnis = whisperx.align(
+                [segment], modell, metadaten, audio, device,
+                interpolate_method="nearest", return_char_alignments=False,
+            )
+        except Exception:
+            warnungen.append(
+                f"Fenster-Alignment fehlgeschlagen fuer {len(lauf)} Wort(e); Interpolation bleibt."
+            )
+            continue
+
+        roh = [w for seg in ergebnis.get("segments", []) for w in seg.get("words", [])]
+        if len(roh) != len(tokens):
+            warnungen.append(
+                f"Fenster-Alignment lieferte {len(roh)} statt {len(tokens)} Tokens "
+                f"fuer {len(lauf)} Wort(e); Interpolation bleibt."
+            )
+            continue
+        woerter_roh = _fasse_zusammen(roh, herkunft, len(lauf))
+        if woerter_roh is None:
+            warnungen.append(
+                f"Fenster-Alignment ohne Zeitstempel fuer {len(lauf)} Wort(e); Interpolation bleibt."
+            )
+            continue
+        neu = _pruefe_fenster(woerter_roh, fenster_start, fenster_ende)
+        if neu is None:
+            warnungen.append(
+                f"Fenster-Alignment unplausibel (Fenstergrenzen/Monotonie) "
+                f"fuer {len(lauf)} Wort(e); Interpolation bleibt."
+            )
+            continue
+
+        for k, (ws, we, score) in zip(lauf, neu):
+            zeiten[k].start = ws
+            zeiten[k].ende = we
+            zeiten[k].score = score
+            zeiten[k].quelle = QUELLE_REALIGN
+            befoerdert += 1
+    return befoerdert
 
 
 def align(
@@ -321,25 +414,30 @@ def align(
     audio_hash: str,
     device: str,
     warnungen: list[str],
-    abschnitte: list[Abschnitt],
+    anker: list[GemessenesWort | None],
 ) -> list[AlignedWord]:
-    """Bekannte Zeilen auf die Gesangsspur ausrichten."""
-    # Der Text geht mit in den Cache-Schluessel ein: sonst wuerde ein
-    # geaenderter Liedtext bei gleicher Zeilenzahl eine veraltete
-    # Ausrichtung fuer unveraendertes Audio wiederverwenden — ein leises,
-    # falsches Ergebnis waere die Folge.
+    """Paesse 3 und 4: Interpolation als Grundierung, Fenster-Alignment
+    fuer jede unverankerte Luecke. Jedes Wort traegt seine Quelle."""
+    flach = [wort for zeile in lines for wort in zeile.split()]
+    if not flach:
+        raise AlignmentFailed("keine Woerter im Text")
+    # Die Anker wurden gegen eine anderswo gebildete Wortliste berechnet.
+    # Passt die Laenge nicht, zeigten alle Indizes auf falsche Woerter -
+    # abbrechen statt still falsch ausrichten.
+    if len(anker) != len(flach):
+        raise AlignmentFailed(
+            f"Anker decken {len(anker)} Woerter ab, der Text hat {len(flach)}"
+        )
+
     text_digest = hashlib.sha256("\n".join(lines).encode("utf8")).hexdigest()[:16]
-    # Die Abschnittsstruktur geht ebenfalls in den Schluessel ein: sonst
-    # liefert ein Treffer eine Ausrichtung nach altem Schnitt, obwohl sich
-    # die Ankerlage (und damit die Segmentgrenzen) inzwischen geaendert hat.
-    abschnitt_digest = hashlib.sha256(
+    # Die Anker gehen in den Schluessel ein: sie tragen den Einfluss von
+    # Transkript UND LRC. Ein geaenderter Anker darf nie eine alte
+    # Ausrichtung wiederverwenden.
+    anker_digest = hashlib.sha256(
         json.dumps(
-            [[a.von_index, a.bis_index, a.start_s, a.ende_s] for a in abschnitte]
+            [None if a is None else [a.start, a.ende, a.score, a.quelle] for a in anker]
         ).encode("utf8")
     ).hexdigest()[:16]
-    # Die Identitaet der separate-Stufe geht mit in den Schluessel ein: sonst
-    # wuerde eine geanderte Stimmtrennung (neues Modell, neue Version) eine
-    # Ausrichtung wiederverwenden, die noch auf dem alten Stem beruht.
     ziel = stage_path(
         work_dir,
         audio_hash,
@@ -348,7 +446,7 @@ def align(
             "language": language,
             "lines": len(lines),
             "text": text_digest,
-            "abschnitte": abschnitt_digest,
+            "anker": anker_digest,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
@@ -356,11 +454,10 @@ def align(
         ".json",
     )
     if ziel.is_file():
-        # Die Abweichung wird mitgecacht, nicht neu berechnet — sonst wuerde
-        # die Warnung bei einem Cache-Treffer verschwinden, obwohl der
-        # urspruengliche Lauf sie gemeldet hatte.
         gespeichert = json.loads(ziel.read_text(encoding="utf8"))
-        _melde_abweichung(gespeichert["deviation"], warnungen)
+        # Die Warnungen des urspruenglichen Laufs gelten auch beim Treffer:
+        # sie beschreiben das Ergebnis, nicht den Weg dorthin.
+        warnungen.extend(gespeichert["warnungen"])
         emit_progress("align", 1.0)
         return [AlignedWord(**w) for w in gespeichert["words"]]
 
@@ -372,77 +469,34 @@ def align(
     except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
         raise LanguageUnsupported(language) from exc
 
-    # Ein Segment je Abschnitt statt eines ueber die ganze Aufnahme. Der
-    # bisherige Ansatz liess den Aligner den Text blind ueber die volle
-    # Laenge verteilen; gemessen ergab das lokales Verrutschen bis in den
-    # Sekundenbereich (Zehntel-Mittel bis 2827 ms). Die Zeilenzuordnung wird
-    # danach weiterhin ueber die Wortanzahl je Zeile rekonstruiert
-    # (zeilen_zuordnen), nicht ueber diese Segmentgrenzen.
-    flach = [wort for zeile in lines for wort in zeile.split()]
-    # Die Abschnittsgrenzen wurden gegen eine anderswo gebildete Wortliste
-    # berechnet. Stimmt deren Laenge nicht mit der hiesigen ueberein, greifen
-    # die Grenzen auf falsche Woerter und der Filter unten wuerde den Verlust
-    # verschlucken. Lieber hier abbrechen als still falsch ausrichten.
-    if abschnitte and abschnitte[-1].bis_index != len(flach):
-        raise AlignmentFailed(
-            f"Abschnitte decken {abschnitte[-1].bis_index} Woerter ab, "
-            f"der Text hat {len(flach)}"
+    audio = whisperx.load_audio(str(vocals))
+    audio_dauer = float(len(audio)) / 16000.0
+
+    neue_warnungen: list[str] = []
+    zeiten = interpoliere(anker, flach, language, audio_dauer)
+    richte_fenster_aus(zeiten, modell, metadaten, audio, device, language, neue_warnungen)
+
+    woerter = [
+        AlignedWord(
+            text=z.text,
+            start=z.start,
+            end=z.ende,
+            confidence=z.score,
+            line_index=0,  # wird durch zeilen_zuordnen ersetzt
+            quelle=z.quelle,
         )
-    segmente = [
-        {
-            "text": " ".join(flach[a.von_index : a.bis_index]),
-            "start": a.start_s,
-            "end": a.ende_s,
-        }
-        for a in abschnitte
-        if flach[a.von_index : a.bis_index]
+        for z in zeiten
     ]
-    if not segmente:
-        segmente = [
-            {"text": " ".join(lines), "start": 0.0, "end": dauer_sekunden(vocals)}
-        ]
-    ergebnis = whisperx.align(
-        segmente, modell, metadaten, str(vocals), device, return_char_alignments=False
-    )
+    # Zeilenzuordnung wie bisher ueber die Wortanzahl je Zeile. Eine
+    # Abweichung ist konstruktionsbedingt unmoeglich (die Woerter stammen
+    # aus dem Text selbst), darum gibt es keine Abweichungswarnung mehr.
+    woerter, _ = zeilen_zuordnen(woerter, lines)
 
-    woerter: list[AlignedWord] = []
-    for segment in ergebnis.get("segments", []):
-        for wort in segment.get("words", []):
-            if wort.get("start") is None or wort.get("end") is None:
-                continue
-            text = str(wort.get("word", "")).strip()
-            if not text:
-                continue
-            woerter.append(
-                AlignedWord(
-                    text=text,
-                    start=float(wort["start"]),
-                    end=float(wort["end"]),
-                    confidence=float(wort.get("score", 0.0)),
-                    line_index=0,  # wird unten durch zeilen_zuordnen ersetzt
-                )
-            )
-
-    if not woerter:
-        raise AlignmentFailed("keine Woerter zugeordnet")
-
-    # Wir haengen die Woerter aller Segmente hintereinander und setzen dabei
-    # voraus, dass sie in Eingabereihenfolge zurueckkommen. Stimmt das nicht,
-    # waere die ganze Ausrichtung verschoben - sichtbar machen, nicht annehmen.
-    rueckwaerts = sum(1 for a, b in zip(woerter, woerter[1:]) if b.start < a.start)
-    if rueckwaerts:
-        warnungen.append(
-            f"{rueckwaerts} Woerter liegen zeitlich vor ihrem Vorgaenger; "
-            "die Segmentreihenfolge des Aligners ist nicht monoton."
-        )
-
-    woerter, abweichung = zeilen_zuordnen(woerter, lines)
-    _melde_abweichung(abweichung, warnungen)
-
+    warnungen.extend(neue_warnungen)
     atomic_write_bytes(
         ziel,
         json.dumps(
-            {"words": [w.__dict__ for w in woerter], "deviation": abweichung},
+            {"words": [w.__dict__ for w in woerter], "warnungen": neue_warnungen},
             ensure_ascii=False,
         ).encode("utf8"),
     )
