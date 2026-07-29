@@ -37,6 +37,12 @@ export type Metrics = {
    * des Songs — das muss sichtbar sein, nicht stillschweigend.
    */
   anteilGepaart: number;
+  /**
+   * Anteil der Paare unter 50 ms, nachdem der mediane Versatz des Songs
+   * herausgerechnet wurde. Reine Diagnose: so viel waere mit einer
+   * perfekten GAP-Kalibrierung zu holen, ohne am Alignment zu drehen.
+   */
+  anteilUnter50msKalibriert: number;
 };
 
 const zahlAusHeader = (txt: string, name: string, standard: number): number => {
@@ -192,6 +198,12 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
     mittel(versatz.slice(Math.floor(k * breite), Math.floor((k + 1) * breite))),
   );
 
+  const medianVersatzMs = quantil(versatz, 0.5);
+  const anteilUnter50msKalibriert =
+    versatz.length === 0
+      ? 0
+      : versatz.filter((v) => Math.abs(v - medianVersatzMs) < 50).length / versatz.length;
+
   return {
     paare: paarungen.length,
     medianAbweichungMs: quantil(abweichungen, 0.5),
@@ -201,9 +213,10 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
     notenzahlDifferenz: unser.syllables.length - referenz.syllables.length,
     medianPitchOffset,
     anteilPitchExakt,
-    medianVersatzMs: quantil(versatz, 0.5),
+    medianVersatzMs,
     driftProfil,
     anteilGepaart:
       referenz.syllables.length === 0 ? 0 : paarungen.length / referenz.syllables.length,
+    anteilUnter50msKalibriert,
   };
 };

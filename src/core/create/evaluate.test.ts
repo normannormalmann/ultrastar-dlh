@@ -239,6 +239,20 @@ describe("compareToReference - inhaltliche Paarung", () => {
     expect(m.medianAbweichungMs).toBe(40);
   });
 
+  test("anteilUnter50msKalibriert zeigt das Kalibrierungspotenzial bei konstantem Versatz", () => {
+    // Ein konstanter +200-ms-Versatz aller Onsets: roh liegt kein Paar
+    // unter 50 ms, nach Abzug des Medianversatzes passen aber alle.
+    const referenz = songMitSilben([
+      ["eins ", 0], ["zwei ", 500], ["drei ", 1000], ["vier ", 1500],
+    ]);
+    const unser = songMitSilben([
+      ["eins ", 200], ["zwei ", 700], ["drei ", 1200], ["vier ", 1700],
+    ]);
+    const m = compareToReference(unser, referenz);
+    expect(m.anteilUnter50ms).toBe(0);
+    expect(m.anteilUnter50msKalibriert).toBe(1);
+  });
+
   test("wiederholte Silben werden monoton gepaart, nicht kreuzweise", () => {
     // la-la-la: jede Paarung muss in beiden Folgen vorwaerts laufen, sonst
     // wuerde ein spaetes la mit einem fruehen verglichen und die Abweichung
