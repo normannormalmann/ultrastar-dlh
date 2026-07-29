@@ -43,6 +43,12 @@ export type Metrics = {
    * perfekten GAP-Kalibrierung zu holen, ohne am Alignment zu drehen.
    */
   anteilUnter50msKalibriert: number;
+  /**
+   * Wie anteilUnter50msKalibriert, aber mit der 100-ms-Grenze. Grundlage der
+   * Zieldiskussion: was an lokalem Jitter bleibt, nachdem eine perfekte
+   * per-Song-Kalibrierung den konstanten Versatz bereits herausgerechnet hat.
+   */
+  anteilUnter100msKalibriert: number;
 };
 
 const zahlAusHeader = (txt: string, name: string, standard: number): number => {
@@ -203,6 +209,10 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
     versatz.length === 0
       ? 0
       : versatz.filter((v) => Math.abs(v - medianVersatzMs) < 50).length / versatz.length;
+  const anteilUnter100msKalibriert =
+    versatz.length === 0
+      ? 0
+      : versatz.filter((v) => Math.abs(v - medianVersatzMs) < 100).length / versatz.length;
 
   return {
     paare: paarungen.length,
@@ -218,5 +228,6 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
     anteilGepaart:
       referenz.syllables.length === 0 ? 0 : paarungen.length / referenz.syllables.length,
     anteilUnter50msKalibriert,
+    anteilUnter100msKalibriert,
   };
 };

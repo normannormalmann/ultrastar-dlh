@@ -166,15 +166,16 @@ const main = async (): Promise<void> => {
 
   console.log("");
   console.log(
-    "| Song | LRC | Paare | Gepaart | Median ms | Versatz ms | p90 ms | <50ms | kal.<50 | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
+    "| Song | LRC | Paare | Gepaart | Median ms | Versatz ms | p90 ms | <50ms | kal.<50 | kal.<100 | <100ms | Notendiff | Pitch-Offset | Pitch-Anteil |",
   );
-  console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  console.log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { name, m, lrc } of ergebnisse) {
     console.log(
       `| ${name} | ${lrc ? "ja" : "nein"} | ${m.paare} | ${(m.anteilGepaart * 100).toFixed(0)}% | ` +
         `${m.medianAbweichungMs.toFixed(0)} | ${m.medianVersatzMs.toFixed(0)} | ` +
         `${m.p90AbweichungMs.toFixed(0)} | ${(m.anteilUnter50ms * 100).toFixed(0)}% | ` +
         `${(m.anteilUnter50msKalibriert * 100).toFixed(0)}% | ` +
+        `${(m.anteilUnter100msKalibriert * 100).toFixed(0)}% | ` +
         `${(m.anteilUnter100ms * 100).toFixed(0)}% | ${m.notenzahlDifferenz} | ` +
         `${m.medianPitchOffset.toFixed(1)} | ${(m.anteilPitchExakt * 100).toFixed(0)}% |`,
     );
@@ -205,6 +206,7 @@ const main = async (): Promise<void> => {
   console.log(`p90-Abweichung:      ${mittel((m) => m.p90AbweichungMs).toFixed(0)} ms`);
   console.log(`Anteil <50 ms:       ${(mittel((m) => m.anteilUnter50ms) * 100).toFixed(0)}%`);
   console.log(`Anteil <50 ms (kal.): ${(mittel((m) => m.anteilUnter50msKalibriert) * 100).toFixed(0)}%`);
+  console.log(`Anteil <100 ms (kal.): ${(mittel((m) => m.anteilUnter100msKalibriert) * 100).toFixed(0)}%`);
   console.log(`Anteil <100 ms:      ${(mittel((m) => m.anteilUnter100ms) * 100).toFixed(0)}%`);
   console.log(`Median-Pitch-Offset: ${mittel((m) => m.medianPitchOffset).toFixed(1)} Halbtoene`);
   console.log(`Anteil Pitch exakt:  ${(mittel((m) => m.anteilPitchExakt) * 100).toFixed(0)}%`);

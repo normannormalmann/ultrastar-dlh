@@ -251,6 +251,22 @@ describe("compareToReference - inhaltliche Paarung", () => {
     const m = compareToReference(unser, referenz);
     expect(m.anteilUnter50ms).toBe(0);
     expect(m.anteilUnter50msKalibriert).toBe(1);
+    expect(m.anteilUnter100msKalibriert).toBe(1);
+  });
+
+  test("anteilUnter100msKalibriert bleibt bei lokalem Jitter, wo die 50-ms-Grenze schon reisst", () => {
+    // Versatz +200/+200/+290 ms: Median 200 ms. Nach Kalibrierung bleiben
+    // Abweichungen von 0/0/90 ms - unter 100 ms passen alle drei, unter
+    // 50 ms nur die ersten beiden.
+    const referenz = songMitSilben([
+      ["eins ", 0], ["zwei ", 500], ["drei ", 1000],
+    ]);
+    const unser = songMitSilben([
+      ["eins ", 200], ["zwei ", 700], ["drei ", 1290],
+    ]);
+    const m = compareToReference(unser, referenz);
+    expect(m.anteilUnter50msKalibriert).toBeLessThan(1);
+    expect(m.anteilUnter100msKalibriert).toBe(1);
   });
 
   test("wiederholte Silben werden monoton gepaart, nicht kreuzweise", () => {
