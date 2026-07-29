@@ -1,8 +1,8 @@
 """Freie Transkription der Gesangsspur. Duenner Adapter, keine Entscheidungen.
 
-Zweck ist nicht der Text — den kennen wir bereits — sondern die Zeit: die
-gehoerten Woerter liefern Ankerpunkte, gegen die der bekannte Liedtext
-ausgerichtet werden kann.
+Zweck ist nicht der Text - den kennen wir bereits - sondern die Zeit: die
+gehoerten Woerter liefern gemessene Ankerpunkte (via Forced Alignment), gegen
+die der bekannte Liedtext ausgerichtet werden kann.
 """
 
 import json
@@ -14,7 +14,7 @@ from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .progress import emit_progress
 
-STAGE_VERSION = "1"
+STAGE_VERSION = "2"
 MODELL = "large-v2"
 
 
@@ -23,6 +23,10 @@ class TranskriptWort:
     text: str
     start: float
     ende: float
+    # Phonetischer Score des Forced Alignments. Bei Gesang systematisch
+    # niedrig (0,0-0,35 auch bei korrekter Zeit) - Anzeige und
+    # Misstrauensregel, nie Verwurfskriterium.
+    score: float = 0.0
 
 
 def transcribe(
@@ -64,24 +68,41 @@ def transcribe(
         raise LanguageUnsupported(sprache, stufe="transcribe") from exc
     ergebnis = modell.transcribe(str(vocals), language=sprache)
 
-    # Segmenttexte werden ueber Leerzeichen zerlegt: fuer Anker zaehlt die
-    # Wortfolge, nicht die Segmentgrenze. Die Segmentdauer wird gleichmaessig
-    # auf die Woerter verteilt — die genaue Zeit liefert spaeter das Forced
-    # Alignment, hier genuegt eine Naeherung mit korrekter Reihenfolge.
+    # Pass 1 des Vierpass-Modells: das Transkript selbst wird ausgerichtet.
+    # Die Segmentzeiten von Whisper sind Schaetzungen (gemessen: erster
+    # Anker geschaetzt 6,4 s, gesungen 10,5 s); erst das Forced Alignment
+    # macht aus gehoerten Woertern *gemessene* Zeiten.
+    try:
+        align_modell, metadaten = whisperx.load_align_model(
+            language_code=sprache, device=device
+        )
+    except Exception as exc:  # kein Alignment-Modell fuer diese Sprache
+        raise LanguageUnsupported(sprache, stufe="transcribe") from exc
+    ausgerichtet = whisperx.align(
+        ergebnis.get("segments", []),
+        align_modell,
+        metadaten,
+        str(vocals),
+        device,
+        return_char_alignments=False,
+    )
+
     woerter: list[TranskriptWort] = []
-    for segment in ergebnis.get("segments", []):
-        stuecke = str(segment.get("text", "")).split()
-        if not stuecke:
-            continue
-        start = float(segment.get("start", 0.0))
-        ende = float(segment.get("end", start))
-        schritt = (ende - start) / len(stuecke)
-        for i, stueck in enumerate(stuecke):
+    for segment in ausgerichtet.get("segments", []):
+        for wort in segment.get("words", []):
+            # Ohne Zeitstempel kein Anker: ein erfundener Wert waere
+            # schlimmer als ein fehlendes Wort.
+            if wort.get("start") is None or wort.get("end") is None:
+                continue
+            text = str(wort.get("word", "")).strip()
+            if not text:
+                continue
             woerter.append(
                 TranskriptWort(
-                    text=stueck,
-                    start=start + i * schritt,
-                    ende=start + (i + 1) * schritt,
+                    text=text,
+                    start=float(wort["start"]),
+                    ende=float(wort["end"]),
+                    score=float(wort.get("score", 0.0)),
                 )
             )
 

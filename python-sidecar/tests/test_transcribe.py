@@ -85,3 +85,77 @@ def test_fehlende_asr_sprache_nennt_die_stufe(tmp_path, monkeypatch):
         transcribe.transcribe(Path("egal.wav"), "xx", tmp_path, "hashC", "cpu")
     assert fehler.value.language == "xx"
     assert fehler.value.stufe == "transcribe"
+
+
+def _stub_mit_alignment() -> types.ModuleType:
+    """whisperx-Platzhalter: Transkription plus Forced Alignment des
+    Transkripts, ohne ein Modell zu laden."""
+    modul = types.ModuleType("whisperx")
+
+    class _Modell:
+        def transcribe(self, pfad, language):
+            return {"segments": [{"text": "hallo welt kaputt", "start": 0.0, "end": 2.0}]}
+
+    modul.load_model = lambda *a, **k: _Modell()
+    modul.load_align_model = lambda **k: ("alignmodell", {"meta": True})
+
+    def align(segmente, modell, metadaten, pfad, device, return_char_alignments):
+        return {
+            "segments": [
+                {"words": [
+                    {"word": "hallo", "start": 10.2, "end": 10.6, "score": 0.31},
+                    {"word": "welt", "start": 10.7, "end": 11.1},
+                    {"word": "kaputt", "start": None, "end": None},
+                ]}
+            ]
+        }
+
+    modul.align = align
+    return modul
+
+
+def test_transkript_zeiten_sind_gemessen_nicht_verteilt(tmp_path, monkeypatch):
+    """Die gleichverteilten Segmentzeiten des alten Verfahrens lagen im
+    Pilot bis 4 s daneben (erster Anker geschaetzt 6,4 s, gesungen 10,5 s).
+    Jetzt kommen die Zeiten aus dem Forced Alignment des Transkripts -
+    Woerter ohne Zeitstempel entfallen, ein erfundener Wert waere schlimmer
+    als ein fehlendes Wort."""
+    monkeypatch.setitem(sys.modules, "whisperx", _stub_mit_alignment())
+    ergebnis = transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashD", "cpu")
+    assert ergebnis == [
+        TranskriptWort(text="hallo", start=10.2, ende=10.6, score=0.31),
+        TranskriptWort(text="welt", start=10.7, ende=11.1, score=0.0),
+    ]
+
+
+def test_score_ueberlebt_den_cache(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "whisperx", _stub_mit_alignment())
+    transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashE", "cpu")
+
+    zugriffe: list[str] = []
+    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    ergebnis = transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashE", "cpu")
+    assert zugriffe == []
+    assert ergebnis[0].score == 0.31
+
+
+def test_fehlendes_alignment_modell_nennt_die_stufe_transcribe(tmp_path, monkeypatch):
+    """Auch der zweite Modellzugriff dieser Stufe muss die Stufe nennen -
+    sonst raet der Nutzer, ob ASR- oder Alignment-Modell fehlt."""
+    modul = types.ModuleType("whisperx")
+
+    class _Modell:
+        def transcribe(self, pfad, language):
+            return {"segments": []}
+
+    modul.load_model = lambda *a, **k: _Modell()
+
+    def load_align_model(**k):
+        raise RuntimeError("kein Alignment-Modell")
+
+    modul.load_align_model = load_align_model
+    monkeypatch.setitem(sys.modules, "whisperx", modul)
+
+    with pytest.raises(LanguageUnsupported) as fehler:
+        transcribe.transcribe(Path("egal.wav"), "xy", tmp_path, "hashF", "cpu")
+    assert fehler.value.stufe == "transcribe"
