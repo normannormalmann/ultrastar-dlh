@@ -2,7 +2,7 @@
 name = "ultrastar-pipeline"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["num2words>=0.5"]
 
 [project.optional-dependencies]
 # Modell-Abhaengigkeiten getrennt, damit reine Tests ohne sie laufen.
