@@ -229,10 +229,14 @@ def berechne_anker(
 
 
 # Oberhalb dieser Konfliktquote widerspricht das .lrc den Messungen so
-# breit, dass es selbst die falsche Edition sein muss: im Pilot richteten
-# 6-11 Prozent Konflikte keinen Schaden an (Median verbesserte sich),
-# rund 30 Prozent rissen die Songraender um Sekunden.
-MAX_LRC_KONFLIKT_QUOTE = 0.2
+# breit, dass es selbst die falsche Edition sein muss. Die Schwelle ist
+# bewusst hoch: im Pilot verwarf eine Schwelle von 0,2 ein per Dauer-
+# Abgleich verifiziertes .lrc mit 32 Prozent Konflikten - und der Song
+# wurde ohne das .lrc messbar schlechter (p90 2,3 s -> 9,2 s), weil die
+# widersprechenden "Messungen" gehauchte Refrains waren, die das .lrc
+# korrekt entlarvt hatte. Der Deckel schuetzt nur noch vor grobem
+# Mismatch, etwa einer von Hand gelieferten .lrc der falschen Edition.
+MAX_LRC_KONFLIKT_QUOTE = 0.5
 
 _LRC_ZEITSTEMPEL = re.compile(r"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]")
 
