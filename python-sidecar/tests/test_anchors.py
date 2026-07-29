@@ -1,6 +1,13 @@
 import pytest
 
-from ultrastar_pipeline.anchors import MAX_WOERTER_PRO_SEKUNDE, Anchor, finde_anker, normalisiere
+from ultrastar_pipeline.anchors import (
+    MAX_WOERTER_PRO_SEKUNDE,
+    Anchor,
+    GemessenesWort,
+    berechne_anker,
+    finde_anker,
+    normalisiere,
+)
 from ultrastar_pipeline.transcribe import TranskriptWort
 
 
@@ -197,3 +204,106 @@ def test_falsch_anker_grenze_faellt_statt_woerter_zu_quetschen():
     for a in abschnitte:
         rate = (a.bis_index - a.von_index) / max(a.ende_s - a.start_s, 0.01)
         assert rate <= MAX_WOERTER_PRO_SEKUNDE
+
+
+def _gehoert_berechne(texte_und_zeiten: list[tuple[str, float, float, float]]) -> list[TranskriptWort]:
+    return [
+        TranskriptWort(text=t, start=s, ende=e, score=sc)
+        for t, s, e, sc in texte_und_zeiten
+    ]
+
+
+def test_exakte_anker_tragen_gemessene_zeit_und_quelle():
+    gehoerte = _gehoert_berechne([("Hallo", 10.0, 10.4, 0.8), ("Welt", 10.5, 10.9, 0.2)])
+    anker = berechne_anker(["hallo", "welt"], gehoerte)
+    assert anker == [
+        GemessenesWort(10.0, 10.4, 0.8, "anchor"),
+        GemessenesWort(10.5, 10.9, 0.2, "anchor"),
+    ]
+
+
+def test_unerkannte_woerter_bleiben_none():
+    gehoerte = _gehoert_berechne([("eins", 1.0, 1.2, 0.9)])
+    anker = berechne_anker(["eins", "zwei", "drei"], gehoerte)
+    assert anker[0] is not None
+    assert anker[1] is None and anker[2] is None
+
+
+def test_fuzzy_anker_fangen_abweichende_schreibweise():
+    """Das akustische Ereignis ist dasselbe, nur die Schreibweise weicht ab
+    ("is" gehoert, "ist" im Text) — der gemessene Zeitstempel ist gut und
+    darf nicht verloren gehen, nur weil die exakte LCS ihn nicht matcht."""
+    gehoerte = _gehoert_berechne([
+        ("gestern", 1.0, 1.3, 0.7),
+        ("is", 1.4, 1.5, 0.4),
+        ("morgen", 1.6, 2.0, 0.6),
+    ])
+    anker = berechne_anker(["gestern", "ist", "morgen"], gehoerte)
+    assert anker[1] == GemessenesWort(1.4, 1.5, 0.4, "fuzzy")
+
+
+def test_fuzzy_paart_monoton_nicht_kreuzweise():
+    """Zwei aehnliche Woerter in einer Luecke: die DP-Paarung muss in beiden
+    Folgen vorwaerts laufen, sonst bekaeme ein spaetes Textwort die Zeit
+    eines fruehen Ereignisses."""
+    gehoerte = _gehoert_berechne([
+        ("anfang", 0.0, 0.4, 0.9),
+        ("laufen", 1.0, 1.4, 0.5),
+        ("singen", 2.0, 2.4, 0.5),
+        ("schluss", 3.0, 3.4, 0.9),
+    ])
+    anker = berechne_anker(["anfang", "laufe", "singe", "schluss"], gehoerte)
+    assert anker[1] == GemessenesWort(1.0, 1.4, 0.5, "fuzzy")
+    assert anker[2] == GemessenesWort(2.0, 2.4, 0.5, "fuzzy")
+
+
+def test_voellig_verschiedene_woerter_bekommen_keinen_fuzzy_anker():
+    gehoerte = _gehoert_berechne([
+        ("anfang", 0.0, 0.4, 0.9),
+        ("xylophon", 1.0, 1.4, 0.5),
+        ("schluss", 3.0, 3.4, 0.9),
+    ])
+    anker = berechne_anker(["anfang", "regen", "schluss"], gehoerte)
+    assert anker[1] is None
+
+
+def test_ziffern_tokens_liefern_nie_einen_anker():
+    """Das wav2vec2-Vokabular enthaelt keine Ziffern: der Zeitstempel eines
+    "17"-Tokens ist erfunden. Ein solcher Anker waere schlimmer als keiner,
+    weil er Interpolation und Fenstergrenzen vergiftet."""
+    gehoerte = _gehoert_berechne([
+        ("anfang", 0.0, 0.4, 0.9),
+        ("17", 1.0, 1.1, 0.9),
+        ("schluss", 3.0, 3.4, 0.9),
+    ])
+    anker = berechne_anker(["anfang", "17", "schluss"], gehoerte)
+    assert anker[1] is None
+
+
+def test_kurzes_isoliertes_wort_mit_schwachem_score_wird_entlarvt():
+    """Ein "in" mitten in einem grossen ASR-Loch mit Score < 0,3 ist eher
+    die falsche Vorkommnis als eine Messung — im Pilot erzeugte genau so
+    ein Falsch-Anker eine Section mit 13,6 Woertern/s."""
+    gehoerte = _gehoert_berechne([("in", 50.0, 50.1, 0.1)])
+    bekannte = ["a", "b", "c", "in", "d", "e", "f"]
+    anker = berechne_anker(bekannte, gehoerte)
+    assert all(a is None for a in anker)
+
+
+def test_kurzes_isoliertes_wort_mit_gutem_score_bleibt():
+    gehoerte = _gehoert_berechne([("in", 50.0, 50.1, 0.6)])
+    bekannte = ["a", "b", "c", "in", "d", "e", "f"]
+    anker = berechne_anker(bekannte, gehoerte)
+    assert anker[3] == GemessenesWort(50.0, 50.1, 0.6, "anchor")
+
+
+def test_kurzes_wort_mit_gemessenem_nachbarn_bleibt():
+    gehoerte = _gehoert_berechne([("in", 50.0, 50.1, 0.1), ("haus", 50.2, 50.6, 0.4)])
+    bekannte = ["a", "b", "c", "in", "haus", "e", "f"]
+    anker = berechne_anker(bekannte, gehoerte)
+    assert anker[3] is not None
+
+
+def test_leere_eingaben_ergeben_nur_none():
+    assert berechne_anker([], []) == []
+    assert berechne_anker(["wort"], []) == [None]
