@@ -27,9 +27,28 @@ def test_letzte_silbe_eines_wortes_traegt_das_trennzeichen():
 
 
 def test_erste_note_beginnt_auf_beat_null_und_setzt_gap():
+    """gap ist um die gemessene Onset-Korrektur (60 ms) vorverlegt: 2000 ms
+    roher Wortstart -> 1940 ms GAP. Der Beat bleibt bei 0, da die Korrektur
+    nur den absoluten Nullpunkt verschiebt, nicht die Beat-Struktur."""
     noten, _, gap, _ = build_notes([w("Hallo", 2.0, 2.5)], flacher_pitch(), bpm=120, language="de")
     assert noten[0].beat == 0
-    assert gap == 2000
+    assert gap == 1940
+
+
+def test_gap_korrektur_verschiebt_den_nullpunkt_um_60ms():
+    """Gemessene Onset-Korrektur (siehe ONSET_KORREKTUR_MS): der rohe
+    Wortstart wird um 60 ms vorverlegt, geklemmt auf >= 0."""
+    noten_spaet, _, gap_spaet, _ = build_notes(
+        [w("Hallo", 1.0, 1.5)], flacher_pitch(), bpm=120, language="de"
+    )
+    assert gap_spaet == 940
+    assert noten_spaet[0].beat == 0
+
+    noten_frueh, _, gap_frueh, _ = build_notes(
+        [w("Hallo", 0.02, 0.5)], flacher_pitch(), bpm=120, language="de"
+    )
+    assert gap_frueh == 0  # Klemme: 20 ms - 60 ms waere negativ
+    assert noten_frueh[0].beat == 0
 
 
 def test_noten_sind_zeitlich_aufsteigend():

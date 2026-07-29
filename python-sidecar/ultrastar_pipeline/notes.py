@@ -52,6 +52,13 @@ class LineBreak:
 # entspricht damit C3 (MIDI 48). Benannt und isoliert lassen, nicht inlinen.
 MIDI_NULLAGE = 48
 
+# Gemessen, nicht angenommen (Korpuslauf ueber 30 Referenzsongs,
+# 2026-07-29): unsere Onsets liegen im Median 61 ms hinter menschlich
+# gesyncten Referenzen - der wav2vec-Onset sitzt am Phonembeginn,
+# Menschen syncen fruher auf den Beat. Eine konstante Vorverlegung
+# um 60 ms zentriert den Fehler, ohne am Alignment zu drehen.
+ONSET_KORREKTUR_MS = 60
+
 
 def _beats_pro_sekunde(bpm: float, beats_per_bpm_unit: int) -> float:
     return bpm * beats_per_bpm_unit / 60.0
@@ -188,5 +195,12 @@ def build_notes(
     # [von, bis) sich als [wort_zu_note[von], wort_zu_note[bis]) lesen laesst
     # auch dann, wenn bis das letzte Wort ist.
     wort_zu_note.append(len(noten))
+
+    # Die Beats oben sind gegen den unkorrigierten gap_sekunden berechnet und
+    # bleiben zueinander unveraendert. Erst hier verschiebt sich der absolute
+    # Nullpunkt um die gemessene Korrektur nach vorn. Klemmen auf >= 0, weil
+    # ein Song praktisch bei 0 beginnen kann und der GAP nicht negativ sein
+    # darf.
+    gap_ms = max(0, gap_ms - ONSET_KORREKTUR_MS)
 
     return noten, umbrueche, gap_ms, wort_zu_note

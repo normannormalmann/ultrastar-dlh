@@ -43,7 +43,9 @@ def test_kette_erzeugt_vertragskonformes_json():
     _, _, daten = _baue()
     assert daten["schemaVersion"] == 2
     assert len(daten["notes"]) >= 4
-    assert daten["gap"] == 1000
+    # 1000 ms roher Wortstart, um die gemessene Onset-Korrektur (60 ms)
+    # vorverlegt (siehe ONSET_KORREKTUR_MS in notes.py).
+    assert daten["gap"] == 940
     assert daten["meta"]["lowConfidence"] is False
 
 
