@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import anchors
+from . import anchors, transcribe
 from .align import (
     STAGE_VERSION as ALIGN_STAGE_VERSION,
     AlignmentFailed,
@@ -30,8 +30,6 @@ from .syllables import has_dictionary
 from .tempo import korrigiere_tempo
 from .transcribe import STAGE_VERSION as TRANSCRIBE_STAGE_VERSION
 
-# Marker, die eine Aufbereitung durch lyrics.ts erfordern. Kopflos wird
-# hier nicht geraten - es wird abgebrochen.
 UNGELOESTE_MARKER = ("(2x)", "(x2)", "[chorus]", "[refrain]")
 
 
@@ -57,7 +55,7 @@ def _erkenne_bpm(audio: Path) -> float:
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
     # librosa 0.11 liefert das Tempo als Array, nicht als Skalar, und unter
     # NumPy 2 wirft float() auf ein Array mit einem Element. Erst flach
-    # machen, dann den ersten Wert nehmen - deckt Skalar und Array ab.
+    # machen, dann den ersten Wert nehmen — deckt Skalar und Array ab.
     werte = np.asarray(tempo).reshape(-1)
     if werte.size == 0:
         raise ValueError("Tempoerkennung lieferte keinen Wert")
@@ -65,7 +63,7 @@ def _erkenne_bpm(audio: Path) -> float:
 
 
 def _stage_versions() -> dict[str, str]:
-    """Stufenversionen fuer den Bericht, aus den Modulen selbst - nicht
+    """Stufenversionen fuer den Bericht, aus den Modulen selbst — nicht
     hartkodiert, damit eine Versionsbumpe in separate/transcribe/align/pitch
     hier automatisch ankommt. notes wird nie gecacht (siehe Modulkopf) und
     hat darum keine eigene STAGE_VERSION."""
@@ -133,6 +131,7 @@ def _baue_sections(woerter, wort_zu_note: list[int]) -> list[dict]:
     return sections
 
 
+
 @dataclass(frozen=True)
 class Auftrag:
     language: str
@@ -165,10 +164,43 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
         emit_error("lyrics_empty")
         return 1
 
-    # Bekannte Luecke, absichtlich ungefixt: dieser Scan findet nur die
+        # Probelauf der Umgebungs-Einrichtung: Modelle laden, Ergebnis
+        # schreiben, fertig. Die Ausnahme-Uebersetzung entspricht der
+        # bestehenden Fehlerleitung des echten Laufs.
+        try:
+            preload_modul.preload(auftrag.language, device, auftrag.out)
+        except LanguageUnsupported as exc:
+            emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
+            return 1
+        except ModuleNotFoundError as exc:
+            emit_error("env_missing", module=exc.name)
+            return 1
+        except Exception as exc:  # noqa: BLE001 - letzte Instanz
+            art = type(exc).__name__
+            if "OutOfMemory" in art or "out of memory" in str(exc).lower():
+                emit_error("device_error", detail="GPU-Speicher voll. Mit --device cpu erneut versuchen.")
+            else:
+                emit_error("pipeline_failed", detail=f"{art}: {exc}")
+            return 1
+        return 0
+
+    if auftrag.audio is None or not auftrag.audio.is_file():
+        emit_error("audio_unreadable", path=str(auftrag.audio))
+        return 1
+    if auftrag.lyrics_file is None or not auftrag.lyrics_file.is_file():
+        emit_error("lyrics_unreadable", path=str(auftrag.lyrics_file))
+        return 1
+
+    roh = auftrag.lyrics_file.read_text(encoding="utf8")
+    zeilen = [z.strip() for z in roh.splitlines() if z.strip()]
+    if not zeilen:
+        emit_error("lyrics_empty")
+        return 1
+
+    # Bekannte Lücke, absichtlich ungefixt: dieser Scan findet nur die
     # literalen Marker selbst. Liedtext, der von lyrics.ts schon normalisiert
     # wurde, dessen offene Rueckfragen aber nie beantwortet wurden, sieht in
-    # einer reinen .txt-Datei identisch zu geklaertem Text aus - dieser
+    # einer reinen .txt-Datei identisch zu geklaertem Text aus — dieser
     # Zustand ist hier nicht repraesentierbar. Gehoert zum UI-Teilprojekt.
     klein = roh.lower()
     gefunden = [m for m in UNGELOESTE_MARKER if m in klein]
@@ -259,7 +291,7 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
         return 1
     except ModuleNotFoundError as exc:
         # Bei weitem der wahrscheinlichste Fehler, solange die Modell-Extras
-        # nicht installiert sind - muss deshalb vor dem generischen Fall
+        # nicht installiert sind — muss deshalb vor dem generischen Fall
         # abgefangen werden, sonst verschwindet der Paketname darin.
         emit_error("env_missing", module=exc.name)
         return 1
