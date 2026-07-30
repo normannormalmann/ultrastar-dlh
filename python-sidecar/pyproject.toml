@@ -2,7 +2,12 @@
 name = "ultrastar-pipeline"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["num2words>=0.5"]
+# pyphen ist eine LAUFZEIT-Abhaengigkeit (Silbentrennung in syllables.py),
+# kein Test-Werkzeug: als es nur im dev-Extra stand, fehlte es in der
+# automatisch eingerichteten Umgebung ([models]-Install) und der Notenbau
+# fiel still auf ganze Woerter zurueck — im Durchstich gemessen als
+# Notendiff -174 statt -15 bei identischem Song.
+dependencies = ["num2words>=0.5", "pyphen>=0.14"]
 
 [project.optional-dependencies]
 # Modell-Abhaengigkeiten getrennt, damit reine Tests ohne sie laufen.
@@ -22,7 +27,7 @@ models = [
   "torch",
   "torchaudio",
 ]
-dev = ["pytest", "pyphen"]
+dev = ["pytest"]
 
 [build-system]
 requires = ["setuptools>=68"]
