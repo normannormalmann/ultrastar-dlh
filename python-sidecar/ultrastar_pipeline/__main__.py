@@ -3,6 +3,9 @@
 Reihenfolge: tempo (billig) -> separate -> transcribe -> anchors -> align ->
 pitch -> notes. Die vier teuren Stufen sind gecacht, notes nie: es ist
 billig und genau das, was justiert wird.
+
+Preload-Modus: laedt alle vier Modellarten einmal, um die Umgebungs-Einrichtung
+zu proben — vor dem ersten echten Lauf.
 """
 
 import argparse
@@ -10,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import anchors, transcribe
+from . import anchors, preload as preload_modul, transcribe
 from .align import (
     STAGE_VERSION as ALIGN_STAGE_VERSION,
     AlignmentFailed,
@@ -134,22 +137,46 @@ def _baue_sections(woerter, wort_zu_note: list[int]) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ultrastar_pipeline")
-    p.add_argument("--audio", required=True, type=Path)
-    p.add_argument("--lyrics-file", required=True, type=Path)
+    p.add_argument("--audio", type=Path)
+    p.add_argument("--lyrics-file", type=Path)
     p.add_argument("--language", required=True)
     p.add_argument("--bpm", type=float, default=None)
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--work-dir", type=Path, default=Path(".pipeline-cache"))
     p.add_argument("--out", required=True, type=Path)
     p.add_argument("--synced-lyrics", type=Path, default=None)
+    p.add_argument("--preload", action="store_true")
     args = p.parse_args(argv)
 
     warnungen: list[str] = []
 
-    if not args.audio.is_file():
+    device = _waehle_device(args.device, warnungen)
+
+    if args.preload:
+        # Probelauf der Umgebungs-Einrichtung: Modelle laden, Ergebnis
+        # schreiben, fertig. Die Ausnahme-Uebersetzung entspricht der
+        # bestehenden Fehlerleitung des echten Laufs.
+        try:
+            preload_modul.preload(args.language, device, args.out)
+        except LanguageUnsupported as exc:
+            emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
+            return 1
+        except ModuleNotFoundError as exc:
+            emit_error("env_missing", module=exc.name)
+            return 1
+        except Exception as exc:  # noqa: BLE001 - letzte Instanz
+            art = type(exc).__name__
+            if "OutOfMemory" in art or "out of memory" in str(exc).lower():
+                emit_error("device_error", detail="GPU-Speicher voll. Mit --device cpu erneut versuchen.")
+            else:
+                emit_error("pipeline_failed", detail=f"{art}: {exc}")
+            return 1
+        return 0
+
+    if args.audio is None or not args.audio.is_file():
         emit_error("audio_unreadable", path=str(args.audio))
         return 1
-    if not args.lyrics_file.is_file():
+    if args.lyrics_file is None or not args.lyrics_file.is_file():
         emit_error("lyrics_unreadable", path=str(args.lyrics_file))
         return 1
 
@@ -174,8 +201,6 @@ def main(argv: list[str] | None = None) -> int:
         warnungen.append(
             f"Keine Silbentrennung fuer '{args.language}', ganze Woerter werden genutzt."
         )
-
-    device = _waehle_device(args.device, warnungen)
 
     try:
         emit_progress("tempo", 0.0)
