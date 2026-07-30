@@ -5,7 +5,7 @@ import {
   prependManagedBinToPath,
   resolvePlatformBinaries,
 } from "./binaries.ts";
-import { registerIpcHandlers } from "./ipc.ts";
+import { creations, registerIpcHandlers } from "./ipc.ts";
 import { broadcast, initializeState, state } from "./state.ts";
 
 const createWindow = (): BrowserWindow => {
@@ -75,4 +75,10 @@ void app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+// No orphaned python worker: it would keep holding gigabytes of VRAM
+// after the app window is gone.
+app.on("will-quit", () => {
+  void creations.shutdown();
 });

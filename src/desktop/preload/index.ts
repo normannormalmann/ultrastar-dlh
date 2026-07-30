@@ -45,6 +45,11 @@ const api: UltrastarApi = {
   environmentInstall: (force) =>
     ipcRenderer.invoke("environment:install", force),
   environmentCancel: () => ipcRenderer.invoke("environment:cancel"),
+  createQueueAdd: (jobs) => ipcRenderer.invoke("create:queueAdd", jobs),
+  createQueueRemove: (id) => ipcRenderer.invoke("create:queueRemove", id),
+  createQueueClear: () => ipcRenderer.invoke("create:queueClear"),
+  createStart: () => ipcRenderer.invoke("create:start"),
+  createCancel: () => ipcRenderer.invoke("create:cancel"),
   coverGet: (apiId) => ipcRenderer.invoke("covers:get", apiId),
   coverGetLocal: (songDir) => ipcRenderer.invoke("covers:getLocal", songDir),
   coversClearCache: () => ipcRenderer.invoke("covers:clearCache"),

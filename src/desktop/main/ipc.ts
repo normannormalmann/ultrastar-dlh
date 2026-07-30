@@ -22,7 +22,11 @@ import {
   cancelEnvironmentInstall,
   environmentStatusForApp,
   installEnvironmentForApp,
+  managedEnvDir,
 } from "./environment.ts";
+import { SidecarWorker } from "../../core/create/worker.ts";
+import { createCreations } from "./creations.ts";
+import type { CreateJobRequest } from "../shared/ipcContract.ts";
 import {
   clearCoverCaches,
   getCoverDataUrl,
@@ -49,6 +53,18 @@ let genreEnrichCancel = false;
  * contract to be implemented (missing one, or having one too many, is a
  * tsc error). Handler signature: (payload) => Promise<result>.
  */
+/**
+ * The wired creation queue. It lives here rather than in creations.ts so
+ * that module stays electron-free (and therefore testable without mocks).
+ * The managed environment is handed to the worker on purpose - otherwise
+ * the one-click setup from subproject 2 would stay unused.
+ */
+export const creations = createCreations({
+  newWorker: () => new SidecarWorker({ managedEnvDir: managedEnvDir() }),
+  environmentStatus: environmentStatusForApp,
+  broadcast,
+});
+
 // biome-ignore lint/suspicious/noExplicitAny: central IPC boundary, types are per-channel in the contract
 export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
   {
@@ -245,6 +261,20 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       installEnvironmentForApp(force === true),
     "environment:cancel": async () => {
       cancelEnvironmentInstall();
+    },
+    "create:queueAdd": async (jobs: CreateJobRequest[]) =>
+      creations.queueAdd(jobs),
+    "create:queueRemove": async (id: string) => {
+      creations.queueRemove(id);
+    },
+    "create:queueClear": async () => {
+      creations.queueClear();
+    },
+    "create:start": async () => {
+      await creations.start();
+    },
+    "create:cancel": async () => {
+      creations.cancel();
     },
     "covers:get": async (apiId: number) => getCoverDataUrl(apiId),
     "covers:getLocal": async (songDir: string) => getLocalCoverDataUrl(songDir),

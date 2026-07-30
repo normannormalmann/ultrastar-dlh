@@ -82,6 +82,32 @@ export type BinariesProgress = {
 
 export type FetchAllProgress = { current: number; total: number } | null;
 
+/** One queued song creation. artist/title are display-only. */
+export type CreateJobRequest = {
+  id: string;
+  audioPath: string;
+  lyricsPath: string;
+  language: string;
+  outPath: string;
+  bpm?: number;
+  syncedLyricsPath?: string;
+  artist?: string;
+  title?: string;
+};
+
+export type CreationStatus = "queued" | "running" | "completed" | "failed";
+
+export type CreationEntry = {
+  id: string;
+  artist?: string;
+  title?: string;
+  status: CreationStatus;
+  /** Pipeline stage of the running job (separate, transcribe, align, ...). */
+  stage?: string;
+  progress?: number; // 0..1
+  error?: string;
+};
+
 /** RepairResult with an IPC-friendly errors field (Map → Array). */
 export type RepairResultWire = {
   total: number;
@@ -123,6 +149,11 @@ export const INVOKE_CHANNELS = [
   "environment:status",
   "environment:install",
   "environment:cancel",
+  "create:queueAdd",
+  "create:queueRemove",
+  "create:queueClear",
+  "create:start",
+  "create:cancel",
   "covers:get",
   "covers:getLocal",
   "covers:clearCache",
@@ -147,6 +178,7 @@ export const EVENT_CHANNELS = [
   "event:binariesStatus",
   "event:environmentProgress",
   "event:environmentStatus",
+  "event:creations",
   "event:error",
   "event:genreEnrichProgress",
 ] as const;
@@ -167,6 +199,7 @@ export type EventPayloads = {
   "event:binariesStatus": BinariesStatus;
   "event:environmentProgress": InstallProgress | null;
   "event:environmentStatus": EnvironmentStatus;
+  "event:creations": CreationEntry[];
   "event:error": AppError;
   "event:genreEnrichProgress": {
     current: number;
@@ -202,6 +235,12 @@ export type UltrastarApi = {
   environmentInstall: (force?: boolean) => Promise<EnvironmentStatus>;
   /** Aborts a running install; the environment then reports "broken". */
   environmentCancel: () => Promise<void>;
+  createQueueAdd: (jobs: CreateJobRequest[]) => Promise<number>;
+  createQueueRemove: (id: string) => Promise<void>;
+  createQueueClear: () => Promise<void>;
+  createStart: () => Promise<void>;
+  /** Aborts the running creation; the queue continues with the next job. */
+  createCancel: () => Promise<void>;
   coverGet: (apiId: number) => Promise<string | null>; // data URL or null
   coverGetLocal: (songDir: string) => Promise<string | null>;
   coversClearCache: () => Promise<{ deletedFiles: number }>;
