@@ -6,6 +6,9 @@ billig und genau das, was justiert wird.
 
 Preload-Modus: laedt alle vier Modellarten einmal, um die Umgebungs-Einrichtung
 zu proben - vor dem ersten echten Lauf.
+
+Worker-Modus (--worker): liest Auftraege von stdin als JSON-Zeilen (viele Jobs
+pro Prozess, Modelle warm). Maerchenweise erfordert nicht --language/--out.
 """
 
 import argparse
@@ -28,14 +31,23 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ultrastar_pipeline")
     p.add_argument("--audio", type=Path)
     p.add_argument("--lyrics-file", type=Path)
-    p.add_argument("--language", required=True)
+    p.add_argument("--language")
     p.add_argument("--bpm", type=float, default=None)
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--work-dir", type=Path, default=Path(".pipeline-cache"))
-    p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--out", type=Path)
     p.add_argument("--synced-lyrics", type=Path, default=None)
     p.add_argument("--preload", action="store_true")
+    p.add_argument("--worker", action="store_true")
     args = p.parse_args(argv)
+
+    if args.worker:
+        from .worker import run_worker
+
+        return run_worker()
+
+    if args.language is None or args.out is None:
+        p.error("--language und --out sind erforderlich (ausser mit --worker)")
 
     warnungen: list[str] = []
 
