@@ -19,3 +19,9 @@ win:
 nsis:
   oneClick: true
   deleteAppDataOnUninstall: false
+linux:
+  target:
+    - AppImage
+  icon: resources/icon.png
+  category: AudioVideo
+  executableName: ultrastar-dlh

@@ -1,4 +1,4 @@
-/** Nicht-Genres (v.a. Last.fm-Tags), die nie als Genre gelten dürfen. */
+/** Non-genres (mostly Last.fm tags) that must never be treated as a genre. */
 const BLOCKLIST = new Set([
   "seen live",
   "favorites",
@@ -21,7 +21,7 @@ const BLOCKLIST = new Set([
   "2000s",
 ]);
 
-/** Varianten → kanonisches Genre (Schlüssel lowercase). */
+/** Variants → canonical genre (keys lowercase). */
 const CANONICAL: Record<string, string> = {
   "hip hop": "Hip-Hop",
   "hip-hop": "Hip-Hop",
@@ -64,9 +64,9 @@ const titleCase = (s: string): string =>
 export type CleanQuery = { artist: string; title: string };
 
 /**
- * Bereinigt Artist/Titel NUR für die Online-Suche (gespeicherte Daten
- * bleiben unverändert): trailing Klammer-Zusätze, typografische
- * Anführungszeichen, Featuring-Ketten.
+ * Cleans up artist/title ONLY for the online search (stored data stays
+ * unchanged): trailing parenthetical additions, typographic quotes,
+ * featuring chains.
  */
 export const cleanupSearchQuery = (
   artist: string,
@@ -76,7 +76,7 @@ export const cleanupSearchQuery = (
     s.replace(/['‘’‛`´]/g, "'").replace(/[“”„‟«»]/g, '"');
 
   let t = fixQuotes(title).trim();
-  // Trailing (…)- und […]-Gruppen iterativ strippen — nur am Ende
+  // Iteratively strip trailing (…) and […] groups — only at the end
   for (;;) {
     const stripped = t.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "");
     if (stripped === t || stripped.length === 0) break;
@@ -92,7 +92,7 @@ export const cleanupSearchQuery = (
   return { artist: a, title: t };
 };
 
-/** Roh-Genre einer Quelle normalisieren; null = unbrauchbar. */
+/** Normalize a raw genre from a source; null = unusable. */
 export const normalizeGenre = (raw: string): string | null => {
   const cleaned = raw.trim().toLowerCase();
   if (cleaned.length === 0) return null;

@@ -13,7 +13,16 @@ import type { AppConfig } from "../../core/storage/config.ts";
 import type { DownloadedEntry } from "../../core/storage/downloaded.ts";
 import type { FailedDownload } from "../../core/storage/failedDownloads.ts";
 
-export type { ArchiveImportResult, ArchiveImportProgress, AppConfig, DownloadedEntry, FailedDownload, Page, Song, SearchOrder };
+export type {
+  ArchiveImportResult,
+  ArchiveImportProgress,
+  AppConfig,
+  DownloadedEntry,
+  FailedDownload,
+  Page,
+  Song,
+  SearchOrder,
+};
 export type { GenreEnrichResult, GenreProviderId };
 
 export type SearchRequest = {
@@ -65,7 +74,7 @@ export type BinariesProgress = {
 
 export type FetchAllProgress = { current: number; total: number } | null;
 
-/** RepairResult mit IPC-tauglichem errors-Feld (Map → Array). */
+/** RepairResult with an IPC-friendly errors field (Map → Array). */
 export type RepairResultWire = {
   total: number;
   fixed: number;
@@ -82,7 +91,7 @@ export type RepairState = {
 
 export type AppError = { context: string; message: string };
 
-/** Renderer → Main (ipcRenderer.invoke). */
+/** Renderer → main (ipcRenderer.invoke). */
 export const INVOKE_CHANNELS = [
   "app:getInitialState",
   "usdb:search",
@@ -112,7 +121,7 @@ export const INVOKE_CHANNELS = [
 ] as const;
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 
-/** Main → Renderer (webContents.send). */
+/** Main → renderer (webContents.send). */
 export const EVENT_CHANNELS = [
   "event:status",
   "event:queueChanged",
@@ -130,7 +139,7 @@ export const EVENT_CHANNELS = [
 ] as const;
 export type EventChannel = (typeof EVENT_CHANNELS)[number];
 
-/** Payload-Typen je Event-Kanal. */
+/** Payload types per event channel. */
 export type EventPayloads = {
   "event:status": AppStatus;
   "event:queueChanged": Song[];
@@ -144,10 +153,14 @@ export type EventPayloads = {
   "event:binariesProgress": BinariesProgress;
   "event:binariesStatus": BinariesStatus;
   "event:error": AppError;
-  "event:genreEnrichProgress": { current: number; total: number; enriched: number } | null;
+  "event:genreEnrichProgress": {
+    current: number;
+    total: number;
+    enriched: number;
+  } | null;
 };
 
-/** Von preload im Renderer als window.ultrastar bereitgestellt. */
+/** Exposed by preload in the renderer as window.ultrastar. */
 export type UltrastarApi = {
   getInitialState: () => Promise<InitialState>;
   search: (req: SearchRequest) => Promise<Page>;
@@ -159,7 +172,7 @@ export type UltrastarApi = {
   queueRemove: (apiId: number) => Promise<void>;
   queueClear: () => Promise<void>;
   queueStart: () => Promise<void>;
-  queueCancel: () => Promise<void>; // stoppt nach dem aktuellen Batch
+  queueCancel: () => Promise<void>; // stops after the current batch
   queueFetchAllPages: (req: BulkQueueRequest) => Promise<void>;
   queueEntireDatabase: () => Promise<void>;
   repairStart: () => Promise<void>;
@@ -167,9 +180,9 @@ export type UltrastarApi = {
   settingsSave: (config: AppConfig) => Promise<void>;
   chooseDirectory: () => Promise<string | null>;
   binariesStatus: () => Promise<BinariesStatus>;
-  /** force=true lädt auch app-verwaltete Binaries neu (Update). */
+  /** force=true also re-downloads app-managed binaries (the update feature). */
   binariesInstall: (force?: boolean) => Promise<void>;
-  coverGet: (apiId: number) => Promise<string | null>; // data-URL oder null
+  coverGet: (apiId: number) => Promise<string | null>; // data URL or null
   coverGetLocal: (songDir: string) => Promise<string | null>;
   coversClearCache: () => Promise<{ deletedFiles: number }>;
   openFolder: (path: string) => Promise<void>;

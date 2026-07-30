@@ -17,10 +17,10 @@ export type ImportResult = {
 
 export type ImportProgress = { current: number; total: number };
 
-/** Parallel geprüfte Ordner pro Welle — I/O-bound, beschleunigt große Archive deutlich. */
+/** Folders checked in parallel per wave — I/O-bound, speeds up large archives significantly. */
 const SCAN_CONCURRENCY = 32;
 
-/** Nur die Metadaten-Felder eines Header-Satzes (ohne artist/title). */
+/** Only the metadata fields of a header set (without artist/title). */
 export const entryMetadata = (h: TxtHeaders): Partial<DownloadedEntry> => ({
   ...(h.language ? { language: h.language } : {}),
   ...(h.genre ? { genre: h.genre } : {}),
@@ -64,7 +64,7 @@ const probeNewFolder = async (
   try {
     hasVideo = (await stat(join(songDir, "video.mp4"))).size > 0;
   } catch {
-    // kein Video → hasVideo bleibt false
+    // no video → hasVideo stays false
   }
 
   return {
@@ -83,9 +83,9 @@ const probeNewFolder = async (
 };
 
 /**
- * Bestehendes Archiv in das Tracking übernehmen — ohne Netzzugriff.
- * Neue Song-Ordner werden importiert; bereits getrackte Einträge OHNE
- * language-Feld werden um Metadaten ergänzt (Backfill, zählt als refreshed).
+ * Bring an existing archive into tracking — without network access.
+ * New song folders are imported; already-tracked entries WITHOUT a
+ * language field get their metadata backfilled (counts as refreshed).
  */
 export const importArchive = (
   downloadDir: string,
@@ -102,7 +102,7 @@ export const importArchive = (
             result.push({ name: d.name, songDir: dir });
             continue;
           }
-          // Eine Ebene tiefer suchen (artist/letter-Layouts)
+          // Search one level deeper (artist/letter layouts)
           const sub = await readdir(dir, { withFileTypes: true });
           for (const s of sub.filter((x) => x.isDirectory())) {
             const subDir = join(dir, s.name);
@@ -163,7 +163,7 @@ export const importArchive = (
     if (newEntries.length > 0 || refreshMeta.size > 0) {
       const updated = existing.map((e) => {
         const meta = refreshMeta.get(e.dirName);
-        // Vorhandene Felder gewinnen: erst Metadaten, dann der Eintrag darüber
+        // Existing fields win: metadata first, then the entry layered on top
         return meta ? { ...entryMetadata(meta), ...e } : e;
       });
       yield* saveDownloadedEntries([...updated, ...newEntries]);

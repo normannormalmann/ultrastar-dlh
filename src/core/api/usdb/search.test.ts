@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
-import { buildFormBody, parseSongFromTable, parseSongsFromSearch } from "./search.ts";
+import {
+  buildFormBody,
+  parseSongFromTable,
+  parseSongsFromSearch,
+} from "./search.ts";
 
 /**
- * Inner-HTML einer USDB-Ergebniszeile (live-verifizierte Zellstruktur).
- * Titel-Zelle mit UNGESCHLOSSENEM <a> (so liefert es USDB); die letzte
- * Zip-Zelle hat keine Attribute und wird von der td-Regex nicht erfasst.
+ * Inner HTML of a USDB result row (live-verified cell structure).
+ * Title cell with an UNCLOSED <a> (that's how USDB serves it); the last
+ * zip cell has no attributes and isn't captured by the td regex.
  */
 const songRow = (
   id: number,
@@ -35,7 +39,9 @@ const songRow = (
 `;
 
 test("parses a single song row", () => {
-  expect(parseSongFromTable(songRow(1234, "ABBA", "Dancing Queen", "English"))).toEqual({
+  expect(
+    parseSongFromTable(songRow(1234, "ABBA", "Dancing Queen", "English")),
+  ).toEqual({
     apiId: 1234,
     artist: "ABBA",
     title: "Dancing Queen",
@@ -62,7 +68,7 @@ test("decodes HTML entities in artist and title", () => {
 test("returns null for unparseable input", () => {
   expect(parseSongFromTable(undefined)).toBeNull();
   expect(parseSongFromTable("")).toBeNull();
-  expect(parseSongFromTable("<td class=\"c\">only one cell</td>")).toBeNull();
+  expect(parseSongFromTable('<td class="c">only one cell</td>')).toBeNull();
 });
 
 test("parses a full search page with total pages", () => {

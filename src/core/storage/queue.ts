@@ -12,7 +12,8 @@ export const loadQueue: Effect.Effect<Song[], Error> = Effect.gen(function* () {
         const json = JSON.parse(text);
         return Array.isArray(json) ? (json as Song[]) : [];
       },
-      catch: (e) => (e instanceof Error ? e : new Error("Failed to load queue")),
+      catch: (e) =>
+        e instanceof Error ? e : new Error("Failed to load queue"),
     }),
     () => Effect.succeed([] as Song[]),
   );
@@ -23,6 +24,7 @@ export const saveQueue = (queue: Song[]): Effect.Effect<void, Error> =>
     const filePath = yield* resolveDataFilePath("queue.json");
     yield* Effect.tryPromise({
       try: async () => writeFile(filePath, JSON.stringify(queue, null, 2)),
-      catch: (e) => (e instanceof Error ? e : new Error("Failed to save queue")),
+      catch: (e) =>
+        e instanceof Error ? e : new Error("Failed to save queue"),
     });
   });

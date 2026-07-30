@@ -1,13 +1,15 @@
-// Rendert die Icon-SVGs per Playwright/Chromium in PNGs und packt sie
-// als PNG-embedded ICO. Aufruf: node resources/generate-icon.mjs
+// Renders the icon SVGs via Playwright/Chromium into PNGs, packs them into
+// a PNG-embedded ICO (Windows), and writes a single PNG (Linux).
+// Usage: node resources/generate-icon.mjs
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SMALL_SIZES = [16, 24, 32, 48]; // aus icon-small.svg
-const DETAIL_SIZES = [64, 128, 256]; // aus icon.svg
+const SMALL_SIZES = [16, 24, 32, 48]; // from icon-small.svg
+const DETAIL_SIZES = [64, 128, 256]; // from icon.svg
+const LINUX_ICON_SIZE = 512; // from icon.svg, for electron-builder (AppImage)
 
 const renderPng = async (page, svg, size) => {
   await page.setViewportSize({ width: size, height: size });
@@ -18,7 +20,7 @@ const renderPng = async (page, svg, size) => {
   return page.screenshot({ omitBackground: true, type: "png" });
 };
 
-/** PNG-embedded ICO: ICONDIR + ICONDIRENTRYs + PNG-Blobs. */
+/** PNG-embedded ICO: ICONDIR + ICONDIRENTRYs + PNG blobs. */
 const packIco = (entries) => {
   const header = Buffer.alloc(6);
   header.writeUInt16LE(0, 0); // reserved
@@ -54,17 +56,22 @@ for (const size of SMALL_SIZES) {
 for (const size of DETAIL_SIZES) {
   entries.push({ size, png: await renderPng(page, detailSvg, size) });
 }
+const linuxPng = await renderPng(page, detailSvg, LINUX_ICON_SIZE);
 await browser.close();
 
 entries.sort((a, b) => a.size - b.size);
 const expected = [...SMALL_SIZES, ...DETAIL_SIZES].sort((a, b) => a - b);
 const actual = entries.map((e) => e.size);
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-  throw new Error(`Unerwartete Größen: ${actual.join(",")}`);
+  throw new Error(`Unexpected sizes: ${actual.join(",")}`);
 }
 
 const ico = packIco(entries);
 await writeFile(join(here, "icon.ico"), ico);
+await writeFile(join(here, "icon.png"), linuxPng);
 console.log(
-  `icon.ico geschrieben: ${entries.length} Einträge (${actual.join(", ")} px), ${ico.length} Bytes`,
+  `icon.ico written: ${entries.length} entries (${actual.join(", ")} px), ${ico.length} bytes`,
+);
+console.log(
+  `icon.png geschrieben: ${LINUX_ICON_SIZE}px, ${linuxPng.length} Bytes`,
 );

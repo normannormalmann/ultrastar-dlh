@@ -2,7 +2,10 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { BrowserWindow } from "electron";
-import { type FolderLayout, sanitizeForPath } from "../../core/download/naming.ts";
+import {
+  type FolderLayout,
+  sanitizeForPath,
+} from "../../core/download/naming.ts";
 import type { VideoQuality } from "../../core/api/youtube/download.ts";
 import {
   checkFfmpegAvailable,
@@ -25,7 +28,7 @@ import type {
   AppStatus,
   EventChannel,
   EventPayloads,
-} from "../shared/ipc-contract.ts";
+} from "../shared/ipcContract.ts";
 
 const QUEUE_SAVE_DEBOUNCE_MS = 2000;
 
@@ -75,9 +78,9 @@ class AppState {
     return new Set(this.downloaded.map((e) => e.apiId));
   }
   /**
-   * Baut EINMALIG ein Prädikat „bereits vorhanden?" (apiId ODER abgeleiteter
-   * Ordnername, case-insensitiv wegen NTFS). Vor .filter()-Läufen hoisten —
-   * pro Aufruf werden die Sets nur einmal gebaut.
+   * Builds an "already downloaded?" predicate ONCE (apiId OR derived folder
+   * name, case-insensitive because of NTFS). Hoist this out of .filter()
+   * runs — the sets are only built once per call.
    */
   makeIsDownloadedSong(): (
     song: Pick<Song, "apiId" | "artist" | "title">,
@@ -89,7 +92,7 @@ class AppState {
       dirs.has(sanitizeForPath(`${song.artist} - ${song.title}`).toLowerCase());
   }
 
-  /** Einzelabfrage; für Filter-Läufe makeIsDownloadedSong() hoisten. */
+  /** Single lookup; hoist makeIsDownloadedSong() for filter runs. */
   isDownloadedSong(song: Pick<Song, "apiId" | "artist" | "title">): boolean {
     return this.makeIsDownloadedSong()(song);
   }
@@ -102,7 +105,7 @@ class AppState {
   setQueue(next: Song[]): void {
     this.queue = next;
     broadcast("event:queueChanged", this.queue);
-    // Debounce-Persistenz wie in der TUI (verhindert Massen-Schreiben bei Bulk-Adds)
+    // Debounced persistence like in the TUI (prevents mass writes on bulk adds)
     if (this.#queueSaveTimer) clearTimeout(this.#queueSaveTimer);
     this.#queueSaveTimer = setTimeout(() => {
       Effect.runPromise(saveQueue(this.queue)).catch((e) =>
@@ -111,7 +114,7 @@ class AppState {
     }, QUEUE_SAVE_DEBOUNCE_MS);
   }
 
-  /** Fügt Songs dedupliziert hinzu (gegen Queue UND Verlauf). Gibt Anzahl neuer Songs zurück. */
+  /** Adds songs deduplicated (against queue AND history). Returns the count of new songs. */
   addToQueue(songs: Song[]): number {
     const existing = new Set(this.queue.map((s) => s.apiId));
     const isDownloaded = this.makeIsDownloadedSong();
@@ -146,7 +149,7 @@ class AppState {
     broadcast("event:downloadedChanged", this.downloaded);
   }
 
-  /** Einzelnen frisch geladenen Eintrag einpflegen — ohne 28k-Voll-Scan. */
+  /** Merge in a single freshly downloaded entry — without a full 28k-entry rescan. */
   upsertDownloaded(entry: DownloadedEntry): void {
     this.setDownloaded([
       entry,
@@ -169,7 +172,7 @@ export const state = new AppState();
 
 const STAT_CONCURRENCY = 64;
 
-/** Verlauf laden und Einträge ohne video.mp4 für die UI ausfiltern (wie TUI). */
+/** Load history and filter out entries without video.mp4 for the UI (like the TUI). */
 export const reloadDownloadedEntries = async (
   onProgress?: (p: { current: number; total: number }) => void,
 ): Promise<void> => {
@@ -184,8 +187,8 @@ export const reloadDownloadedEntries = async (
             await stat(join(e.songDir, "video.mp4"));
             valid.push(e);
           } catch {
-            // Datei fehlt – Eintrag bleibt in downloaded.json für die Reparatur,
-            // wird aber nicht in der UI gelistet (gleiches Verhalten wie TUI).
+            // File missing – entry stays in downloaded.json for the repair
+            // feature, but isn't listed in the UI (same behavior as the TUI).
           }
         }),
       );
@@ -200,7 +203,7 @@ export const reloadDownloadedEntries = async (
   }
 };
 
-/** Beim App-Start: Session, Config, Queue, Verlauf, Tool-Checks. */
+/** On app start: session, config, queue, history, tool checks. */
 export const initializeState = async (): Promise<void> => {
   try {
     const session = await Effect.runPromise(ensureSession);

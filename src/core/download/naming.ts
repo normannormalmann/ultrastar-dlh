@@ -11,8 +11,8 @@ const UMLAUT_MAP: Record<string, string> = {
 /**
  * Securely sanitizes a string for use in file paths.
  * Prevents path traversal, injection, and other attacks.
- * Pure (keine node:-Imports) — auch im Renderer nutzbar, um aus
- * "Artist - Titel" den Download-Ordnernamen abzuleiten.
+ * Pure (no node: imports) — also usable in the renderer, to derive the
+ * download folder name from "Artist - Title".
  */
 export const sanitizeForPath = (name: string): string => {
   // Remove NUL-bytes and control characters (0x00-0x1f and 0x80-0x9f)
@@ -23,7 +23,7 @@ export const sanitizeForPath = (name: string): string => {
   const MAX_LENGTH = 100;
   cleaned = cleaned.slice(0, MAX_LENGTH);
 
-  // Replace Umlaute
+  // Replace umlauts
   cleaned = cleaned.replace(/[äÄöÖüÜß]/g, (c) => UMLAUT_MAP[c] ?? c);
 
   // Replace dangerous characters with underscore (instead of space)
@@ -52,16 +52,16 @@ export const sanitizeForPath = (name: string): string => {
 
 export type FolderLayout = "flat" | "artist" | "letter";
 
-/** Buchstaben-Bucket des sanitisierten Artists: A–Z, sonst "#". */
+/** Letter bucket of the sanitized artist: A–Z, otherwise "#". */
 const letterBucket = (artist: string): string => {
   const first = sanitizeForPath(artist).charAt(0).toUpperCase();
   return first >= "A" && first <= "Z" ? first : "#";
 };
 
 /**
- * Relativer Song-Pfad unter dem Download-Ordner (mit "/" als Trenner;
- * node:path join normalisiert plattformspezifisch). Der Leaf-Name ist in
- * allen Layouts identisch — Invariante für dirName-Dedupe und ✓-Marker.
+ * Relative song path under the download folder (with "/" as separator;
+ * node:path join normalizes it per-platform). The leaf name is identical
+ * across all layouts — an invariant for dirName dedupe and the ✓ marker.
  */
 export const songRelativePath = (
   artist: string,

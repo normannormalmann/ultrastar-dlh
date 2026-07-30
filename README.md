@@ -1,3 +1,5 @@
+🇬🇧 [English](README.en.md) | 🇩🇪 Deutsch
+
 # UltraStar - Dirty Little Helper
 
 **Die Desktop-App, die deine UltraStar-Karaoke-Sammlung aufbaut, pflegt und durchsuchbar macht.**
@@ -57,6 +59,7 @@ bunx --bun github:normannormalmann/ultrastar-dlh
 | `Ctrl+Q` / `Ctrl+A` / `Ctrl+P` | Song / Seite / alle Seiten in die Queue |
 | `Ctrl+D` | Queue starten |
 | `Ctrl+V` | Reparatur-Modus |
+| `Ctrl+F` | Fehlgeschlagene Downloads anzeigen (Retry mit `Enter`) |
 | `Ctrl+S` | Setup (Pfad, Cookie-Browser) |
 | `Esc` | Zurück / Beenden |
 
@@ -85,7 +88,9 @@ bun run start          # TUI im Dev-Modus
 bun run desktop:dev    # Desktop-App mit Hot Reload
 bun run test           # Unit-Tests
 bun run test:e2e       # Playwright-Smoke-Test (baut vorher)
-bun run desktop:dist   # Windows-Installer bauen (dist/)
+bun run desktop:dist   # Installer für die aktuelle Plattform bauen (dist/)
+bun run desktop:dist:win     # Windows-Installer erzwingen
+bun run desktop:dist:linux   # Linux-AppImage erzwingen
 bun run lint           # Biome
 ```
 

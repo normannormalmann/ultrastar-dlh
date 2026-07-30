@@ -7,7 +7,7 @@ import type {
   InitialState,
   InvokeChannel,
   SearchRequest,
-} from "../shared/ipc-contract.ts";
+} from "../shared/ipcContract.ts";
 import { scanAndRepairVideos } from "../../core/download/repairSongs.ts";
 import { importArchive } from "../../core/download/importArchive.ts";
 import { enrichGenres } from "../../core/download/enrichGenres.ts";
@@ -18,7 +18,11 @@ import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
-import { clearCoverCaches, getCoverDataUrl, getLocalCoverDataUrl } from "./covers.ts";
+import {
+  clearCoverCaches,
+  getCoverDataUrl,
+  getLocalCoverDataUrl,
+} from "./covers.ts";
 import {
   downloadSongItem,
   fetchAllIntoQueue,
@@ -26,7 +30,7 @@ import {
   requestQueueCancel,
 } from "./downloads.ts";
 import { broadcast, reloadDownloadedEntries, state } from "./state.ts";
-import type { Song } from "../shared/ipc-contract.ts";
+import type { Song } from "../shared/ipcContract.ts";
 
 export const SEARCH_PAGE_SIZE = 20;
 
@@ -36,11 +40,11 @@ let genreEnrichRunning = false;
 let genreEnrichCancel = false;
 
 /**
- * Alle Invoke-Handler. Der Typ erzwingt, dass GENAU die Kanäle aus dem
- * Vertrag implementiert werden (fehlt einer, meckert tsc; ist einer zu viel,
- * auch). Handler-Signatur: (payload) => Promise<result>.
+ * All invoke handlers. The type forces EXACTLY the channels from the
+ * contract to be implemented (missing one, or having one too many, is a
+ * tsc error). Handler signature: (payload) => Promise<result>.
  */
-// biome-ignore lint/suspicious/noExplicitAny: zentrale IPC-Grenze, Typen pro Kanal im Vertrag
+// biome-ignore lint/suspicious/noExplicitAny: central IPC boundary, types are per-channel in the contract
 export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
   {
     "app:getInitialState": async (): Promise<InitialState> => ({
@@ -95,7 +99,8 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       void downloadSongItem(song);
     },
 
-    "downloads:failedList": async () => loadFailedDownloads(state.downloadDir),
+    "downloads:failedList": async () =>
+      Effect.runPromise(loadFailedDownloads(state.downloadDir)),
 
     "library:refresh": async () => {
       try {
@@ -109,9 +114,19 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
 
     "archive:import": async () => {
       if (archiveImportRunning) {
-        return { imported: 0, importedWithoutVideo: 0, skipped: 0, refreshed: 0 };
+        return {
+          imported: 0,
+          importedWithoutVideo: 0,
+          skipped: 0,
+          refreshed: 0,
+        };
       }
-      if (state.queueRunning || state.activeDownloads.length > 0 || repairRunning || genreEnrichRunning) {
+      if (
+        state.queueRunning ||
+        state.activeDownloads.length > 0 ||
+        repairRunning ||
+        genreEnrichRunning
+      ) {
         throw new Error(
           "Import nicht möglich, während Downloads, eine Reparatur oder Genre-Anreicherung laufen. Bitte warten und erneut versuchen.",
         );
@@ -171,10 +186,22 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
         return;
       }
       repairRunning = true;
-      broadcast("event:repair", { running: true, progress: null, result: null });
+      broadcast("event:repair", {
+        running: true,
+        progress: null,
+        result: null,
+      });
       void Effect.runPromise(
-        scanAndRepairVideos(state.downloadDir, state.cookie, state.browser, (p) =>
-          broadcast("event:repair", { running: true, progress: p, result: null }),
+        scanAndRepairVideos(
+          state.downloadDir,
+          state.cookie,
+          state.browser,
+          (p) =>
+            broadcast("event:repair", {
+              running: true,
+              progress: p,
+              result: null,
+            }),
           state.videoQuality,
         ),
       )
@@ -226,7 +253,8 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
           "Anreicherung nicht möglich, während Downloads, Import oder Reparatur laufen.",
         );
       }
-      const providerId = (state.config?.genreProvider ?? "deezer") as GenreProviderId;
+      const providerId = (state.config?.genreProvider ??
+        "deezer") as GenreProviderId;
       let provider: GenreProvider;
       if (providerId === "lastfm") {
         const key = state.config?.lastfmApiKey?.trim();

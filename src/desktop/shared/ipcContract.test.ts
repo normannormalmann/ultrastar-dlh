@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { EVENT_CHANNELS, INVOKE_CHANNELS } from "./ipc-contract.ts";
+import { EVENT_CHANNELS, INVOKE_CHANNELS } from "./ipcContract.ts";
 
 test("invoke channels are unique and namespaced", () => {
   expect(new Set(INVOKE_CHANNELS).size).toBe(INVOKE_CHANNELS.length);

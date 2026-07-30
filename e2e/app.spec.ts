@@ -5,7 +5,7 @@ test("app boots and shows the search view", async () => {
   const window = await app.firstWindow();
 
   await expect(window).toHaveTitle("UltraStar - Dirty Little Helper");
-  // Sidebar-Einträge vorhanden
+  // Sidebar entries are present
   await expect(
     window.getByRole("button", { name: "Suche", exact: true }),
   ).toBeVisible();
@@ -15,7 +15,7 @@ test("app boots and shows the search view", async () => {
   await expect(
     window.getByRole("button", { name: "Einstellungen", exact: true }),
   ).toBeVisible();
-  // Such-View ist die Startansicht
+  // Search view is the initial view
   await expect(window.getByPlaceholder("Interpret…")).toBeVisible();
 
   await app.close();

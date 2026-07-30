@@ -52,7 +52,7 @@ test("imports songs, counts missing videos, skips tracked, ignores non-song fold
   await makeSong(root, "Kein Song", { txt: null, video: false });
   await makeSong(root, "Bereits Da", { video: true });
 
-  // "Bereits Da" vorab als getrackt markieren
+  // Mark "Bereits Da" as already tracked upfront
   await Effect.runPromise(
     saveDownloadedEntries([
       {
@@ -68,7 +68,12 @@ test("imports songs, counts missing videos, skips tracked, ignores non-song fold
   );
 
   const result = await Effect.runPromise(importArchive(root));
-  expect(result).toEqual({ imported: 2, importedWithoutVideo: 1, skipped: 1, refreshed: 0 });
+  expect(result).toEqual({
+    imported: 2,
+    importedWithoutVideo: 1,
+    skipped: 1,
+    refreshed: 0,
+  });
 
   const entries = await Effect.runPromise(loadDownloadedEntries);
   expect(entries).toHaveLength(3);
@@ -162,5 +167,5 @@ test("stores metadata and backfills tracked entries missing language", async () 
   expect(meta?.year).toBe(1999);
   const old = entries.find((e) => e.dirName === "Old Tracked");
   expect(old?.language).toBe("English");
-  expect(old?.artist).toBe("Old"); // vorhandene Felder nicht überschrieben
+  expect(old?.artist).toBe("Old"); // existing fields are not overwritten
 });

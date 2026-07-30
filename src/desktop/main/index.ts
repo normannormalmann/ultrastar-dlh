@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { installMissingBinaries, prependManagedBinToPath } from "./binaries.ts";
+import {
+  installMissingBinaries,
+  prependManagedBinToPath,
+  resolvePlatformBinaries,
+} from "./binaries.ts";
 import { registerIpcHandlers } from "./ipc.ts";
 import { broadcast, initializeState, state } from "./state.ts";
 
@@ -12,7 +16,7 @@ const createWindow = (): BrowserWindow => {
     minHeight: 600,
     backgroundColor: "#1e1e2e",
     autoHideMenuBar: true,
-    // Dev-Modus: Fenster-Icon aus dem Repo; gepackt liefert die Exe das Icon
+    // Dev mode: window icon from the repo; packaged builds get the icon from the executable
     ...(app.isPackaged
       ? {}
       : { icon: join(import.meta.dirname, "../../resources/icon.ico") }),
@@ -20,17 +24,17 @@ const createWindow = (): BrowserWindow => {
       preload: join(import.meta.dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // ESM-Preload benötigt sandbox:false
+      sandbox: false, // ESM preload requires sandbox:false
     },
   });
 
-  // Externe Links im System-Browser öffnen, nicht im App-Fenster
+  // Open external links in the system browser, not in the app window
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
-    // Plain <a href>-Klicks: Navigation unterbinden, extern öffnen
+    // Plain <a href> clicks: prevent navigation, open externally instead
     if (url.startsWith("http")) {
       event.preventDefault();
       void shell.openExternal(url);
@@ -50,10 +54,10 @@ void app.whenReady().then(() => {
   prependManagedBinToPath();
   createWindow();
   void initializeState().then(() => {
-    // Spec: fehlende Tools werden beim ersten Start automatisch geladen
+    // Spec: missing tools are installed automatically on first launch
     const { ytDlpAvailable, ffmpegAvailable } = state.status;
     if (
-      process.platform === "win32" &&
+      resolvePlatformBinaries(process.platform) !== undefined &&
       (ytDlpAvailable === false || ffmpegAvailable === false)
     ) {
       void installMissingBinaries().catch((err) => {

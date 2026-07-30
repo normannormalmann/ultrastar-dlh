@@ -5,12 +5,12 @@ import { Effect } from "effect";
 import { getCacheDir, resolveDataFilePath } from "./paths.ts";
 import { loadQueue, saveQueue } from "./queue.ts";
 
-// Isoliertes Cache-Verzeichnis pro Testlauf; getAppName() liest die Variable
-// bei jedem Aufruf, daher reicht das Setzen vor dem ersten Effect-Run.
+// Isolated cache directory per test run; getAppName() reads the variable
+// on every call, so setting it before the first Effect run is sufficient.
 process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-test-${process.pid}`;
 
 afterAll(async () => {
-  // Eltern-Verzeichnis (…\ultrastar-cli-test-<pid>) löschen, nicht nur den Cache-Leaf
+  // Delete the parent directory (…\ultrastar-cli-test-<pid>), not just the cache leaf
   const dir = await Effect.runPromise(getCacheDir());
   await rm(join(dir, ".."), { recursive: true, force: true });
 });

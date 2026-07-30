@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Wrench } from "lucide-react";
-import type { AppStatus } from "../../shared/ipc-contract.ts";
+import type { AppStatus } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 
 export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
@@ -32,7 +32,8 @@ export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
           "Scan läuft…"
         ) : (
           <>
-            <Wrench size={14} aria-hidden />Scan starten
+            <Wrench size={14} aria-hidden />
+            Scan starten
           </>
         )}
       </button>

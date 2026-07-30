@@ -27,7 +27,11 @@ import {
   type DownloadedEntry,
   loadDownloadedEntries,
 } from "../core/storage/downloaded.ts";
-import { appendFailedDownload } from "../core/storage/failedDownloads.ts";
+import {
+  appendFailedDownload,
+  type FailedDownload,
+  loadFailedDownloads,
+} from "../core/storage/failedDownloads.ts";
 import { loadQueue, saveQueue } from "../core/storage/queue.ts";
 import { DownloadedList } from "./components/DownloadedList.tsx";
 import HelpRow from "./components/HelpRow.tsx";
@@ -37,7 +41,7 @@ import ProgressBar from "./components/ProgressBar.tsx";
 import SearchForm from "./components/SearchForm.tsx";
 import Select from "./components/Select.tsx";
 
-type Mode = "setup" | "form" | "results" | "repair";
+type Mode = "setup" | "form" | "results" | "repair" | "failed";
 
 type DownloadStatus = "downloading" | "completed" | "failed";
 
@@ -102,6 +106,9 @@ export const App: FC = () => {
     null,
   );
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
+
+  const [failedDownloads, setFailedDownloads] = useState<FailedDownload[]>([]);
+  const [selectedFailedIndex, setSelectedFailedIndex] = useState<number>(0);
 
   const [downloadQueue, setDownloadQueueState] = useState<Song[]>([]);
   const [isDownloadingQueue, setIsDownloadingQueue] = useState<boolean>(false);
@@ -376,7 +383,9 @@ export const App: FC = () => {
         console.error("Download error:", err);
         setErrorMessage(`Failed to download "${song.title}": ${message}`);
         // Log to failed-downloads files
-        appendFailedDownload(downloadDir, song, message).catch(() => {});
+        Effect.runPromise(
+          appendFailedDownload(downloadDir, song, message),
+        ).catch(() => {});
         // Mark as failed - keep visible until timeout removes it
         setActiveDownloads((prev) =>
           prev.map((d) =>
@@ -452,6 +461,12 @@ export const App: FC = () => {
     },
     [songs, selectedIndex, downloadedApiIds, addToQueue],
   );
+
+  const refreshFailedDownloads = useCallback(async () => {
+    const entries = await Effect.runPromise(loadFailedDownloads(downloadDir));
+    setFailedDownloads(entries);
+    setSelectedFailedIndex(0);
+  }, [downloadDir]);
 
   const queueAllCurrentPage = useCallback(() => {
     addToQueue(songs);
@@ -646,6 +661,10 @@ export const App: FC = () => {
         setMode("form");
         return;
       }
+      if (mode === "failed") {
+        setMode("form");
+        return;
+      }
       if (mode === "form") {
         exit();
         return;
@@ -662,6 +681,11 @@ export const App: FC = () => {
       }
       if (key.ctrl && (input === "v" || input === "\x16")) {
         void startRepair();
+        return;
+      }
+      if (key.ctrl && (input === "f" || input === "\x06")) {
+        void refreshFailedDownloads();
+        setMode("failed");
         return;
       }
       if (key.ctrl && (input === "s" || input === "\x13")) {
@@ -733,6 +757,17 @@ export const App: FC = () => {
       if (key.rightArrow) {
         if (totalPages > 0 && currentPage < totalPages) {
           void fetchPage(currentPage + 1);
+        }
+        return;
+      }
+    } else if (mode === "failed") {
+      // Up/Down handled by Select component
+      if (key.return && failedDownloads.length > 0) {
+        const f = failedDownloads[selectedFailedIndex];
+        if (f) {
+          addToQueue([
+            { apiId: f.apiId, artist: f.artist, title: f.title, languages: [] },
+          ]);
         }
         return;
       }
@@ -897,6 +932,45 @@ export const App: FC = () => {
               <Text dimColor>Esc: back to search</Text>
             </Box>
           )}
+        </Box>
+      ) : mode === "failed" ? (
+        <Box flexDirection="column" gap={1}>
+          {failedDownloads.length === 0 ? (
+            <Text color="yellow">No failed downloads.</Text>
+          ) : (
+            <>
+              <Select
+                options={failedDownloads.map((f, i) => ({
+                  label: (
+                    <Text>
+                      <Text color="yellowBright">{f.artist}</Text>
+                      <Text color="gray"> - </Text>
+                      <Text color="cyanBright">{f.title}</Text>
+                    </Text>
+                  ),
+                  value: String(i),
+                }))}
+                onChange={(v: string) => {
+                  const idx = Number(v);
+                  if (
+                    !Number.isNaN(idx) &&
+                    idx >= 0 &&
+                    idx < failedDownloads.length
+                  ) {
+                    setSelectedFailedIndex(idx);
+                  }
+                }}
+                visibleOptionCount={VISIBLE_OPTION_COUNT}
+                value={String(selectedFailedIndex)}
+              />
+              {failedDownloads[selectedFailedIndex] && (
+                <Text dimColor wrap="truncate-end">
+                  Error: {failedDownloads[selectedFailedIndex]?.error}
+                </Text>
+              )}
+            </>
+          )}
+          <Text dimColor>Enter: retry (re-queue) • Esc: back to search</Text>
         </Box>
       ) : (
         <>
