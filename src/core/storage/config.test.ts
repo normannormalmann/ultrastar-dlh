@@ -21,7 +21,9 @@ test("saveConfig merges with existing fields instead of wiping them", async () =
       lastfmApiKey: "k",
     }),
   );
-  await Effect.runPromise(saveConfig({ downloadDir: "D:\\y", browser: "chrome" }));
+  await Effect.runPromise(
+    saveConfig({ downloadDir: "D:\\y", browser: "chrome" }),
+  );
   const cfg = await Effect.runPromise(loadConfig);
   expect(cfg?.downloadDir).toBe("D:\\y");
   expect(cfg?.genreProvider).toBe("lastfm");

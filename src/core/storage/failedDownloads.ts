@@ -1,6 +1,6 @@
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import ExcelJS from "exceljs";
+import { Effect } from "effect";
 import { API_URL } from "../api/usdb/config.ts";
 
 export type FailedDownload = {
@@ -13,7 +13,7 @@ export type FailedDownload = {
 };
 
 const TXT_FILE = "failed-downloads.txt";
-const XLSX_FILE = "failed-downloads.xlsx";
+const JSON_FILE = "failed-downloads.json";
 
 const formatEntry = (entry: FailedDownload): string => {
   const lines = [
@@ -38,149 +38,54 @@ const createEntry = (
   timestamp: new Date().toISOString(),
 });
 
-const writeExcel = async (
-  filePath: string,
-  entries: FailedDownload[],
-): Promise<void> => {
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = "UltraStar CLI";
-
-  const sheet = workbook.addWorksheet("Failed Downloads", {
-    views: [{ state: "frozen", ySplit: 1 }],
-  });
-
-  sheet.columns = [
-    { header: "Datum", key: "timestamp", width: 22 },
-    { header: "Artist", key: "artist", width: 25 },
-    { header: "Titel", key: "title", width: 35 },
-    { header: "USDB Link", key: "usdbUrl", width: 50 },
-    { header: "Fehler", key: "error", width: 60 },
-    { header: "API ID", key: "apiId", width: 10 },
-  ];
-
-  // Style header row
-  const headerRow = sheet.getRow(1);
-  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-  headerRow.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FF4472C4" },
-  };
-  headerRow.alignment = { vertical: "middle" };
-
-  for (const entry of entries) {
-    const row = sheet.addRow({
-      timestamp: entry.timestamp.replace("T", " ").replace(/\.\d+Z$/, ""),
-      artist: entry.artist,
-      title: entry.title,
-      usdbUrl: entry.usdbUrl,
-      error: entry.error,
-      apiId: entry.apiId,
-    });
-
-    // Make USDB URL a clickable hyperlink
-    const urlCell = row.getCell("usdbUrl");
-    urlCell.value = {
-      text: entry.usdbUrl,
-      hyperlink: entry.usdbUrl,
-    } as ExcelJS.CellHyperlinkValue;
-    urlCell.font = { color: { argb: "FF0563C1" }, underline: true };
-  }
-
-  // Auto-filter
-  sheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: 6 },
-  };
-
-  await workbook.xlsx.writeFile(filePath);
-};
-
-let pendingEntries: FailedDownload[] = [];
-let flushTimeout: ReturnType<typeof setTimeout> | null = null;
-let flushPromise = Promise.resolve();
-
-export const appendFailedDownload = async (
-  downloadDir: string,
-  song: { apiId: number; artist: string; title: string },
-  error: string,
-): Promise<void> => {
-  const entry = createEntry(song, error);
-
-  // Append to text log immediately
-  const txtPath = join(downloadDir, TXT_FILE);
-  await appendFile(txtPath, formatEntry(entry), "utf8");
-
-  pendingEntries.push(entry);
-
-  if (!flushTimeout) {
-    flushTimeout = setTimeout(() => {
-      flushTimeout = null;
-      const entriesToFlush = pendingEntries;
-      pendingEntries = [];
-
-      flushPromise = flushPromise.then(async () => {
-        if (entriesToFlush.length === 0) return;
-        try {
-          const xlsxPath = join(downloadDir, XLSX_FILE);
-          const existing = await loadExistingEntries(xlsxPath);
-          existing.push(...entriesToFlush);
-          await writeExcel(xlsxPath, existing);
-        } catch (e) {
-          console.error("Failed to write Excel file:", e);
-        }
-      });
-    }, 2000);
-  }
-};
-
-/** Alle protokollierten Fehl-Downloads aus der XLSX lesen (leeres Array, wenn keine existiert). */
-export const loadFailedDownloads = async (
-  downloadDir: string,
-): Promise<FailedDownload[]> =>
-  loadExistingEntries(join(downloadDir, XLSX_FILE));
-
-const loadExistingEntries = async (
-  xlsxPath: string,
-): Promise<FailedDownload[]> => {
+const readEntries = async (jsonPath: string): Promise<FailedDownload[]> => {
   try {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(xlsxPath);
-    const sheet = workbook.getWorksheet("Failed Downloads");
-    if (!sheet) return [];
-
-    const entries: FailedDownload[] = [];
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // skip header
-      entries.push({
-        timestamp: String(row.getCell("timestamp").value ?? ""),
-        artist: String(row.getCell("artist").value ?? ""),
-        title: String(row.getCell("title").value ?? ""),
-        usdbUrl: String(
-          (row.getCell("usdbUrl").value as ExcelJS.CellHyperlinkValue)?.text ??
-            row.getCell("usdbUrl").value ??
-            "",
-        ),
-        error: String(row.getCell("error").value ?? ""),
-        apiId: Number(row.getCell("apiId").value ?? 0),
-      });
-    });
-    return entries;
+    const text = await readFile(jsonPath, "utf8");
+    const json = JSON.parse(text);
+    return Array.isArray(json) ? (json as FailedDownload[]) : [];
   } catch {
     return [];
   }
 };
 
-export const getFailedDownloadsPath = (downloadDir: string): string =>
-  join(downloadDir, XLSX_FILE);
+/** Serializes writes so concurrent failures don't race on read-modify-write. */
+let writeChain: Promise<void> = Promise.resolve();
 
-export const countFailedDownloads = async (
+export const appendFailedDownload = (
   downloadDir: string,
-): Promise<number> => {
-  try {
-    const content = await readFile(join(downloadDir, TXT_FILE), "utf8");
-    return (content.match(/^\[/gm) || []).length;
-  } catch {
-    return 0;
-  }
-};
+  song: { apiId: number; artist: string; title: string },
+  error: string,
+): Effect.Effect<void, Error> =>
+  Effect.tryPromise({
+    try: async () => {
+      const entry = createEntry(song, error);
+
+      // Append to the human-readable text log immediately.
+      const txtPath = join(downloadDir, TXT_FILE);
+      await appendFile(txtPath, formatEntry(entry), "utf8");
+
+      const jsonPath = join(downloadDir, JSON_FILE);
+      writeChain = writeChain
+        .then(async () => {
+          const existing = await readEntries(jsonPath);
+          existing.push(entry);
+          await writeFile(jsonPath, JSON.stringify(existing, null, 2));
+        })
+        .catch((e) => {
+          console.error("Failed to write failed-downloads.json:", e);
+        });
+      await writeChain;
+    },
+    catch: (e) =>
+      e instanceof Error ? e : new Error("Failed to append failed download"),
+  });
+
+/** All logged failed downloads (empty array if none exist yet). */
+export const loadFailedDownloads = (
+  downloadDir: string,
+): Effect.Effect<FailedDownload[], Error> =>
+  Effect.tryPromise({
+    try: () => readEntries(join(downloadDir, JSON_FILE)),
+    catch: (e) =>
+      e instanceof Error ? e : new Error("Failed to load failed downloads"),
+  });

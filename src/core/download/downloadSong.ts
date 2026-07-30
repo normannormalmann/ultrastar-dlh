@@ -37,7 +37,11 @@ export const downloadSong = (
     const { song, cookie, onProgress, onWarning } = params;
     const baseDir = params.baseDir ?? join(process.cwd(), "songs");
 
-    const relPath = songRelativePath(song.artist, song.title, params.folderLayout ?? "flat");
+    const relPath = songRelativePath(
+      song.artist,
+      song.title,
+      params.folderLayout ?? "flat",
+    );
     const dirName = relPath.split("/").pop() as string;
     const songDir = join(baseDir, relPath);
 

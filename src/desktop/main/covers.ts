@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { app } from "electron";
@@ -10,7 +17,7 @@ const MEMORY_LIMIT_ENTRIES = 200;
 
 export type CacheFile = { path: string; size: number; mtimeMs: number };
 
-/** Pure: wählt die ältesten Dateien zur Löschung, bis das Limit eingehalten ist. */
+/** Pure: picks the oldest files for deletion until the limit is respected. */
 export const selectEvictions = (
   files: CacheFile[],
   limitBytes: number,
@@ -30,7 +37,7 @@ export const selectEvictions = (
 
 const coversDir = (): string => join(app.getPath("userData"), "covers");
 
-// Einfacher Memory-LRU über Map-Einfügereihenfolge
+// Simple memory LRU based on Map insertion order
 const memoryCache = new Map<number, string>();
 const localMemoryCache = new Map<string, string>();
 
@@ -56,15 +63,17 @@ const enforceDiskLimit = async (dir: string): Promise<void> => {
       await rm(p, { force: true });
     }
   } catch {
-    // Cache-Pflege darf nie die Anfrage scheitern lassen
+    // Cache maintenance must never fail the request
   }
 };
 
-/** Cover als JPEG-data-URL liefern (Memory → Disk → Netz), null wenn keins existiert. */
-export const getCoverDataUrl = async (apiId: number): Promise<string | null> => {
+/** Return the cover as a JPEG data URL (memory → disk → network), null if none exists. */
+export const getCoverDataUrl = async (
+  apiId: number,
+): Promise<string | null> => {
   const cached = memoryCache.get(apiId);
   if (cached) {
-    remember(apiId, cached); // LRU-Touch
+    remember(apiId, cached); // LRU touch
     return cached;
   }
 
@@ -77,7 +86,7 @@ export const getCoverDataUrl = async (apiId: number): Promise<string | null> => 
     remember(apiId, dataUrl);
     return dataUrl;
   } catch {
-    // nicht auf Disk → Netz
+    // not on disk → fetch from network
   }
 
   const fetched = await Effect.runPromise(
@@ -92,12 +101,12 @@ export const getCoverDataUrl = async (apiId: number): Promise<string | null> => 
     await writeFile(file, fetched);
     void enforceDiskLimit(dir);
   } catch {
-    // Disk-Cache ist Best-Effort
+    // Disk cache is best-effort
   }
   return dataUrl;
 };
 
-/** Disk- und Memory-Cover-Caches leeren. Gibt die Zahl gelöschter Dateien zurück. */
+/** Clear the disk and memory cover caches. Returns the number of deleted files. */
 export const clearCoverCaches = async (): Promise<{ deletedFiles: number }> => {
   memoryCache.clear();
   localMemoryCache.clear();
@@ -109,15 +118,15 @@ export const clearCoverCaches = async (): Promise<{ deletedFiles: number }> => {
       deletedFiles++;
     }
   } catch {
-    // Verzeichnis existiert nicht → 0
+    // Directory doesn't exist → 0
   }
   return { deletedFiles };
 };
 
 /**
- * Cover aus dem Song-Ordner (cover.jpg) als data-URL.
- * Sicherheit: songDir muss exakt einem getrackten Eintrag entsprechen —
- * kein beliebiger Dateizugriff aus dem Renderer.
+ * Cover from the song folder (cover.jpg) as a data URL.
+ * Security: songDir must exactly match a tracked entry — no arbitrary
+ * file access from the renderer.
  */
 export const getLocalCoverDataUrl = async (
   songDir: string,
@@ -127,7 +136,7 @@ export const getLocalCoverDataUrl = async (
   const cached = localMemoryCache.get(songDir);
   if (cached) {
     localMemoryCache.delete(songDir);
-    localMemoryCache.set(songDir, cached); // LRU-Touch
+    localMemoryCache.set(songDir, cached); // LRU touch
     return cached;
   }
 

@@ -2,8 +2,8 @@ import type { FC } from "react";
 import { useEffect, useState } from "react";
 
 /**
- * Cover-Thumbnail: USDB-Cover für echte apiIds, lokales cover.jpg
- * (über covers:getLocal) für importierte/rekonstruierte Einträge.
+ * Cover thumbnail: USDB cover for real apiIds, local cover.jpg
+ * (via covers:getLocal) for imported/reconstructed entries.
  */
 export const CoverThumb: FC<{ apiId: number; songDir?: string }> = ({
   apiId,

@@ -1,4 +1,4 @@
-import type { UltrastarApi } from "../shared/ipc-contract.ts";
+import type { UltrastarApi } from "../shared/ipcContract.ts";
 
 declare global {
   interface Window {

@@ -1,7 +1,14 @@
 import type { FC } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Pause, Play, RotateCcw, X } from "lucide-react";
-import type { FailedDownload, Song } from "../../shared/ipc-contract.ts";
+import {
+  ChevronDown,
+  ChevronRight,
+  Pause,
+  Play,
+  RotateCcw,
+  X,
+} from "lucide-react";
+import type { FailedDownload, Song } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 
 export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
@@ -12,7 +19,7 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
   const refreshFailed = useCallback((): void => {
     void window.ultrastar.failedList().then(setFailed);
   }, []);
-  // Liste beim Öffnen der View und nach jedem Queue-Lauf aktualisieren
+  // Refresh the list when opening the view and after every queue run
   useEffect(refreshFailed, []);
   useEffect(() => {
     if (!running) refreshFailed();
@@ -34,9 +41,14 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
           disabled={running || queue.length === 0}
           onClick={() => void window.ultrastar.queueStart()}
         >
-          {running
-            ? `Läuft… (${queue.length} verbleibend)`
-            : <><Play size={14} aria-hidden />{queue.length} Songs herunterladen</>}
+          {running ? (
+            `Läuft… (${queue.length} verbleibend)`
+          ) : (
+            <>
+              <Play size={14} aria-hidden />
+              {queue.length} Songs herunterladen
+            </>
+          )}
         </button>
         {running && (
           <button
@@ -44,7 +56,8 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
             type="button"
             onClick={() => void window.ultrastar.queueCancel()}
           >
-            <Pause size={14} aria-hidden />Abbrechen (nach aktuellem Batch)
+            <Pause size={14} aria-hidden />
+            Abbrechen (nach aktuellem Batch)
           </button>
         )}
         <button
@@ -100,7 +113,12 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
           type="button"
           onClick={() => setShowFailed((v) => !v)}
         >
-          {showFailed ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}Fehlgeschlagen ({failed.length})
+          {showFailed ? (
+            <ChevronDown size={14} aria-hidden />
+          ) : (
+            <ChevronRight size={14} aria-hidden />
+          )}
+          Fehlgeschlagen ({failed.length})
         </button>
         {showFailed && failed.length > 0 && (
           <table className="song-table" style={{ marginTop: 8 }}>
@@ -126,7 +144,8 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
                       type="button"
                       onClick={() => retry(f)}
                     >
-                      <RotateCcw size={14} aria-hidden />Erneut
+                      <RotateCcw size={14} aria-hidden />
+                      Erneut
                     </button>
                   </td>
                 </tr>

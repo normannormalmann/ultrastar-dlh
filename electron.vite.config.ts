@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 
-// Main & Preload bündeln bewusst ALLE JS-Dependencies (effect, exceljs, …)
-// ins Output — nur "electron" bleibt extern. Die gepackte App ist dadurch
-// self-contained und braucht kein node_modules zur Laufzeit.
+// Main & preload intentionally bundle ALL JS dependencies (effect, …) into
+// the output — only "electron" stays external. This makes the packaged app
+// self-contained and it doesn't need node_modules at runtime.
 export default defineConfig({
   main: {
     build: {

@@ -117,9 +117,13 @@ const validateCookiesBrowserParam = (
 
 export type VideoQuality = "720" | "1080" | "best";
 
-/** yt-dlp -S Sortierausdruck für die gewählte Maximal-Qualität. */
+/** yt-dlp -S sort expression for the chosen maximum quality. */
 export const videoSortArg = (quality?: VideoQuality): string =>
-  quality === "720" ? "ext,res:720" : quality === "best" ? "ext" : "ext,res:1080";
+  quality === "720"
+    ? "ext,res:720"
+    : quality === "best"
+      ? "ext"
+      : "ext,res:1080";
 
 /**
  * Download a youtube video from direct link (watch URL or ID) and save to provided path.

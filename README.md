@@ -59,6 +59,7 @@ bunx --bun github:normannormalmann/ultrastar-dlh
 | `Ctrl+Q` / `Ctrl+A` / `Ctrl+P` | Song / Seite / alle Seiten in die Queue |
 | `Ctrl+D` | Queue starten |
 | `Ctrl+V` | Reparatur-Modus |
+| `Ctrl+F` | Fehlgeschlagene Downloads anzeigen (Retry mit `Enter`) |
 | `Ctrl+S` | Setup (Pfad, Cookie-Browser) |
 | `Esc` | Zurück / Beenden |
 

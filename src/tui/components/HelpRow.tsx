@@ -26,6 +26,7 @@ export const HelpRow: FC<Props> = ({ mode, canDownload }) => {
               start queue
             </Text>
           )}
+          <Text dimColor>Ctrl+f: view failed downloads</Text>
         </Box>
       </Box>
     );

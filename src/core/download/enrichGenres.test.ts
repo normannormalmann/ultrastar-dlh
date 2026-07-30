@@ -27,7 +27,11 @@ const seed = async (n: number, withGenreEvery?: number) => {
     const dirName = `Song_${i}`;
     const songDir = join(root, dirName);
     await mkdir(songDir, { recursive: true });
-    await writeFile(join(songDir, "song.txt"), `#ARTIST:A${i}\n#TITLE:T${i}\n: 0 4 0 La\n`, "utf8");
+    await writeFile(
+      join(songDir, "song.txt"),
+      `#ARTIST:A${i}\n#TITLE:T${i}\n: 0 4 0 La\n`,
+      "utf8",
+    );
     entries.push({
       apiId: -(i + 1),
       artist: `A${i}`,
@@ -43,7 +47,7 @@ const seed = async (n: number, withGenreEvery?: number) => {
 };
 
 test("enriches missing genres, patches song.txt, fills year only when empty", async () => {
-  await seed(4, 2); // Einträge 0 und 2 haben schon Genre
+  await seed(4, 2); // Entries 0 and 2 already have a genre
   const result = await Effect.runPromise(
     enrichGenres(
       (artist) =>
@@ -106,7 +110,7 @@ test("persist merges with entries added concurrently (no lost update)", async ()
         Effect.gen(function* () {
           if (!injected) {
             injected = true;
-            // Simuliert einen parallel abgeschlossenen Download
+            // Simulates a concurrently completed download
             const current = yield* loadDownloadedEntries;
             yield* saveDownloadedEntries([
               {

@@ -7,11 +7,11 @@ import type {
   ArchiveImportResult,
   DownloadedEntry,
   GenreEnrichResult,
-} from "../../shared/ipc-contract.ts";
+} from "../../shared/ipcContract.ts";
 import CoverThumb from "../components/CoverThumb.tsx";
 import { useIpcEvent } from "../hooks.ts";
 
-/** Mehrwertige Felder ("Japanese, German") in Einzelwerte splitten. */
+/** Split multi-value fields ("Japanese, German") into individual values. */
 const splitValues = (raw: string | undefined): string[] => {
   if (!raw) return ["Unbekannt"];
   const parts = raw
@@ -58,10 +58,12 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
     null,
   );
   const [importError, setImportError] = useState<string | null>(null);
-  const [enrichResult, setEnrichResult] = useState<GenreEnrichResult | null>(null);
+  const [enrichResult, setEnrichResult] = useState<GenreEnrichResult | null>(
+    null,
+  );
 
-  // Bei Filter-/Sortierwechsel wieder von vorn rendern
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bewusster Reset bei jeder Kriterienänderung
+  // Render from the top again when filters/sorting change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on every criteria change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [filter, langFilter, genreFilter, yearFrom, yearTo, sortBy]);
@@ -161,7 +163,8 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   );
 
   const filteredBase = entries.filter(
-    (e) => matchesText(e) && matchesLang(e) && matchesGenre(e) && matchesYear(e),
+    (e) =>
+      matchesText(e) && matchesLang(e) && matchesGenre(e) && matchesYear(e),
   );
   switch (sortBy) {
     case "artist":
@@ -286,7 +289,9 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
       {genreEnrichProgress && (
         <div className="row" style={{ marginBottom: 10 }}>
           <span className="muted">
-            Suche Genres… ({genreEnrichProgress.current}/{genreEnrichProgress.total} · {genreEnrichProgress.enriched} gefunden)
+            Suche Genres… ({genreEnrichProgress.current}/
+            {genreEnrichProgress.total} · {genreEnrichProgress.enriched}{" "}
+            gefunden)
           </span>
           <button
             className="btn small"
@@ -299,7 +304,12 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
       )}
       {enrichResult && (
         <p className="muted">
-          {enrichResult.enriched} Genres nachgetragen · {enrichResult.notFound} nicht gefunden · {enrichResult.txtPatched} song.txt aktualisiert{enrichResult.txtFailed > 0 ? ` · ${enrichResult.txtFailed} Dateien fehlgeschlagen` : ""}{enrichResult.cancelled ? " · abgebrochen" : ""}
+          {enrichResult.enriched} Genres nachgetragen · {enrichResult.notFound}{" "}
+          nicht gefunden · {enrichResult.txtPatched} song.txt aktualisiert
+          {enrichResult.txtFailed > 0
+            ? ` · ${enrichResult.txtFailed} Dateien fehlgeschlagen`
+            : ""}
+          {enrichResult.cancelled ? " · abgebrochen" : ""}
         </p>
       )}
       {importProgress && (
@@ -371,7 +381,9 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
                     <button
                       className="btn small"
                       type="button"
-                      onClick={() => void window.ultrastar.openFolder(e.songDir)}
+                      onClick={() =>
+                        void window.ultrastar.openFolder(e.songDir)
+                      }
                     >
                       <FolderOpen size={14} aria-hidden />
                       Ordner
@@ -383,8 +395,9 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           </table>
           {filtered.length > visibleCount && (
             <p className="muted">
-              {Math.min(visibleCount, filtered.length).toLocaleString("de-DE")} von{" "}
-              {filtered.length.toLocaleString("de-DE")} angezeigt — weiterscrollen lädt mehr.
+              {Math.min(visibleCount, filtered.length).toLocaleString("de-DE")}{" "}
+              von {filtered.length.toLocaleString("de-DE")} angezeigt —
+              weiterscrollen lädt mehr.
             </p>
           )}
         </>

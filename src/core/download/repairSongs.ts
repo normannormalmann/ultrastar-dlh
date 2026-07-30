@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { Effect } from "effect";
 import type { YoutubeLink } from "../api/usdb/youtube.ts";
 import { getYoutubeLinksById } from "../api/usdb/youtube.ts";
-import { downloadYoutubeVideoWithProgress, type VideoQuality } from "../api/youtube/download.ts";
+import {
+  downloadYoutubeVideoWithProgress,
+  type VideoQuality,
+} from "../api/youtube/download.ts";
 import type { YoutubeVideo } from "../api/youtube/search.ts";
 import { searchYoutubeVideos } from "../api/youtube/search.ts";
 import type { DownloadedEntry } from "../storage/downloaded.ts";
@@ -36,8 +39,12 @@ export type RepairResult = {
   errors: Map<string, { type: RepairErrorType; message: string }>;
 };
 
-/** Ersetzt einen Header (oder fügt ihn nach der ersten Header-Zeile ein); EOL-erhaltend. */
-export const applyHeader = (txt: string, key: string, value: string): string => {
+/** Replaces a header (or inserts it after the first header line); preserves EOL style. */
+export const applyHeader = (
+  txt: string,
+  key: string,
+  value: string,
+): string => {
   const line = `#${key.toUpperCase()}:${value}`;
   const pattern = new RegExp(`^#${key.toUpperCase()}:.*$`, "m");
   if (pattern.test(txt)) return txt.replace(pattern, line);
@@ -71,7 +78,7 @@ export function parseTxtHeaders(content: string): TxtHeaders {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    if (!trimmed.startsWith("#")) break; // Header-Block ist zusammenhängend am Dateianfang
+    if (!trimmed.startsWith("#")) break; // the header block is contiguous at the start of the file
     const match = /^#(\w+):(.*)$/.exec(trimmed);
     if (!match) continue;
     const key = match[1]?.toUpperCase();
@@ -102,7 +109,7 @@ export function parseTxtHeaders(content: string): TxtHeaders {
         break;
       }
       case "BPM": {
-        // Deutsche Dateien nutzen Komma als Dezimaltrenner ("294,5")
+        // German files use a comma as decimal separator ("294,5")
         const b = Number.parseFloat(value.replace(",", "."));
         if (!Number.isNaN(b)) result.bpm = b;
         break;
@@ -197,7 +204,8 @@ const repairSingleSong = (
           const txt = await readFile(txtPath, "utf8");
           await writeFile(txtPath, applyVideoGap(txt, videoGap), "utf8");
         },
-        catch: (e) => (e instanceof Error ? e : new Error("videogap patch failed")),
+        catch: (e) =>
+          e instanceof Error ? e : new Error("videogap patch failed"),
       }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     }
 
