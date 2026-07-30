@@ -245,4 +245,37 @@ describe("installEnvironment", () => {
     const status = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
     expect(status.state === "broken" || status.state === "missing").toBe(true);
   });
+
+  it("rejects a second install while the first is still running, then allows a third once it finished", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner();
+    // Slow down every command of the first run so the second call is
+    // guaranteed to hit the lock check while the first is still in flight.
+    const langsamerRunner: Partial<import("./environment.ts").InstallRunner> = {
+      ...runner,
+      runCommand: async (cmd, args, onLine) => {
+        await new Promise((r) => setTimeout(r, 20));
+        return runner.runCommand(cmd, args, onLine);
+      },
+    };
+
+    const erster = Effect.runPromise(installEnvironment(installOpts(envDir, langsamerRunner)));
+    const zweiter = Effect.runPromise(
+      Effect.either(installEnvironment(installOpts(envDir, fakeRunner().runner))),
+    );
+
+    const [ersterStatus, zweiterErgebnis] = await Promise.all([erster, zweiter]);
+
+    expect(ersterStatus.state).toBe("ready");
+    expect(zweiterErgebnis._tag).toBe("Left");
+    if (zweiterErgebnis._tag === "Left") {
+      expect(zweiterErgebnis.left.detail).toContain("laeuft bereits");
+    }
+
+    // The lock was released after the first install finished.
+    const dritterStatus = await Effect.runPromise(
+      installEnvironment(installOpts(envDir, fakeRunner().runner)),
+    );
+    expect(dritterStatus.state).toBe("ready");
+  });
 });
