@@ -1,7 +1,7 @@
 """Modelle einmal laden: der Probelauf der Umgebungs-Einrichtung.
 
 Erst wenn jede Modellart tatsaechlich geladen wurde, darf die Einrichtung
-"fertig" melden — ein blosses pip-install beweist nur, dass Pakete liegen,
+"fertig" melden - ein blosses pip-install beweist nur, dass Pakete liegen,
 nicht dass Torch, CUDA und die Modell-Downloads zusammen funktionieren.
 Geladen wird ueber dieselben Bibliotheksaufrufe wie im echten Lauf, damit
 der Probelauf genau das prueft, was der erste Song brauchen wird.

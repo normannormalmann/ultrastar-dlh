@@ -5,7 +5,7 @@ pitch -> notes. Die vier teuren Stufen sind gecacht, notes nie: es ist
 billig und genau das, was justiert wird.
 
 Preload-Modus: laedt alle vier Modellarten einmal, um die Umgebungs-Einrichtung
-zu proben — vor dem ersten echten Lauf.
+zu proben - vor dem ersten echten Lauf.
 """
 
 import argparse
