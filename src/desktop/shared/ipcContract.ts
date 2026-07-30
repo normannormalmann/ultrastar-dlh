@@ -12,6 +12,11 @@ import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import type { AppConfig } from "../../core/storage/config.ts";
 import type { DownloadedEntry } from "../../core/storage/downloaded.ts";
 import type { FailedDownload } from "../../core/storage/failedDownloads.ts";
+import type {
+  EnvironmentStatus,
+  EnvironmentState,
+  InstallProgress,
+} from "../../core/create/environment.ts";
 
 export type {
   ArchiveImportResult,
@@ -22,6 +27,9 @@ export type {
   Page,
   Song,
   SearchOrder,
+  EnvironmentStatus,
+  EnvironmentState,
+  InstallProgress,
 };
 export type { GenreEnrichResult, GenreProviderId };
 
@@ -112,6 +120,9 @@ export const INVOKE_CHANNELS = [
   "settings:chooseDirectory",
   "binaries:status",
   "binaries:install",
+  "environment:status",
+  "environment:install",
+  "environment:cancel",
   "covers:get",
   "covers:getLocal",
   "covers:clearCache",
@@ -134,6 +145,8 @@ export const EVENT_CHANNELS = [
   "event:repair",
   "event:binariesProgress",
   "event:binariesStatus",
+  "event:environmentProgress",
+  "event:environmentStatus",
   "event:error",
   "event:genreEnrichProgress",
 ] as const;
@@ -152,6 +165,8 @@ export type EventPayloads = {
   "event:repair": RepairState;
   "event:binariesProgress": BinariesProgress;
   "event:binariesStatus": BinariesStatus;
+  "event:environmentProgress": InstallProgress | null;
+  "event:environmentStatus": EnvironmentStatus;
   "event:error": AppError;
   "event:genreEnrichProgress": {
     current: number;
@@ -182,6 +197,11 @@ export type UltrastarApi = {
   binariesStatus: () => Promise<BinariesStatus>;
   /** force=true also re-downloads app-managed binaries (the update feature). */
   binariesInstall: (force?: boolean) => Promise<void>;
+  environmentStatus: () => Promise<EnvironmentStatus>;
+  /** force=true wipes the venv and reinstalls from scratch. */
+  environmentInstall: (force?: boolean) => Promise<EnvironmentStatus>;
+  /** Aborts a running install; the environment then reports "broken". */
+  environmentCancel: () => Promise<void>;
   coverGet: (apiId: number) => Promise<string | null>; // data URL or null
   coverGetLocal: (songDir: string) => Promise<string | null>;
   coversClearCache: () => Promise<{ deletedFiles: number }>;

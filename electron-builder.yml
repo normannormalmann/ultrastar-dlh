@@ -11,6 +11,16 @@ nodeGypRebuild: false
 # All runtime code is bundled by electron-vite; no node_modules are needed at runtime.
 extraMetadata:
   dependencies: {}
+extraResources:
+  - from: python-sidecar
+    to: python-sidecar
+    filter:
+      - "**/*"
+      - "!.venv*/**"
+      - "!.uv-bin/**"
+      - "!tests/**"
+      - "!**/__pycache__/**"
+      - "!.pipeline-cache/**"
 win:
   target:
     - nsis

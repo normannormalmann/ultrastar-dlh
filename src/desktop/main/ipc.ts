@@ -19,6 +19,11 @@ import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
 import {
+  cancelEnvironmentInstall,
+  environmentStatusForApp,
+  installEnvironmentForApp,
+} from "./environment.ts";
+import {
   clearCoverCaches,
   getCoverDataUrl,
   getLocalCoverDataUrl,
@@ -234,6 +239,12 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     "binaries:status": async () => binariesStatus(),
     "binaries:install": async (force?: boolean) => {
       await installMissingBinaries(force === true);
+    },
+    "environment:status": async () => environmentStatusForApp(),
+    "environment:install": async (force?: boolean) =>
+      installEnvironmentForApp(force === true),
+    "environment:cancel": async () => {
+      cancelEnvironmentInstall();
     },
     "covers:get": async (apiId: number) => getCoverDataUrl(apiId),
     "covers:getLocal": async (songDir: string) => getLocalCoverDataUrl(songDir),
