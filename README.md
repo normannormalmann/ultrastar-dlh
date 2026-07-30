@@ -1,3 +1,5 @@
+🇬🇧 [English](README.en.md) | 🇩🇪 Deutsch
+
 # UltraStar - Dirty Little Helper
 
 **Die Desktop-App, die deine UltraStar-Karaoke-Sammlung aufbaut, pflegt und durchsuchbar macht.**
