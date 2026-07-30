@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { Effect } from "effect";
 import { parseSongData, type SongData } from "./songData.ts";
 import { resolvePythonBin } from "./environment.ts";
+import { killProcessTree } from "./processTree.ts";
 
 export type PipelineErrorKind =
   | "EnvMissing"
@@ -37,8 +38,12 @@ export type PipelineInput = {
 const PROGRESS_PREFIX = "@@PROGRESS ";
 const ERROR_PREFIX = "@@ERROR ";
 
-/** Python-Fehlerart -> unsere typisierte Art. */
-const FEHLER_ABBILDUNG: Record<string, PipelineErrorKind> = {
+/**
+ * Python-Fehlerart -> unsere typisierte Art. Exportiert, weil der
+ * Worker-Client (worker.ts) @@ERROR-Zeilen identisch abbilden muss - die
+ * UI soll bei Queue-Jobs dieselben Fehlerarten sehen wie bei runPipeline.
+ */
+export const FEHLER_ABBILDUNG: Record<string, PipelineErrorKind> = {
   language_unsupported: "LanguageUnsupported",
   alignment_failed: "AlignmentFailed",
   device_error: "DeviceError",
@@ -60,7 +65,7 @@ type SidecarFehler = { kind: string; detail?: string } & Record<string, unknown>
  * diese Zusammensetzung wuerde der Aufrufer nur die blanke Fehlerart sehen
  * und genau die Angabe verlieren, die den Fehler erst erklaert.
  */
-const baueDetail = (fehler: SidecarFehler): string => {
+export const baueDetail = (fehler: SidecarFehler): string => {
   if (typeof fehler.detail === "string") return fehler.detail;
   const zusatz = Object.entries(fehler)
     .filter(([schluessel]) => schluessel !== "kind")
@@ -148,33 +153,12 @@ export const runPipeline = (
       });
 
       // Abbruch killt den ganzen Prozessbaum: Demucs startet Kindprozesse.
+      // Die Kill-Logik selbst lebt in processTree.ts, damit der langlebige
+      // Worker-Client (worker.ts) exakt dasselbe Verhalten teilt.
       let abgebrochen = false;
       const abbrechen = (): void => {
         abgebrochen = true;
-        if (kind.pid === undefined) return;
-        if (process.platform === "win32") {
-          // Ohne Error-Listener wirft ein fehlgeschlagener Spawn von
-          // taskkill selbst ein unbehandeltes "error"-Event, das den
-          // Elternprozess abstuerzen liesse.
-          spawn("taskkill", ["/pid", String(kind.pid), "/t", "/f"], { stdio: "ignore" }).on(
-            "error",
-            () => {
-              // Kill fehlgeschlagen — es gibt nichts Sinnvolleres zu tun,
-              // als den Elternprozess nicht mitzureissen.
-            },
-          );
-        } else {
-          try {
-            process.kill(-kind.pid, "SIGKILL");
-          } catch {
-            try {
-              kind.kill("SIGKILL");
-            } catch {
-              // Beide Kill-Wege fehlgeschlagen — der Prozess laeuft dann
-              // weiter, aber der Elternprozess darf nicht abstuerzen.
-            }
-          }
-        }
+        killProcessTree(kind);
       };
       input.signal?.addEventListener("abort", abbrechen, { once: true });
 
