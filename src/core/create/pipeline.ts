@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { Effect } from "effect";
 import { parseSongData, type SongData } from "./songData.ts";
+import { resolvePythonBin } from "./environment.ts";
 
 export type PipelineErrorKind =
   | "EnvMissing"
@@ -25,6 +26,8 @@ export type PipelineInput = {
   workDir?: string;
   /** Interpreter bzw. Skript. Tests setzen hier einen Ersatz-Sidecar ein. */
   pythonBin?: string;
+  /** Managed environment directory; resolvePythonBin falls back to it. */
+  managedEnvDir?: string;
   /** Pfad zu einer synchronisierten .lrc (LRCLIB) als zweite Evidenzquelle. */
   syncedLyricsPath?: string;
   onProgress?: (stage: string, percent: number) => void;
@@ -93,7 +96,7 @@ export const runPipeline = (
       // "abort"-Event, das hier nie mehr kommt.
       if (input.signal?.aborted) throw { kind: "Cancelled" } satisfies PipelineError;
 
-      const bin = input.pythonBin ?? "python";
+      const bin = resolvePythonBin(input.pythonBin, input.managedEnvDir);
       // Ein .ts-Ersatz-Sidecar laeuft ueber bun, echtes Python als Modul.
       const [befehl, vorArgs] = bin.endsWith(".ts")
         ? (["bun", [bin]] as const)
@@ -217,11 +220,11 @@ export const runPipeline = (
         return fehler as PipelineError;
       }
       const meldung = fehler instanceof Error ? fehler.message : String(fehler);
-      // ENOENT beim Spawn heisst: Interpreter nicht gefunden.
-      if (meldung.includes("ENOENT")) {
+      // Spawn errors that indicate Python interpreter problems.
+      if (meldung.includes("ENOENT") || meldung.includes("UNKNOWN") || meldung.includes("EACCES") || meldung.includes("EFTYPE")) {
         return {
           kind: "EnvMissing",
-          detail: "Python-Interpreter nicht gefunden. Umgebung einrichten (Teilprojekt 2).",
+          detail: "Python-Interpreter nicht gefunden. KI-Umgebung in den Einstellungen einrichten.",
         };
       }
       return { kind: "PipelineFailed", detail: meldung };

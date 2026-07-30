@@ -7,6 +7,7 @@ import {
   envPythonBin,
   environmentStatus,
   installEnvironment,
+  resolvePythonBin,
   sidecarVersionFromPyproject,
   writeManifest,
 } from "./environment.ts";
@@ -277,5 +278,25 @@ describe("installEnvironment", () => {
       installEnvironment(installOpts(envDir, fakeRunner().runner)),
     );
     expect(dritterStatus.state).toBe("ready");
+  });
+});
+
+describe("resolvePythonBin", () => {
+  it("prefers the explicit interpreter", async () => {
+    const envDir = await tempEnv();
+    await fakePython(envDir);
+    expect(resolvePythonBin("C:/x/python.exe", envDir)).toBe("C:/x/python.exe");
+  });
+
+  it("falls back to the managed venv when it exists", async () => {
+    const envDir = await tempEnv();
+    await fakePython(envDir);
+    expect(resolvePythonBin(undefined, envDir)).toBe(envPythonBin(envDir));
+  });
+
+  it("falls back to PATH python otherwise", async () => {
+    const envDir = await tempEnv();
+    expect(resolvePythonBin(undefined, envDir)).toBe("python");
+    expect(resolvePythonBin(undefined, undefined)).toBe("python");
   });
 });

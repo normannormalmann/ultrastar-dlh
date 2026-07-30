@@ -2,6 +2,7 @@
 // status is derived from a manifest file, installation runs through
 // injectable runners so tests never touch uv, the network, or a GPU.
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -35,6 +36,23 @@ export type EnvironmentManifest = {
 
 export const envPythonBin = (envDir: string): string =>
   join(envDir, "Scripts", "python.exe");
+
+/**
+ * Interpreter resolution for runPipeline: explicit wins, then the managed
+ * environment (if its python.exe exists), then plain "python" from PATH.
+ * Sync on purpose - it runs once per pipeline start, not in a hot path.
+ */
+export const resolvePythonBin = (
+  explicit: string | undefined,
+  envDir: string | undefined,
+): string => {
+  if (explicit) return explicit;
+  if (envDir) {
+    const managed = envPythonBin(envDir);
+    if (existsSync(managed)) return managed;
+  }
+  return "python";
+};
 
 export const manifestPath = (envDir: string): string => join(envDir, "env.json");
 

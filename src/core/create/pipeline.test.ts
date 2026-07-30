@@ -1,6 +1,6 @@
 // src/core/create/pipeline.test.ts
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
@@ -272,5 +272,20 @@ describe("runPipeline", () => {
     // Baum nicht getoetet wurde, haette die Datei laengst existieren muessen.
     await new Promise((r) => setTimeout(r, 800));
     expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it("nutzt die verwaltete Umgebung und meldet EnvMissing mit Settings-Hinweis", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pipeline-env-"));
+    const envDir = join(dir, "python-env");
+    await mkdir(join(envDir, "Scripts"), { recursive: true });
+    await writeFile(join(envDir, "Scripts", "python.exe"), "", "utf8");
+    const e = await Effect.runPromise(
+      Effect.either(runPipeline({ ...basis(dir), managedEnvDir: envDir })),
+    );
+    expect(e._tag).toBe("Left");
+    if (e._tag === "Left") {
+      expect(e.left.kind).toBe("EnvMissing");
+      expect(e.left.detail).toContain("Einstellungen");
+    }
   });
 });
