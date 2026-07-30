@@ -10,7 +10,7 @@ der Probelauf genau das prueft, was der erste Song brauchen wird.
 import json
 from pathlib import Path
 
-from . import separate, transcribe
+from . import modelle, separate, transcribe
 from .cache import atomic_write_bytes
 from .errors import LanguageUnsupported
 from .progress import emit_progress
@@ -20,21 +20,12 @@ def preload(sprache: str, device: str, out: Path) -> None:
     """Laedt alle vier Modellarten, prueft die Silbentrennung und schreibt
     das Ergebnis nach `out`."""
     emit_progress("preload:demucs", 0.0)
-    from demucs.pretrained import get_model
-
-    get_model(separate.MODELL)
+    modelle.hole_demucs(separate.MODELL)
     emit_progress("preload:demucs", 1.0)
 
     emit_progress("preload:asr", 0.0)
-    import whisperx
-
     try:
-        whisperx.load_model(
-            transcribe.MODELL,
-            device,
-            compute_type="float16" if device == "cuda" else "int8",
-            language=sprache,
-        )
+        modelle.hole_asr(transcribe.MODELL, device, sprache)
     except MemoryError:
         raise
     except Exception as exc:
@@ -45,7 +36,7 @@ def preload(sprache: str, device: str, out: Path) -> None:
 
     emit_progress("preload:align", 0.0)
     try:
-        whisperx.load_align_model(language_code=sprache, device=device)
+        modelle.hole_align(sprache, device)
     except MemoryError:
         raise
     except Exception as exc:
@@ -55,9 +46,7 @@ def preload(sprache: str, device: str, out: Path) -> None:
     emit_progress("preload:align", 1.0)
 
     emit_progress("preload:pitch", 0.0)
-    from swift_f0 import SwiftF0
-
-    SwiftF0()
+    modelle.hole_swiftf0()
     emit_progress("preload:pitch", 1.0)
 
     # Fuenfter Probe-Schritt: pyphen ueberlebte einmal einen fertigen

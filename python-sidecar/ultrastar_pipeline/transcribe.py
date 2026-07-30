@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import separate
+from . import modelle, separate
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .progress import emit_progress
@@ -61,9 +61,7 @@ def transcribe(
         # whisperx auf automatische Spracherkennung zurueck, und die ist auf
         # einem stark bearbeiteten Gesangsstem unzuverlaessig — "fail loudly"
         # verlangt eine feste Sprache statt einer stillen Vermutung.
-        modell = whisperx.load_model(
-            MODELL, device, compute_type="float16" if device == "cuda" else "int8", language=sprache
-        )
+        modell = modelle.hole_asr(MODELL, device, sprache)
     except MemoryError:
         raise
     except Exception as exc:
@@ -79,9 +77,7 @@ def transcribe(
     # Anker geschaetzt 6,4 s, gesungen 10,5 s); erst das Forced Alignment
     # macht aus gehoerten Woertern *gemessene* Zeiten.
     try:
-        align_modell, metadaten = whisperx.load_align_model(
-            language_code=sprache, device=device
-        )
+        align_modell, metadaten = modelle.hole_align(sprache, device)
     except MemoryError:
         raise
     except Exception as exc:

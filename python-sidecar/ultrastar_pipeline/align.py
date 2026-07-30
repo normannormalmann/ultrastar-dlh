@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import separate
+from . import modelle, separate
 from .anchors import GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
@@ -469,7 +469,7 @@ def align(
     import whisperx
 
     try:
-        modell, metadaten = whisperx.load_align_model(language_code=language, device=device)
+        modell, metadaten = modelle.hole_align(language, device)
     except MemoryError:
         raise
     except Exception as exc:

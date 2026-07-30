@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 
-from . import separate
+from . import modelle, separate
 from .cache import atomic_write_bytes, stage_path
 from .notes import PitchPoint
 from .progress import emit_progress
@@ -34,12 +34,11 @@ def track_pitch(vocals: Path, work_dir: Path, audio_hash: str) -> list[PitchPoin
         return [PitchPoint(**p) for p in json.loads(ziel.read_text(encoding="utf8"))]
 
     emit_progress("pitch", 0.0)
-    from swift_f0 import SwiftF0
 
     # SwiftF0 ist eine Klasse, keine Funktion, und PitchResult liefert die
     # Stimmhaftigkeit schon als Wahrheitswert pro Frame — ein zweiter Aufruf
     # dafuer existiert nicht. Felder: pitch_hz, confidence, timestamps, voicing.
-    ergebnis = SwiftF0().detect_from_file(str(vocals))
+    ergebnis = modelle.hole_swiftf0().detect_from_file(str(vocals))
 
     punkte = [
         PitchPoint(time=float(t), midi=_hz_zu_midi(float(f)), voiced=bool(v))

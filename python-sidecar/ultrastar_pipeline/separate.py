@@ -7,6 +7,7 @@ wird.
 
 from pathlib import Path
 
+from . import modelle
 from .cache import atomic_write_bytes, stage_path
 from .progress import emit_progress
 
@@ -25,9 +26,8 @@ def separate(audio: Path, work_dir: Path, audio_hash: str, device: str) -> Path:
     import torch
     from demucs.apply import apply_model
     from demucs.audio import AudioFile, save_audio
-    from demucs.pretrained import get_model
 
-    modell = get_model(MODELL)
+    modell = modelle.hole_demucs(MODELL)
     modell.to(device)
     modell.eval()
 
