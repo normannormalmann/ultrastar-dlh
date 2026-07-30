@@ -34,13 +34,13 @@ export type EnrichOptions = {
 const MAX_CONSECUTIVE_ERRORS = 5;
 
 /**
- * Trägt fehlende Genres (und year/realBpm/explicit, wo geliefert) nach.
- * Resumierbar: bereits angereicherte Einträge werden übersprungen;
- * Persistenz alle persistEvery (Default 50) Einträge.
+ * Fills in missing genres (and year/realBpm/explicit, where provided).
+ * Resumable: already-enriched entries are skipped; persists every
+ * persistEvery (default 50) entries.
  *
- * Merge-on-persist: nur geänderte Einträge werden in `changed` gehalten.
- * Beim Persist wird die aktuelle Dateiliste neu geladen und die Änderungen
- * darüber gelegt — so gehen parallel heruntergeladene Songs nicht verloren.
+ * Merge-on-persist: only changed entries are kept in `changed`. On persist,
+ * the current entry list is reloaded and the changes are layered on top —
+ * so songs downloaded concurrently aren't lost.
  */
 export const enrichGenres = (
   lookup: (
@@ -72,7 +72,9 @@ export const enrichGenres = (
         const liveIds = new Set(live.map((e) => e.apiId));
         const merged = live.map((e) => changed.get(e.apiId) ?? e);
         // If an enriched entry was externally removed, do not re-insert it.
-        yield* saveDownloadedEntries(merged.filter((e) => liveIds.has(e.apiId)));
+        yield* saveDownloadedEntries(
+          merged.filter((e) => liveIds.has(e.apiId)),
+        );
       });
 
     for (const entry of todo) {
@@ -119,7 +121,7 @@ export const enrichGenres = (
           enriched++;
           dirtySinceSave++;
 
-          // song.txt best-effort patchen
+          // Best-effort patch of song.txt
           const genre = result.r.genre;
           const patched = yield* Effect.tryPromise({
             try: async () => {
@@ -128,7 +130,8 @@ export const enrichGenres = (
               await writeFile(p, applyHeader(txt, "GENRE", genre), "utf8");
               return true;
             },
-            catch: (e) => (e instanceof Error ? e : new Error("txt patch failed")),
+            catch: (e) =>
+              e instanceof Error ? e : new Error("txt patch failed"),
           }).pipe(Effect.catchAll(() => Effect.succeed(false)));
           if (patched) txtPatched++;
           else txtFailed++;

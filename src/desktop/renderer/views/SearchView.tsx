@@ -19,22 +19,62 @@ import type {
   BulkQueueRequest,
   DownloadedEntry,
   Song,
-} from "../../shared/ipc-contract.ts";
+} from "../../shared/ipcContract.ts";
 import CoverThumb from "../components/CoverThumb.tsx";
 import { useIpcEvent } from "../hooks.ts";
 
 const USDB_LANGUAGES = [
-  "English", "German", "Spanish", "French", "Italian", "Portuguese",
-  "Dutch", "Polish", "Swedish", "Norwegian", "Danish", "Finnish",
-  "Russian", "Japanese", "Korean", "Chinese", "Turkish", "Czech",
-  "Hungarian", "Slovak", "Croatian", "Serbian", "Greek", "Other",
+  "English",
+  "German",
+  "Spanish",
+  "French",
+  "Italian",
+  "Portuguese",
+  "Dutch",
+  "Polish",
+  "Swedish",
+  "Norwegian",
+  "Danish",
+  "Finnish",
+  "Russian",
+  "Japanese",
+  "Korean",
+  "Chinese",
+  "Turkish",
+  "Czech",
+  "Hungarian",
+  "Slovak",
+  "Croatian",
+  "Serbian",
+  "Greek",
+  "Other",
 ] as const;
 
 const USDB_GENRES = [
-  "Pop", "Rock", "Schlager", "Musical", "Soundtrack", "Disney", "Metal",
-  "Punk", "Country", "Folk", "Rap", "Hip-Hop", "R&B", "Soul", "Reggae",
-  "Electronic", "Dance", "Jazz", "Blues", "Christmas", "Anime", "Game",
-  "Volksmusik", "Other",
+  "Pop",
+  "Rock",
+  "Schlager",
+  "Musical",
+  "Soundtrack",
+  "Disney",
+  "Metal",
+  "Punk",
+  "Country",
+  "Folk",
+  "Rap",
+  "Hip-Hop",
+  "R&B",
+  "Soul",
+  "Reggae",
+  "Electronic",
+  "Dance",
+  "Jazz",
+  "Blues",
+  "Christmas",
+  "Anime",
+  "Game",
+  "Volksmusik",
+  "Other",
 ] as const;
 
 const ORDER_OPTIONS = [
@@ -70,9 +110,12 @@ export const SearchView: FC<{
   const [stock, setStock] = useState<"all" | "missing" | "owned">("all");
 
   const activeFilterCount =
-    (language ? 1 : 0) + (genre ? 1 : 0) + (year ? 1 : 0) +
+    (language ? 1 : 0) +
+    (genre ? 1 : 0) +
+    (year ? 1 : 0) +
     (order !== "lastchange" || ud !== "desc" ? 1 : 0) +
-    (golden ? 1 : 0) + (songcheck ? 1 : 0) +
+    (golden ? 1 : 0) +
+    (songcheck ? 1 : 0) +
     (stock !== "all" ? 1 : 0);
 
   const filterRequest = (): BulkQueueRequest => ({
@@ -81,7 +124,8 @@ export const SearchView: FC<{
     language: language || undefined,
     genre: genre || undefined,
     year: year ? Number.parseInt(year, 10) : undefined,
-    order: order === "lastchange" ? undefined : (order as BulkQueueRequest["order"]),
+    order:
+      order === "lastchange" ? undefined : (order as BulkQueueRequest["order"]),
     ud: ud === "desc" ? undefined : ud,
     golden: golden || undefined,
     songcheck: songcheck || undefined,
@@ -100,35 +144,41 @@ export const SearchView: FC<{
     status.ytDlpAvailable !== false && status.ffmpegAvailable !== false;
   const bulkRunning = fetchAllProgress !== null;
 
-  const fetchPage = useCallback(async (p: number): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await window.ultrastar.search({
-        artist,
-        title,
-        language: language || undefined,
-        genre: genre || undefined,
-        year: year ? Number.parseInt(year, 10) : undefined,
-        order: order === "lastchange" ? undefined : (order as BulkQueueRequest["order"]),
-        ud: ud === "desc" ? undefined : ud,
-        golden: golden || undefined,
-        songcheck: songcheck || undefined,
-        page: p,
-      });
-      setSongs(result.songs);
-      setTotalPages(result.totalPages);
-      setPage(p);
-      setSearched(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [artist, title, language, genre, year, order, ud, golden, songcheck]);
+  const fetchPage = useCallback(
+    async (p: number): Promise<void> => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await window.ultrastar.search({
+          artist,
+          title,
+          language: language || undefined,
+          genre: genre || undefined,
+          year: year ? Number.parseInt(year, 10) : undefined,
+          order:
+            order === "lastchange"
+              ? undefined
+              : (order as BulkQueueRequest["order"]),
+          ud: ud === "desc" ? undefined : ud,
+          golden: golden || undefined,
+          songcheck: songcheck || undefined,
+          page: p,
+        });
+        setSongs(result.songs);
+        setTotalPages(result.totalPages);
+        setPage(p);
+        setSearched(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [artist, title, language, genre, year, order, ud, golden, songcheck],
+  );
 
-  // Filter-Änderungen nach erfolgter Suche automatisch anwenden (debounced,
-  // damit z.B. Jahr-Tippen nicht pro Ziffer eine Suche auslöst).
+  // Automatically apply filter changes after a search has happened (debounced,
+  // so e.g. typing a year doesn't trigger a search per digit).
   const searchedRef = useRef(false);
   useEffect(() => {
     searchedRef.current = searched;
@@ -139,10 +189,10 @@ export const SearchView: FC<{
     fetchPageRef.current = fetchPage;
   }, [fetchPage]);
 
-  // Filter-Änderungen nach erfolgter Suche automatisch anwenden (debounced).
-  // Bewusst NUR die Filter-Werte als Trigger — Tippen in Interpret/Titel
-  // startet keine Suche (dafür gibt es den Suchen-Button/Enter).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: nur Filter-Werte sollen triggern
+  // Automatically apply filter changes after a search has happened (debounced).
+  // Intentionally ONLY the filter values as triggers — typing in artist/title
+  // does not start a search (that's what the search button/Enter is for).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only filter values should trigger this
   useEffect(() => {
     if (!searchedRef.current) return;
     const t = setTimeout(() => {
@@ -168,7 +218,9 @@ export const SearchView: FC<{
 
   const isDownloadedSong = (s: Song): boolean =>
     downloadedIds.has(s.apiId) ||
-    downloadedDirs.has(sanitizeForPath(`${s.artist} - ${s.title}`).toLowerCase());
+    downloadedDirs.has(
+      sanitizeForPath(`${s.artist} - ${s.title}`).toLowerCase(),
+    );
   const visibleSongs =
     stock === "all"
       ? songs
@@ -319,95 +371,108 @@ export const SearchView: FC<{
           {visibleSongs.length === 0 ? (
             <p className="muted">
               Alle Treffer dieser Seite sind{" "}
-              {stock === "missing" ? "bereits vorhanden" : "noch nicht vorhanden"}.
+              {stock === "missing"
+                ? "bereits vorhanden"
+                : "noch nicht vorhanden"}
+              .
             </p>
           ) : (
-          <table className="song-table">
-            <thead>
-              <tr>
-                <th style={{ width: 36 }} />
-                <th>Interpret</th>
-                <th>Titel</th>
-                <th>Sprachen</th>
-                <th style={{ width: 70 }}>Bewertung</th>
-                <th style={{ width: 70 }}>Views</th>
-                <th style={{ width: 170 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {visibleSongs.map((s) => {
-                const isDownloaded = isDownloadedSong(s);
-                return (
-                  <tr key={s.apiId}>
-                    <td>
-                      <CoverThumb apiId={s.apiId} />
-                    </td>
-                    <td style={{ color: "var(--yellow)" }}>{s.artist}</td>
-                    <td>
-                      {s.title}{" "}
-                      {isDownloaded && (
-                        <span className="check" title="bereits heruntergeladen">
-                          <Check size={14} aria-hidden />
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {s.languages.map((l) => (
-                        <span key={l} className="tag">
-                          {l}
-                        </span>
-                      ))}
-                    </td>
-                    <td className="muted">
-                      {s.rating !== undefined
-                        ? `★ ${s.rating.toLocaleString("de-DE")}`
-                        : ""}
-                    </td>
-                    <td className="muted">
-                      {s.views !== undefined
-                        ? s.views.toLocaleString("de-DE")
-                        : ""}
-                    </td>
-                    <td>
-                      {!isDownloaded && (
-                        <span className="row">
-                          <button
-                            className="btn small primary"
-                            type="button"
-                            aria-label="Herunterladen"
-                            title="Herunterladen"
-                            disabled={!canDownload}
-                            onClick={() =>
-                              void window.ultrastar.downloadSingle(s)
-                            }
+            <table className="song-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 36 }} />
+                  <th>Interpret</th>
+                  <th>Titel</th>
+                  <th>Sprachen</th>
+                  <th style={{ width: 70 }}>Bewertung</th>
+                  <th style={{ width: 70 }}>Views</th>
+                  <th style={{ width: 170 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {visibleSongs.map((s) => {
+                  const isDownloaded = isDownloadedSong(s);
+                  return (
+                    <tr key={s.apiId}>
+                      <td>
+                        <CoverThumb apiId={s.apiId} />
+                      </td>
+                      <td style={{ color: "var(--yellow)" }}>{s.artist}</td>
+                      <td>
+                        {s.title}{" "}
+                        {isDownloaded && (
+                          <span
+                            className="check"
+                            title="bereits heruntergeladen"
                           >
-                            <Download size={14} aria-hidden />
-                          </button>
-                          <button
-                            className="btn small"
-                            type="button"
-                            onClick={() => void window.ultrastar.queueAdd([s])}
-                          >
-                            <Plus size={14} aria-hidden />Queue
-                          </button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                            <Check size={14} aria-hidden />
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {s.languages.map((l) => (
+                          <span key={l} className="tag">
+                            {l}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="muted">
+                        {s.rating !== undefined
+                          ? `★ ${s.rating.toLocaleString("de-DE")}`
+                          : ""}
+                      </td>
+                      <td className="muted">
+                        {s.views !== undefined
+                          ? s.views.toLocaleString("de-DE")
+                          : ""}
+                      </td>
+                      <td>
+                        {!isDownloaded && (
+                          <span className="row">
+                            <button
+                              className="btn small primary"
+                              type="button"
+                              aria-label="Herunterladen"
+                              title="Herunterladen"
+                              disabled={!canDownload}
+                              onClick={() =>
+                                void window.ultrastar.downloadSingle(s)
+                              }
+                            >
+                              <Download size={14} aria-hidden />
+                            </button>
+                            <button
+                              className="btn small"
+                              type="button"
+                              onClick={() =>
+                                void window.ultrastar.queueAdd([s])
+                              }
+                            >
+                              <Plus size={14} aria-hidden />
+                              Queue
+                            </button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
 
-          <div className="row" style={{ marginTop: 12, justifyContent: "space-between" }}>
+          <div
+            className="row"
+            style={{ marginTop: 12, justifyContent: "space-between" }}
+          >
             <span className="row">
               <button
                 className="btn small"
                 type="button"
                 onClick={() => void window.ultrastar.queueAdd(visibleSongs)}
               >
-                <Plus size={14} aria-hidden />Seite in Queue
+                <Plus size={14} aria-hidden />
+                Seite in Queue
               </button>
               <button
                 className="btn small"
@@ -417,7 +482,8 @@ export const SearchView: FC<{
                   void window.ultrastar.queueFetchAllPages(filterRequest())
                 }
               >
-                <Plus size={14} aria-hidden />Alle {totalPages} Seiten
+                <Plus size={14} aria-hidden />
+                Alle {totalPages} Seiten
               </button>
             </span>
             <span className="row">
@@ -456,7 +522,8 @@ export const SearchView: FC<{
           disabled={bulkRunning}
           onClick={queueEntireDatabase}
         >
-          <Database size={16} aria-hidden />Ganze Datenbank in Queue
+          <Database size={16} aria-hidden />
+          Ganze Datenbank in Queue
         </button>
         {fetchAllProgress && (
           <p className="muted">

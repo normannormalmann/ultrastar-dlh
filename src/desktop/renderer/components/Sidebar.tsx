@@ -8,7 +8,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { FC } from "react";
-import type { AppStatus } from "../../shared/ipc-contract.ts";
+import type { AppStatus } from "../../shared/ipcContract.ts";
 import StatusDots from "./StatusDots.tsx";
 
 export type ViewId = "search" | "queue" | "downloaded" | "repair" | "settings";

@@ -12,7 +12,7 @@ export type GenreProviderId = "deezer" | "lastfm" | "musicbrainz";
 export type GenreProvider = {
   id: GenreProviderId;
   name: string;
-  /** Mindestabstand zwischen Lookups (Rate-Limit). */
+  /** Minimum delay between lookups (rate limit). */
   minDelayMs: number;
   lookup: (
     artist: string,
@@ -20,7 +20,7 @@ export type GenreProvider = {
   ) => Effect.Effect<GenreLookupResult, Error>;
 };
 
-/** Artist-Vergleich für Treffer-Validierung: lowercase, ohne Sonderzeichen. */
+/** Artist comparison for match validation: lowercase, no special characters. */
 export const artistMatches = (a: string, b: string): boolean => {
   const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const na = norm(a);

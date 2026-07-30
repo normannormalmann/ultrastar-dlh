@@ -1,10 +1,7 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import { Check, Download, RefreshCw, Trash2 } from "lucide-react";
-import type {
-  AppConfig,
-  BinariesStatus,
-} from "../../shared/ipc-contract.ts";
+import type { AppConfig, BinariesStatus } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 
 const BROWSERS = [
@@ -133,7 +130,9 @@ export const SettingsView: FC<{
       </select>
 
       <h3>Downloads</h3>
-      <label className="muted" htmlFor="folder-layout">Ordnerstruktur neuer Downloads</label>
+      <label className="muted" htmlFor="folder-layout">
+        Ordnerstruktur neuer Downloads
+      </label>
       <select
         id="folder-layout"
         className="input"
@@ -162,7 +161,9 @@ export const SettingsView: FC<{
             onChange={(e) => setDownloadConcurrency(Number(e.target.value))}
           >
             {[1, 2, 3, 4, 5].map((n) => (
-              <option key={n} value={n}>{n}</option>
+              <option key={n} value={n}>
+                {n}
+              </option>
             ))}
           </select>
         </label>
@@ -206,7 +207,11 @@ export const SettingsView: FC<{
       )}
 
       <div className="row" style={{ marginBottom: 28 }}>
-        <button className="btn primary" type="button" onClick={() => void save()}>
+        <button
+          className="btn primary"
+          type="button"
+          onClick={() => void save()}
+        >
           Speichern
         </button>
         {saved && (
@@ -295,7 +300,9 @@ export const SettingsView: FC<{
               <div className="progress-track">
                 <div
                   className="progress-fill"
-                  style={{ width: `${Math.round(binariesProgress.percent * 100)}%` }}
+                  style={{
+                    width: `${Math.round(binariesProgress.percent * 100)}%`,
+                  }}
                 />
               </div>
             </div>

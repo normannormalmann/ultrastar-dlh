@@ -1,9 +1,6 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import type {
-  AppError,
-  InitialState,
-} from "../shared/ipc-contract.ts";
+import type { AppError, InitialState } from "../shared/ipcContract.ts";
 import DownloadBar from "./components/DownloadBar.tsx";
 import Sidebar, { type ViewId } from "./components/Sidebar.tsx";
 import { useIpcEvent } from "./hooks.ts";
@@ -16,9 +13,9 @@ import SettingsView from "./views/SettingsView.tsx";
 const ERROR_DISPLAY_MS = 6000;
 
 /**
- * Äußere Komponente: lädt nur den Initial-State. Die Shell wird erst danach
- * gemountet, damit die useIpcEvent-Hooks mit den korrekten Initialwerten
- * starten (Hook-Initialwerte werden nur beim ersten Render übernommen).
+ * Outer component: only loads the initial state. The shell is only mounted
+ * afterwards, so the useIpcEvent hooks start with the correct initial values
+ * (hook initial values are only picked up on the first render).
  */
 export const App: FC = () => {
   const [initial, setInitial] = useState<InitialState | null>(null);
@@ -76,7 +73,10 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
         {view === "downloaded" && <DownloadedView entries={downloaded} />}
         {view === "repair" && <RepairView status={status} />}
         {view === "settings" && (
-          <SettingsView initialConfig={initial.config} version={initial.version} />
+          <SettingsView
+            initialConfig={initial.config}
+            version={initial.version}
+          />
         )}
       </main>
       <DownloadBar downloads={downloads} />

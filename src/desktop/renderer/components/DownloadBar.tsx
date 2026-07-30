@@ -1,6 +1,6 @@
 import { Check, X } from "lucide-react";
 import type { FC } from "react";
-import type { ActiveDownload } from "../../shared/ipc-contract.ts";
+import type { ActiveDownload } from "../../shared/ipcContract.ts";
 
 export const DownloadBar: FC<{ downloads: ActiveDownload[] }> = ({
   downloads,

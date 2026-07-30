@@ -12,7 +12,7 @@ import {
   checkFfmpegAvailable,
   checkYtDlpAvailable,
 } from "../../core/api/youtube/check.ts";
-import type { BinariesStatus, BinarySource } from "../shared/ipc-contract.ts";
+import type { BinariesStatus, BinarySource } from "../shared/ipcContract.ts";
 import { broadcast, state } from "./state.ts";
 
 const execFileAsync = promisify(execFile);
@@ -30,8 +30,10 @@ type PlatformBinaryConfig = {
   };
 };
 
-/** Bekannte Download-Quellen je Plattform. Fehlt ein Eintrag, ist Auto-Install nicht unterstützt. */
-const PLATFORM_BINARIES: Partial<Record<NodeJS.Platform, PlatformBinaryConfig>> = {
+/** Known download sources per platform. Auto-install is unsupported if a platform is missing here. */
+const PLATFORM_BINARIES: Partial<
+  Record<NodeJS.Platform, PlatformBinaryConfig>
+> = {
   win32: {
     ytDlp: {
       url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
@@ -60,7 +62,7 @@ const PLATFORM_BINARIES: Partial<Record<NodeJS.Platform, PlatformBinaryConfig>> 
   },
 };
 
-/** Exportiert für Tests: nimmt die Plattform als Parameter statt process.platform zu lesen. */
+/** Exported for tests: takes the platform as a parameter instead of reading process.platform. */
 export const resolvePlatformBinaries = (
   platform: NodeJS.Platform,
 ): PlatformBinaryConfig | undefined => PLATFORM_BINARIES[platform];
@@ -69,7 +71,7 @@ export const managedBinDir = (): string => join(app.getPath("userData"), "bin");
 
 let installRunning = false;
 
-/** userData/bin dem PATH voranstellen, damit Core-Spawns es finden. */
+/** Prepend userData/bin to PATH so core spawns can find it. */
 export const prependManagedBinToPath = (): void => {
   process.env.PATH = `${managedBinDir()}${delimiter}${process.env.PATH ?? ""}`;
 };
@@ -103,7 +105,7 @@ export const binariesStatus = async (): Promise<BinariesStatus> => {
   };
 };
 
-/** Download mit Fortschritts-Broadcast; schreibt erst nach Erfolg an den Zielort. */
+/** Download with progress broadcast; only writes to the destination after success. */
 const downloadFile = async (
   url: string,
   dest: string,
@@ -142,11 +144,11 @@ const downloadFile = async (
 };
 
 /**
- * Archiv entpacken. zip läuft über die bestehende extract-zip-Abhängigkeit;
- * tar.xz (Linux-ffmpeg-Builds) über das System-tar, da Node keinen
- * eingebauten xz-Decoder hat und tar mit xz-Support auf praktisch jeder
- * Linux-Distribution vorhanden ist (AppImages laufen ohnehin direkt auf dem
- * Host, wie schon die PATH-Auflösung von yt-dlp/ffmpeg selbst).
+ * Extract an archive. zip goes through the existing extract-zip dependency;
+ * tar.xz (Linux ffmpeg builds) goes through the system tar, since Node has
+ * no built-in xz decoder and tar with xz support ships on virtually every
+ * Linux distro (AppImages already run directly on the host anyway, just
+ * like the PATH resolution of yt-dlp/ffmpeg itself).
  */
 const extractArchive = async (
   archivePath: string,
@@ -162,13 +164,13 @@ const extractArchive = async (
 };
 
 /**
- * Fehlende Binaries installieren (Windows/Linux). Wirft, wenn die Plattform
- * nicht unterstützt wird.
- * force=true lädt auch app-verwaltete Binaries neu (Update-Funktion);
- * System-Installationen werden nie angefasst.
+ * Install missing binaries (Windows/Linux). Throws if the platform is
+ * unsupported.
+ * force=true also re-downloads app-managed binaries (the update feature);
+ * system installations are never touched.
  */
 export const installMissingBinaries = async (force = false): Promise<void> => {
-  if (installRunning) return; // bereits ein Install-Lauf aktiv
+  if (installRunning) return; // an install run is already active
   const config = resolvePlatformBinaries(process.platform);
   if (!config) {
     throw new Error(
@@ -189,7 +191,10 @@ export const installMissingBinaries = async (force = false): Promise<void> => {
     }
 
     if (status.ffmpeg === "missing" || (force && status.ffmpeg === "managed")) {
-      const archivePath = join(bin, `ffmpeg-download.${config.ffmpeg.archiveExt}`);
+      const archivePath = join(
+        bin,
+        `ffmpeg-download.${config.ffmpeg.archiveExt}`,
+      );
       await downloadFile(config.ffmpeg.url, archivePath, "ffmpeg");
       const extractDir = join(bin, "ffmpeg-extract");
       await extractArchive(archivePath, extractDir, config.ffmpeg.archiveType);
@@ -203,7 +208,7 @@ export const installMissingBinaries = async (force = false): Promise<void> => {
     broadcast("event:binariesProgress", null);
     prependManagedBinToPath();
 
-    // Status neu prüfen und an die UI melden
+    // Re-check status and report it to the UI
     const after = await binariesStatus();
     broadcast("event:binariesStatus", after);
     state.setStatus({

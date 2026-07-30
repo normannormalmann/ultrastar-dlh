@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { AppStatus } from "../../shared/ipc-contract.ts";
+import type { AppStatus } from "../../shared/ipcContract.ts";
 
 const dotClass = (v: boolean | null): string =>
   v === null ? "dot pending" : v ? "dot ok" : "dot bad";

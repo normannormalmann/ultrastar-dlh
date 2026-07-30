@@ -4,7 +4,7 @@ import {
   type EventChannel,
   type EventPayloads,
   type UltrastarApi,
-} from "../shared/ipc-contract.ts";
+} from "../shared/ipcContract.ts";
 
 const on = <C extends EventChannel>(
   channel: C,
@@ -13,8 +13,10 @@ const on = <C extends EventChannel>(
   if (!(EVENT_CHANNELS as readonly string[]).includes(channel)) {
     throw new Error(`Unknown event channel: ${channel}`);
   }
-  const wrapped = (_event: Electron.IpcRendererEvent, payload: EventPayloads[C]) =>
-    listener(payload);
+  const wrapped = (
+    _event: Electron.IpcRendererEvent,
+    payload: EventPayloads[C],
+  ) => listener(payload);
   ipcRenderer.on(channel, wrapped);
   return () => ipcRenderer.removeListener(channel, wrapped);
 };
