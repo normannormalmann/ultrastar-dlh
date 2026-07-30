@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { installMissingBinaries, prependManagedBinToPath } from "./binaries.ts";
+import {
+  installMissingBinaries,
+  prependManagedBinToPath,
+  resolvePlatformBinaries,
+} from "./binaries.ts";
 import { registerIpcHandlers } from "./ipc.ts";
 import { broadcast, initializeState, state } from "./state.ts";
 
@@ -53,7 +57,7 @@ void app.whenReady().then(() => {
     // Spec: fehlende Tools werden beim ersten Start automatisch geladen
     const { ytDlpAvailable, ffmpegAvailable } = state.status;
     if (
-      process.platform === "win32" &&
+      resolvePlatformBinaries(process.platform) !== undefined &&
       (ytDlpAvailable === false || ffmpegAvailable === false)
     ) {
       void installMissingBinaries().catch((err) => {
