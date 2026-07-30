@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import { Check, Download, RefreshCw, Trash2 } from "lucide-react";
-import type { AppConfig, BinariesStatus } from "../../shared/ipcContract.ts";
+import type { AppConfig, BinariesStatus, EnvironmentStatus } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 
 const BROWSERS = [
@@ -16,6 +16,24 @@ const BROWSERS = [
 
 const sourceLabel = (s: "system" | "managed" | "missing"): string =>
   s === "system" ? "System" : s === "managed" ? "App-verwaltet" : "fehlt";
+
+const envLabel = (s: EnvironmentStatus): string =>
+  s.state === "ready"
+    ? `bereit (${s.torchVariante === "cu128" ? "GPU" : "CPU"}, Python ${s.pythonVersion ?? "?"})`
+    : s.state === "outdated"
+      ? "veraltet - Aktualisierung empfohlen"
+      : s.state === "broken"
+        ? `defekt (Schritt ${s.fehler?.schritt ?? "?"})`
+        : "nicht eingerichtet";
+
+const SCHRITT_LABELS: Record<string, string> = {
+  uv: "Werkzeug (uv)",
+  venv: "Python 3.12",
+  gpu: "GPU-Erkennung",
+  torch: "Torch",
+  sidecar: "Pipeline-Paket",
+  preload: "KI-Modelle",
+};
 
 export const SettingsView: FC<{
   initialConfig: AppConfig | null;
@@ -46,6 +64,9 @@ export const SettingsView: FC<{
   const [installError, setInstallError] = useState<string | null>(null);
   const [clearingCache, setClearingCache] = useState(false);
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const [env, setEnv] = useState<EnvironmentStatus | null>(null);
+  const [envInstalling, setEnvInstalling] = useState(false);
+  const [envError, setEnvError] = useState<string | null>(null);
 
   useEffect(() => {
     void window.ultrastar.binariesStatus().then(setBinaries);
@@ -53,7 +74,13 @@ export const SettingsView: FC<{
     return window.ultrastar.on("event:binariesStatus", setBinaries);
   }, []);
 
+  useEffect(() => {
+    void window.ultrastar.environmentStatus().then(setEnv);
+    return window.ultrastar.on("event:environmentStatus", setEnv);
+  }, []);
+
   const binariesProgress = useIpcEvent("event:binariesProgress", null);
+  const envProgress = useIpcEvent("event:environmentProgress", null);
 
   const choose = async (): Promise<void> => {
     const dir = await window.ultrastar.chooseDirectory();
@@ -83,6 +110,18 @@ export const SettingsView: FC<{
       setInstallError(e instanceof Error ? e.message : String(e));
     } finally {
       setInstalling(false);
+    }
+  };
+
+  const envInstall = async (force: boolean): Promise<void> => {
+    setEnvInstalling(true);
+    setEnvError(null);
+    try {
+      setEnv(await window.ultrastar.environmentInstall(force));
+    } catch (e) {
+      setEnvError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setEnvInstalling(false);
     }
   };
 
@@ -308,6 +347,80 @@ export const SettingsView: FC<{
             </div>
           )}
           {installError && <div className="error-banner">{installError}</div>}
+        </>
+      )}
+
+      <h3 style={{ marginTop: 28 }}>KI-Umgebung (Song-Erstellung)</h3>
+      {env === null ? (
+        <p className="muted">Prüfe…</p>
+      ) : (
+        <>
+          <p>
+            Status: <strong>{envLabel(env)}</strong>
+          </p>
+          {env.state === "broken" && env.fehler && (
+            <p className="muted">Letzter Fehler: {env.fehler.detail}</p>
+          )}
+          <div className="row">
+            {env.state !== "ready" && (
+              <button
+                className="btn primary"
+                type="button"
+                disabled={envInstalling}
+                onClick={() => void envInstall(false)}
+              >
+                {envInstalling ? (
+                  "Richte ein…"
+                ) : (
+                  <>
+                    <Download size={14} aria-hidden />
+                    {env.state === "outdated"
+                      ? "Jetzt aktualisieren"
+                      : env.state === "broken"
+                        ? "Erneut versuchen"
+                        : "KI-Umgebung einrichten (~8 GB)"}
+                  </>
+                )}
+              </button>
+            )}
+            {env.state === "ready" && (
+              <button
+                className="btn"
+                type="button"
+                disabled={envInstalling}
+                onClick={() => void envInstall(true)}
+              >
+                <RefreshCw size={14} aria-hidden />
+                Neu installieren
+              </button>
+            )}
+            {envInstalling && (
+              <button
+                className="btn"
+                type="button"
+                onClick={() => void window.ultrastar.environmentCancel()}
+              >
+                Abbrechen
+              </button>
+            )}
+          </div>
+          {envProgress && (
+            <div className="row" style={{ marginTop: 8 }}>
+              <span className="muted">
+                {SCHRITT_LABELS[envProgress.schritt] ?? envProgress.schritt}
+                {envProgress.detail ? ` – ${envProgress.detail}` : ""}
+              </span>
+              {envProgress.prozent !== null && (
+                <div className="progress-track">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${Math.round(envProgress.prozent * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {envError && <div className="error-banner">{envError}</div>}
         </>
       )}
 
