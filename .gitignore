@@ -57,3 +57,7 @@ scripts/reference-corpus.json
 
 # Virtuelle Umgebung fuer Modellpakete (Task 12, Nachtrag B)
 python-sidecar/.venv/
+
+# Managed sidecar environment (Task 7, subproject 2)
+python-sidecar/.venv-managed/
+python-sidecar/.uv-bin/
