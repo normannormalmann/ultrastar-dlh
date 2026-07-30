@@ -246,20 +246,31 @@ export const installEnvironment = (
             "Automatische Einrichtung gibt es nur unter Windows. Bitte die Umgebung manuell aufsetzen (siehe python-sidecar/pyproject.toml).",
           );
         }
-        const frei = await runner.freeDiskBytes(opts.envDir);
-        if (frei !== null && frei < MIN_FREE_BYTES) {
-          melde({ schritt: "uv", prozent: null, detail: "Wenig Plattenplatz (unter 12 GB frei) - Installation braucht ~10 GB." });
-        }
         if (opts.force) {
           await rm(opts.envDir, { recursive: true, force: true });
         }
-        // uv itself would create envDir, but later steps (preload.json) write
-        // into it directly, so make sure it exists up front.
+        // mkdir before the disk check: on a first-ever install envDir does
+        // not exist yet, so statfs on it fails with ENOENT -> freeDiskBytes
+        // returns null -> the check would silently pass every time (measured
+        // in the final review). uv itself would create envDir too, but later
+        // steps (preload.json) write into it directly, so make sure it
+        // exists up front regardless.
         await mkdir(opts.envDir, { recursive: true });
+        const frei = await runner.freeDiskBytes(opts.envDir);
 
         // Step 1: uv. Reuse managed or PATH uv; download only as last resort.
+        // The disk-space warning (if any) rides this same opening message
+        // instead of its own melde() call, since a detail-less uv progress
+        // event would otherwise overwrite it immediately.
         pruefeAbbruch();
-        melde({ schritt: "uv", prozent: null });
+        melde({
+          schritt: "uv",
+          prozent: null,
+          detail:
+            frei !== null && frei < MIN_FREE_BYTES
+              ? "Wenig Plattenplatz (unter 12 GB frei) - Installation braucht ~10 GB."
+              : undefined,
+        });
         const uv = await ensureUv(opts.binDir, runner, melde);
 
         // Step 2: venv with a self-provisioned Python 3.12 (WhisperX cannot

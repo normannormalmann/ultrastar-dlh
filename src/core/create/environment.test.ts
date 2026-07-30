@@ -247,6 +247,34 @@ describe("installEnvironment", () => {
     expect(status.state === "broken" || status.state === "missing").toBe(true);
   });
 
+  it("reports low disk space on the uv step's opening progress event", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner();
+    const events: import("./environment.ts").InstallProgress[] = [];
+    await Effect.runPromise(
+      installEnvironment({
+        ...installOpts(envDir, { ...runner, freeDiskBytes: async () => 5_000_000_000 }),
+        onProgress: (p) => events.push(p),
+      }),
+    );
+    const uvEvents = events.filter((e) => e.schritt === "uv");
+    expect(uvEvents.some((e) => e.detail?.includes("Plattenplatz"))).toBe(true);
+  });
+
+  it("does not warn about disk space when there is plenty free", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner();
+    const events: import("./environment.ts").InstallProgress[] = [];
+    await Effect.runPromise(
+      installEnvironment({
+        ...installOpts(envDir, { ...runner, freeDiskBytes: async () => 50_000_000_000 }),
+        onProgress: (p) => events.push(p),
+      }),
+    );
+    const uvEvents = events.filter((e) => e.schritt === "uv");
+    expect(uvEvents.some((e) => e.detail?.includes("Plattenplatz"))).toBe(false);
+  });
+
   it("rejects a second install while the first is still running, then allows a third once it finished", async () => {
     const envDir = await tempEnv();
     const { runner } = fakeRunner();

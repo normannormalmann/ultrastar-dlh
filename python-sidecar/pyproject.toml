@@ -26,6 +26,10 @@ models = [
   "numba>=0.59",
   "torch",
   "torchaudio",
+  # numpy wird direkt in __main__.py und align.py importiert (inkl. des
+  # NumPy-2-Workarounds dort) - bisher nur transitive Abhaengigkeit ueber
+  # librosa/numba, ihre Versionssensitivitaet gehoert aber deklariert.
+  "numpy",
 ]
 dev = ["pytest"]
 

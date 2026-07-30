@@ -17,7 +17,8 @@ from .progress import emit_progress
 
 
 def preload(sprache: str, device: str, out: Path) -> None:
-    """Laedt alle vier Modellarten und schreibt das Ergebnis nach `out`."""
+    """Laedt alle vier Modellarten, prueft die Silbentrennung und schreibt
+    das Ergebnis nach `out`."""
     emit_progress("preload:demucs", 0.0)
     from demucs.pretrained import get_model
 
@@ -59,6 +60,21 @@ def preload(sprache: str, device: str, out: Path) -> None:
     SwiftF0()
     emit_progress("preload:pitch", 1.0)
 
+    # Fuenfter Probe-Schritt: pyphen ueberlebte einmal einen fertigen
+    # Durchstich, weil der Probelauf die Silbentrennung nie anfasste - erst
+    # ein spaeterer echter Lauf haette das fehlende Paket gemeldet. Der Import
+    # bleibt bewusst ungekapselt: fehlt pyphen, soll ModuleNotFoundError bis
+    # zur bestehenden env_missing-Leitung durchschlagen, genau wie bei den
+    # anderen vier Modellarten. Ein fehlendes Woerterbuch fuer eine einzelne
+    # Sprache ist dagegen kein Fehler, nur eine Information im Ergebnis.
+    emit_progress("preload:silben", 0.0)
+    import pyphen  # noqa: F401 - Import selbst ist die Probe
+
+    from .syllables import has_dictionary
+
+    silben_ok = has_dictionary(sprache)
+    emit_progress("preload:silben", 1.0)
+
     atomic_write_bytes(
         out,
         json.dumps(
@@ -70,6 +86,7 @@ def preload(sprache: str, device: str, out: Path) -> None:
                     "align": sprache,
                     "pitch": "swift-f0",
                 },
+                "silben": silben_ok,
             },
             ensure_ascii=False,
         ).encode("utf8"),
