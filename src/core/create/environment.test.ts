@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import {
   envPythonBin,
   environmentStatus,
+  installEnvironment,
   sidecarVersionFromPyproject,
   writeManifest,
 } from "./environment.ts";
@@ -91,5 +92,157 @@ describe("environmentStatus", () => {
     await writeFile(join(envDir, "env.json"), "kein json", "utf8");
     const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
     expect(s.state).toBe("missing");
+  });
+});
+
+type Call = { cmd: string; args: string[] };
+
+const fakeRunner = (opts?: {
+  nvidia?: boolean;
+  failStep?: string; // substring matched against the command line
+}) => {
+  const calls: Call[] = [];
+  const runCommand = async (
+    cmd: string,
+    args: string[],
+    onLine?: (line: string) => void,
+  ) => {
+    calls.push({ cmd, args });
+    const line = `${cmd} ${args.join(" ")}`;
+    if (opts?.failStep && line.includes(opts.failStep)) {
+      return { code: 1, stdout: "", stderr: "simulierter Fehler\nletzte Zeile" };
+    }
+    if (cmd === "nvidia-smi") {
+      return { code: opts?.nvidia === false ? 1 : 0, stdout: "GPU", stderr: "" };
+    }
+    if (args[0] === "venv") {
+      // Simulate what real `uv venv` does on disk, since the installer's
+      // "ready" status depends on Scripts/python.exe actually existing.
+      const dir = args[args.length - 1] as string;
+      await mkdir(join(dir, "Scripts"), { recursive: true });
+      await writeFile(envPythonBin(dir), "", "utf8");
+    }
+    if (args.includes("--preload")) {
+      const out = args[args.indexOf("--out") + 1] as string;
+      onLine?.('@@PROGRESS {"stage":"preload:asr","percent":1}');
+      await writeFile(out, JSON.stringify({ device: "cuda", modelle: {} }), "utf8");
+    }
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  return {
+    calls,
+    runner: {
+      runCommand,
+      fetchFn: (() => {
+        throw new Error("Netz darf im Test nicht angefasst werden");
+      }) as unknown as typeof fetch,
+      freeDiskBytes: async () => 50_000_000_000,
+      platform: "win32" as NodeJS.Platform,
+    },
+  };
+};
+
+const installOpts = (envDir: string, runner: Partial<import("./environment.ts").InstallRunner>) => ({
+  envDir,
+  binDir: join(envDir, "..", "bin"),
+  sidecarDir: "C:/repo/python-sidecar",
+  bundledSidecarVersion: "0.1.0",
+  onProgress: () => {},
+  runner,
+});
+
+describe("installEnvironment", () => {
+  it("runs the six steps in order and writes a ready manifest", async () => {
+    const envDir = await tempEnv();
+    const { calls, runner } = fakeRunner();
+    // uv resolves via PATH probe (uv --version succeeds in the fake).
+    const status = await Effect.runPromise(
+      installEnvironment(installOpts(envDir, runner)),
+    );
+    expect(status.state).toBe("ready");
+    expect(status.torchVariante).toBe("cu128");
+    const line = (c: Call) => `${c.cmd} ${c.args.join(" ")}`;
+    const venvIdx = calls.findIndex((c) => line(c).includes("venv --python 3.12"));
+    const torchIdx = calls.findIndex((c) => line(c).includes("torch==2.8.0+cu128"));
+    const sidecarIdx = calls.findIndex((c) => line(c).includes("[models]"));
+    const preloadIdx = calls.findIndex((c) => c.args.includes("--preload"));
+    expect(venvIdx).toBeGreaterThanOrEqual(0);
+    expect(torchIdx).toBeGreaterThan(venvIdx);
+    expect(sidecarIdx).toBeGreaterThan(torchIdx);
+    expect(preloadIdx).toBeGreaterThan(sidecarIdx);
+    expect(
+      calls.some((c) => line(c).includes("--index-url https://download.pytorch.org/whl/cu128")),
+    ).toBe(true);
+  });
+
+  it("falls back to the cpu index without nvidia-smi", async () => {
+    const envDir = await tempEnv();
+    const { calls, runner } = fakeRunner({ nvidia: false });
+    const status = await Effect.runPromise(
+      installEnvironment(installOpts(envDir, runner)),
+    );
+    expect(status.torchVariante).toBe("cpu");
+    expect(
+      calls.some((c) => `${c.args.join(" ")}`.includes("torch==2.8.0+cpu")),
+    ).toBe(true);
+  });
+
+  it("writes a broken manifest with step and stderr tail on failure", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner({ failStep: "torch==" });
+    const ergebnis = await Effect.runPromise(
+      Effect.either(installEnvironment(installOpts(envDir, runner))),
+    );
+    expect(ergebnis._tag).toBe("Left");
+    if (ergebnis._tag === "Left") {
+      expect(ergebnis.left.schritt).toBe("torch");
+      expect(ergebnis.left.detail).toContain("letzte Zeile");
+    }
+    const status = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    expect(status.state === "broken" || status.state === "missing").toBe(true);
+  });
+
+  it("force removes the venv before reinstalling", async () => {
+    const envDir = await tempEnv();
+    await fakePython(envDir);
+    await writeFile(join(envDir, "marker.txt"), "alt", "utf8");
+    const { runner } = fakeRunner();
+    await Effect.runPromise(
+      installEnvironment({ ...installOpts(envDir, runner), force: true }),
+    );
+    expect(await Bun.file(join(envDir, "marker.txt")).exists()).toBe(false);
+  });
+
+  it("refuses non-windows platforms with a clear message", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner();
+    const ergebnis = await Effect.runPromise(
+      Effect.either(
+        installEnvironment(installOpts(envDir, { ...runner, platform: "darwin" })),
+      ),
+    );
+    expect(ergebnis._tag).toBe("Left");
+    if (ergebnis._tag === "Left") expect(ergebnis.left.schritt).toBe("uv");
+  });
+
+  it("aborts before running when the signal is already aborted", async () => {
+    const envDir = await tempEnv();
+    const { runner } = fakeRunner();
+    const controller = new AbortController();
+    controller.abort();
+    const ergebnis = await Effect.runPromise(
+      Effect.either(
+        installEnvironment({
+          ...installOpts(envDir, runner),
+          signal: controller.signal,
+        }),
+      ),
+    );
+    expect(ergebnis._tag).toBe("Left");
+    if (ergebnis._tag === "Left") {
+      expect(ergebnis.left.detail).toBe("Abgebrochen.");
+    }
+    const status = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    expect(status.state === "broken" || status.state === "missing").toBe(true);
   });
 });
