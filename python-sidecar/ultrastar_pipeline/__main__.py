@@ -8,7 +8,8 @@ Preload-Modus: laedt alle vier Modellarten einmal, um die Umgebungs-Einrichtung
 zu proben - vor dem ersten echten Lauf.
 
 Worker-Modus (--worker): liest Auftraege von stdin als JSON-Zeilen (viele Jobs
-pro Prozess, Modelle warm). Maerchenweise erfordert nicht --language/--out.
+pro Prozess, Modelle warm). Die Auftragsfelder kommen dort je Zeile, darum
+sind --language und --out in diesem Modus nicht erforderlich.
 """
 
 import argparse
