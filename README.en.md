@@ -87,7 +87,9 @@ bun run start          # TUI in dev mode
 bun run desktop:dev    # Desktop app with hot reload
 bun run test           # Unit tests
 bun run test:e2e       # Playwright smoke test (builds first)
-bun run desktop:dist   # Build the Windows installer (dist/)
+bun run desktop:dist   # Build the installer for the current platform (dist/)
+bun run desktop:dist:win     # Force-build the Windows installer
+bun run desktop:dist:linux   # Force-build the Linux AppImage
 bun run lint           # Biome
 ```
 

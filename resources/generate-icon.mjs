@@ -1,5 +1,6 @@
-// Rendert die Icon-SVGs per Playwright/Chromium in PNGs und packt sie
-// als PNG-embedded ICO. Aufruf: node resources/generate-icon.mjs
+// Rendert die Icon-SVGs per Playwright/Chromium in PNGs, packt sie als
+// PNG-embedded ICO (Windows) und schreibt ein einzelnes PNG (Linux).
+// Aufruf: node resources/generate-icon.mjs
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ import { chromium } from "playwright";
 const here = dirname(fileURLToPath(import.meta.url));
 const SMALL_SIZES = [16, 24, 32, 48]; // aus icon-small.svg
 const DETAIL_SIZES = [64, 128, 256]; // aus icon.svg
+const LINUX_ICON_SIZE = 512; // aus icon.svg, für electron-builder (AppImage)
 
 const renderPng = async (page, svg, size) => {
   await page.setViewportSize({ width: size, height: size });
@@ -54,6 +56,7 @@ for (const size of SMALL_SIZES) {
 for (const size of DETAIL_SIZES) {
   entries.push({ size, png: await renderPng(page, detailSvg, size) });
 }
+const linuxPng = await renderPng(page, detailSvg, LINUX_ICON_SIZE);
 await browser.close();
 
 entries.sort((a, b) => a.size - b.size);
@@ -65,6 +68,8 @@ if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 
 const ico = packIco(entries);
 await writeFile(join(here, "icon.ico"), ico);
+await writeFile(join(here, "icon.png"), linuxPng);
 console.log(
   `icon.ico geschrieben: ${entries.length} Einträge (${actual.join(", ")} px), ${ico.length} Bytes`,
 );
+console.log(`icon.png geschrieben: ${LINUX_ICON_SIZE}px, ${linuxPng.length} Bytes`);

@@ -87,7 +87,9 @@ bun run start          # TUI im Dev-Modus
 bun run desktop:dev    # Desktop-App mit Hot Reload
 bun run test           # Unit-Tests
 bun run test:e2e       # Playwright-Smoke-Test (baut vorher)
-bun run desktop:dist   # Windows-Installer bauen (dist/)
+bun run desktop:dist   # Installer für die aktuelle Plattform bauen (dist/)
+bun run desktop:dist:win     # Windows-Installer erzwingen
+bun run desktop:dist:linux   # Linux-AppImage erzwingen
 bun run lint           # Biome
 ```
 
