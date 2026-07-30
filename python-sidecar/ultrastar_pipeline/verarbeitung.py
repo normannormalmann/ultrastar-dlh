@@ -30,6 +30,8 @@ from .syllables import has_dictionary
 from .tempo import korrigiere_tempo
 from .transcribe import STAGE_VERSION as TRANSCRIBE_STAGE_VERSION
 
+# Marker, die eine Aufbereitung durch lyrics.ts erfordern. Kopflos wird
+# hier nicht geraten — es wird abgebrochen.
 UNGELOESTE_MARKER = ("(2x)", "(x2)", "[chorus]", "[refrain]")
 
 
