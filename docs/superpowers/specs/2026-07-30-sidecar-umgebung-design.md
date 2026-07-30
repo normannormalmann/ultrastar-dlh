@@ -35,7 +35,7 @@ Entschieden im Brainstorming (2026-07-30):
 |---|---|
 | `src/core/create/environment.ts` *(neu)* | UI-freie Logik: Status ermitteln, Installation in benannten Schritten ausführen. Alle Prozess-/Netzzugriffe über injizierbare Runner (testbar ohne uv/Netz/GPU, Muster wie `fetchFn` in `lrclib.ts`). |
 | `src/desktop/main/environment.ts` *(neu)* | IPC-Anbindung nach dem Muster von `binaries.ts`: Install-Lock, Fortschritts-Broadcast, Statusmeldung. |
-| `src/desktop/shared/ipc-contract.ts` | Neue Kanäle `environment:status`, `environment:install` (Parameter `force`); Event `event:environmentProgress`. |
+| `src/desktop/shared/ipcContract.ts` | Neue Kanäle `environment:status`, `environment:install` (Parameter `force`); Event `event:environmentProgress`. |
 | SettingsView (`src/desktop/renderer/views/`) | Abschnitt „KI-Umgebung": Status, Fortschritt je Schritt, Button „Einrichten"/„Neu installieren". |
 | `scripts/setup-environment.ts` *(neu)* | Dev-Einstieg: gleiche Core-Funktion per Kommandozeile; ersetzt die manuelle venv-Anleitung. Gibt am Ende den Interpreterpfad (`PIPELINE_PYTHON`) aus. |
 | `src/core/create/pipeline.ts` | `resolvePythonBin()`: explizite Angabe > verwaltete Umgebung > `python` aus PATH. Die `EnvMissing`-Diagnose verweist auf die Einrichtung (Settings) statt auf „Teilprojekt 2". |
@@ -135,6 +135,15 @@ UI bietet die Aktualisierung an (Neuinstallation der Pakete, venv bleibt).
 - **Modell-Downloads Dritter** (HuggingFace) können scheitern oder
   drosseln; der Preload-Schritt zeigt dann den echten Fehler statt eines
   Timeouts beim ersten Song.
+
+## Nachtrag 2026-07-30 (nach Merge von origin/main)
+
+Der zwischenzeitlich gemergte PR (#3/#4) hat `ipc-contract.ts` in
+`ipcContract.ts` umbenannt (oben bereits korrigiert) und ein Projekt-
+`CLAUDE.md` etabliert: **neuer TypeScript-Code kommentiert auf Englisch**,
+camelCase-Dateinamen, gepinnte Dependency-Versionen. Der Umsetzungsplan
+dieses Teilprojekts folgt diesen Konventionen; der Python-Sidecar behält
+seine dokumentierte Konvention (Deutsch ohne Umlaute, ASCII).
 
 ## Bewusst nicht enthalten
 
