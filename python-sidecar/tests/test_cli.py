@@ -109,14 +109,15 @@ def test_fehlendes_modell_paket_meldet_env_missing_mit_paketnamen(tmp_path):
 
 def test_stage_versions_folgen_den_modulkonstanten(monkeypatch):
     """_stage_versions() muss aus den Modulen lesen, nicht aus Literalen —
-    sonst bumpt eine Aenderung von align.STAGE_VERSION den Bericht nicht."""
-    import ultrastar_pipeline.__main__ as haupt
+    sonst bumpt eine Aenderung von align.STAGE_VERSION den Bericht nicht.
+    Seit dem Worker-Umzug lebt der Kern in verarbeitung.py - dort patchen."""
+    import ultrastar_pipeline.verarbeitung as verarbeitung
 
-    monkeypatch.setattr(haupt, "ALIGN_STAGE_VERSION", "77")
-    assert haupt._stage_versions()["align"] == "77"
+    monkeypatch.setattr(verarbeitung, "ALIGN_STAGE_VERSION", "77")
+    assert verarbeitung._stage_versions()["align"] == "77"
 
-    monkeypatch.setattr(haupt, "TRANSCRIBE_STAGE_VERSION", "88")
-    assert haupt._stage_versions()["transcribe"] == "88"
+    monkeypatch.setattr(verarbeitung, "TRANSCRIBE_STAGE_VERSION", "88")
+    assert verarbeitung._stage_versions()["transcribe"] == "88"
 
 
 def test_ungeloeste_textfrage_bricht_ab(tmp_path):
