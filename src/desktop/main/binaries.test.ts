@@ -1,7 +1,12 @@
 import { expect, mock, test } from "bun:test";
 
+// Vollstaendiger Mock wie in ipc.test.ts: mock.module leckt in bun ueber
+// Testdateien hinweg — fehlt hier z.B. `dialog`, scheitert der Import von
+// ipc.ts im Gesamtlauf, obwohl jede Datei einzeln gruen ist.
 mock.module("electron", () => ({
-  app: { getPath: () => "/tmp/test" },
+  app: { getVersion: () => "0.0.0-test", getPath: () => "/tmp/test" },
+  dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+  shell: { openPath: async () => "" },
   BrowserWindow: { getAllWindows: () => [] },
 }));
 
