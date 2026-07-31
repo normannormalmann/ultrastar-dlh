@@ -8,7 +8,7 @@ import {
   environmentStatus,
   installEnvironment,
   resolvePythonBin,
-  sidecarVersionFromPyproject,
+  sidecarFingerprint,
   writeManifest,
 } from "./environment.ts";
 
@@ -25,25 +25,34 @@ const fakePython = async (envDir: string): Promise<void> => {
 
 const baseManifest = {
   schemaVersion: 1 as const,
-  sidecarVersion: "0.1.0",
+  sidecarFingerprint: "abc123",
   pythonVersion: "3.12.8",
   torchVariante: "cu128" as const,
   preload: { ok: true, device: "cuda", datum: "2026-07-30" },
 };
 
-describe("sidecarVersionFromPyproject", () => {
-  it("extracts the version line", () => {
-    expect(
-      sidecarVersionFromPyproject('[project]\nname = "x"\nversion = "0.1.0"\n'),
-    ).toBe("0.1.0");
-    expect(sidecarVersionFromPyproject("kein feld")).toBeNull();
+describe("sidecarFingerprint", () => {
+  it("changes when sidecar source changes, stays stable otherwise", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sidecar-"));
+    await mkdir(join(dir, "ultrastar_pipeline"), { recursive: true });
+    await writeFile(join(dir, "pyproject.toml"), 'version = "0.1.0"', "utf8");
+    const modul = join(dir, "ultrastar_pipeline", "worker.py");
+    await writeFile(modul, "print('alt')", "utf8");
+
+    const vorher = await sidecarFingerprint(dir);
+    expect(await sidecarFingerprint(dir)).toBe(vorher);
+
+    // A code change alone must flip the fingerprint - that is the whole
+    // point: the version string stayed "0.1.0" in the measured incident.
+    await writeFile(modul, "print('neu')", "utf8");
+    expect(await sidecarFingerprint(dir)).not.toBe(vorher);
   });
 });
 
 describe("environmentStatus", () => {
   it("reports missing without a manifest or python", async () => {
     const envDir = await tempEnv();
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("missing");
   });
 
@@ -51,7 +60,7 @@ describe("environmentStatus", () => {
     const envDir = await tempEnv();
     await mkdir(envDir, { recursive: true });
     await writeManifest(envDir, baseManifest);
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("missing");
   });
 
@@ -59,7 +68,7 @@ describe("environmentStatus", () => {
     const envDir = await tempEnv();
     await fakePython(envDir);
     await writeManifest(envDir, baseManifest);
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("ready");
     expect(s.torchVariante).toBe("cu128");
     expect(s.pythonVersion).toBe("3.12.8");
@@ -69,7 +78,7 @@ describe("environmentStatus", () => {
     const envDir = await tempEnv();
     await fakePython(envDir);
     await writeManifest(envDir, baseManifest);
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.2.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "anders99"));
     expect(s.state).toBe("outdated");
   });
 
@@ -81,7 +90,7 @@ describe("environmentStatus", () => {
       preload: { ok: false, device: "cpu", datum: "2026-07-30" },
       fehler: { schritt: "torch", detail: "No matching distribution" },
     });
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("broken");
     expect(s.fehler?.schritt).toBe("torch");
   });
@@ -91,7 +100,7 @@ describe("environmentStatus", () => {
     await fakePython(envDir);
     await mkdir(envDir, { recursive: true });
     await writeFile(join(envDir, "env.json"), "kein json", "utf8");
-    const s = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("missing");
   });
 });
@@ -147,7 +156,7 @@ const installOpts = (envDir: string, runner: Partial<import("./environment.ts").
   envDir,
   binDir: join(envDir, "..", "bin"),
   sidecarDir: "C:/repo/python-sidecar",
-  bundledSidecarVersion: "0.1.0",
+  bundledFingerprint: "abc123",
   onProgress: () => {},
   runner,
 });
@@ -199,7 +208,7 @@ describe("installEnvironment", () => {
       expect(ergebnis.left.schritt).toBe("torch");
       expect(ergebnis.left.detail).toContain("letzte Zeile");
     }
-    const status = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const status = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(status.state === "broken" || status.state === "missing").toBe(true);
   });
 
@@ -243,7 +252,7 @@ describe("installEnvironment", () => {
     if (ergebnis._tag === "Left") {
       expect(ergebnis.left.detail).toBe("Abgebrochen.");
     }
-    const status = await Effect.runPromise(environmentStatus(envDir, "0.1.0"));
+    const status = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(status.state === "broken" || status.state === "missing").toBe(true);
   });
 

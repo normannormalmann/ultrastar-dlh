@@ -2,8 +2,9 @@
 // status is derived from a manifest file, installation runs through
 // injectable runners so tests never touch uv, the network, or a GPU.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 
@@ -27,7 +28,8 @@ export type EnvironmentStatus = {
 
 export type EnvironmentManifest = {
   schemaVersion: 1;
-  sidecarVersion: string;
+  /** Content hash of the sidecar sources this environment was built from. */
+  sidecarFingerprint: string;
   pythonVersion: string;
   torchVariante: "cu128" | "cpu";
   preload: { ok: boolean; device: string; datum: string };
@@ -56,9 +58,41 @@ export const resolvePythonBin = (
 
 export const manifestPath = (envDir: string): string => join(envDir, "env.json");
 
-/** The bundled sidecar's version is the freshness reference for "outdated". */
-export const sidecarVersionFromPyproject = (text: string): string | null =>
-  /^version\s*=\s*"([^"]+)"/m.exec(text)?.[1] ?? null;
+/**
+ * Freshness reference for "outdated": a hash over the sidecar sources.
+ *
+ * The environment installs a *copy* of the sidecar (uv pip install), so new
+ * sidecar code only reaches it through a reinstall. A version string would
+ * only catch that if someone remembered to bump it - measured the hard way:
+ * a worker mode added without a version bump left the environment reporting
+ * "ready" while running month-old code. Hashing the sources needs no
+ * discipline at all.
+ */
+export const sidecarFingerprint = async (sidecarDir: string): Promise<string> => {
+  const paketDir = join(sidecarDir, "ultrastar_pipeline");
+  const dateien: string[] = ["pyproject.toml"];
+  try {
+    for (const eintrag of await readdir(paketDir, { recursive: true })) {
+      const name = String(eintrag).replaceAll("\\", "/");
+      if (name.endsWith(".py")) dateien.push(`ultrastar_pipeline/${name}`);
+    }
+  } catch {
+    // No package directory: the fingerprint then covers pyproject only,
+    // which still changes whenever dependencies change.
+  }
+  dateien.sort();
+  const hash = createHash("sha256");
+  for (const relativ of dateien) {
+    try {
+      hash.update(relativ);
+      hash.update(await readFile(join(sidecarDir, relativ)));
+    } catch {
+      // Unreadable file: its absence is part of the fingerprint.
+      hash.update("<unlesbar>");
+    }
+  }
+  return hash.digest("hex").slice(0, 16);
+};
 
 export const readManifest = async (
   envDir: string,
@@ -96,7 +130,7 @@ const fileExists = async (p: string): Promise<boolean> => {
  */
 export const environmentStatus = (
   envDir: string,
-  bundledSidecarVersion: string,
+  bundledFingerprint: string,
 ): Effect.Effect<EnvironmentStatus, never> =>
   Effect.promise(async (): Promise<EnvironmentStatus> => {
     const manifest = await readManifest(envDir);
@@ -113,7 +147,7 @@ export const environmentStatus = (
         },
       };
     }
-    if (manifest.sidecarVersion !== bundledSidecarVersion) {
+    if (manifest.sidecarFingerprint !== bundledFingerprint) {
       return {
         state: "outdated",
         pythonVersion: manifest.pythonVersion,
@@ -147,7 +181,7 @@ export type InstallOptions = {
   envDir: string;
   binDir: string;
   sidecarDir: string;
-  bundledSidecarVersion: string;
+  bundledFingerprint: string;
   force?: boolean;
   language?: string;
   onProgress?: (p: InstallProgress) => void;
@@ -348,13 +382,13 @@ export const installEnvironment = (
 
         await writeManifest(opts.envDir, {
           schemaVersion: 1,
-          sidecarVersion: opts.bundledSidecarVersion,
+          sidecarFingerprint: opts.bundledFingerprint,
           pythonVersion: "3.12",
           torchVariante,
           preload: { ok: true, device: String(preload.device), datum: new Date().toISOString().slice(0, 10) },
         });
         return await Effect.runPromise(
-          environmentStatus(opts.envDir, opts.bundledSidecarVersion),
+          environmentStatus(opts.envDir, opts.bundledFingerprint),
         );
       } catch (fehler) {
         const detail =
@@ -373,7 +407,7 @@ export const installEnvironment = (
         // Record the failure so the UI can show "broken" + retry after restart.
         await writeManifest(opts.envDir, {
           schemaVersion: 1,
-          sidecarVersion: opts.bundledSidecarVersion,
+          sidecarFingerprint: opts.bundledFingerprint,
           pythonVersion: "3.12",
           torchVariante,
           preload: { ok: false, device: "unbekannt", datum: new Date().toISOString().slice(0, 10) },

@@ -9,7 +9,7 @@ import {
   environmentStatus,
   envPythonBin,
   installEnvironment,
-  sidecarVersionFromPyproject,
+  sidecarFingerprint,
 } from "../src/core/create/environment.ts";
 
 const argWert = (name: string): string | undefined => {
@@ -20,9 +20,7 @@ const argWert = (name: string): string | undefined => {
 const main = async (): Promise<void> => {
   const sidecar = resolve("python-sidecar");
   const envDir = resolve(argWert("--dir") ?? join(sidecar, ".venv-managed"));
-  const version =
-    sidecarVersionFromPyproject(await readFile(join(sidecar, "pyproject.toml"), "utf8")) ??
-    "0.0.0";
+  const fingerprint = await sidecarFingerprint(sidecar);
 
   const ergebnis = await Effect.runPromise(
     Effect.either(
@@ -30,7 +28,7 @@ const main = async (): Promise<void> => {
         envDir,
         binDir: join(sidecar, ".uv-bin"),
         sidecarDir: sidecar,
-        bundledSidecarVersion: version,
+        bundledFingerprint: fingerprint,
         force: process.argv.includes("--force"),
         language: argWert("--language") ?? "de",
         runner: defaultRunner(),
@@ -49,7 +47,7 @@ const main = async (): Promise<void> => {
     console.error(`FEHLER in Schritt ${ergebnis.left.schritt}: ${ergebnis.left.detail}`);
     process.exit(1);
   }
-  const status = await Effect.runPromise(environmentStatus(envDir, version));
+  const status = await Effect.runPromise(environmentStatus(envDir, fingerprint));
   console.log(`Status: ${status.state} (${status.torchVariante ?? "?"})`);
   console.log(`PIPELINE_PYTHON=${envPythonBin(envDir)}`);
 };

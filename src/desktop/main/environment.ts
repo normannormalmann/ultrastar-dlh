@@ -9,7 +9,7 @@ import {
   defaultRunner,
   environmentStatus,
   installEnvironment,
-  sidecarVersionFromPyproject,
+  sidecarFingerprint,
   type EnvironmentStatus as Status,
 } from "../../core/create/environment.ts";
 import { managedBinDir } from "./binaries.ts";
@@ -24,18 +24,13 @@ export const sidecarDir = (): string =>
     ? join(process.resourcesPath, "python-sidecar")
     : join(app.getAppPath(), "python-sidecar");
 
-const bundledSidecarVersion = async (): Promise<string> => {
-  try {
-    const text = await readFile(join(sidecarDir(), "pyproject.toml"), "utf8");
-    return sidecarVersionFromPyproject(text) ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-};
+/** Content hash of the bundled sidecar - the freshness reference. */
+const bundledFingerprint = async (): Promise<string> =>
+  sidecarFingerprint(sidecarDir());
 
 export const environmentStatusForApp = async (): Promise<Status> =>
   Effect.runPromise(
-    environmentStatus(managedEnvDir(), await bundledSidecarVersion()),
+    environmentStatus(managedEnvDir(), await bundledFingerprint()),
   );
 
 let laufenderAbbruch: AbortController | null = null;
@@ -59,7 +54,7 @@ export const installEnvironmentForApp = async (
         envDir: managedEnvDir(),
         binDir: managedBinDir(),
         sidecarDir: sidecarDir(),
-        bundledSidecarVersion: await bundledSidecarVersion(),
+        bundledFingerprint: await bundledFingerprint(),
         force,
         signal: abbruch.signal,
         runner: defaultRunner(abbruch.signal),
