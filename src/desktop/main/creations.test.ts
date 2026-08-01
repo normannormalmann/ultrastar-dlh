@@ -121,6 +121,60 @@ describe("creation queue", () => {
     expect(c.entriesForTests().map((e) => e.id)).toEqual(["a"]);
   });
 
+  it("Abbruch beendet nur den laufenden Job, die Queue laeuft weiter", async () => {
+    const bearbeitet: string[] = [];
+    let alive = false;
+    let rejectLaufend: ((fehler: unknown) => void) | null = null;
+    const worker = {
+      isAlive: () => alive,
+      submitJob: (j: { id: string }) => {
+        bearbeitet.push(j.id);
+        alive = true;
+        if (j.id !== "a") return Promise.resolve();
+        // "a" haengt, bis cancelCurrentJob es abweist - wie der echte Worker.
+        return new Promise<void>((_res, rej) => {
+          rejectLaufend = rej;
+        });
+      },
+      cancelCurrentJob: () => {
+        alive = false;
+        rejectLaufend?.({ kind: "Cancelled" });
+        rejectLaufend = null;
+      },
+      shutdown: async () => {
+        alive = false;
+      },
+    };
+    const deps = {
+      newWorker: () => worker,
+      environmentStatus: async () => ({ state: "ready" }),
+      broadcast: () => {},
+    } as unknown as CreationsDeps;
+
+    const c = createCreations(deps);
+    c.queueAdd([job("a"), job("b")]);
+    const laufend = c.start();
+    await Promise.resolve();
+    c.cancel();
+    await laufend;
+    expect(bearbeitet).toEqual(["a", "b"]);
+    const eintraege = c.entriesForTests();
+    expect(eintraege.find((e) => e.id === "a")?.error).toBe("Abgebrochen.");
+    expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
+  });
+
+  it("zweimal start() laesst keinen Job durch die Umgebungspruefung schluepfen", async () => {
+    const { deps, bearbeitet } = fakeDeps();
+    const c = createCreations(deps);
+    c.queueAdd([job("a"), job("b")]);
+    await Promise.all([c.start(), c.start()]);
+    expect(bearbeitet).toEqual(["a", "b"]);
+    expect(c.entriesForTests().map((e) => e.status)).toEqual([
+      "completed",
+      "completed",
+    ]);
+  });
+
   it("meldet Fortschritt des laufenden Jobs", async () => {
     const events: Array<{ channel: string; payload: unknown }> = [];
     const deps = {

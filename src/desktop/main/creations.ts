@@ -44,6 +44,12 @@ const fehlerText = (fehler: unknown): string => {
   return fehler instanceof Error ? fehler.message : String(fehler);
 };
 
+/** A cancel is a user decision, not a worker fault - it must not brake the queue. */
+const istAbbruch = (fehler: unknown): boolean =>
+  typeof fehler === "object" &&
+  fehler !== null &&
+  (fehler as { kind?: string }).kind === "Cancelled";
+
 export const createCreations = (deps: CreationsDeps) => {
   let queue: CreateJobRequest[] = [];
   const eintraege = new Map<string, CreationEntry>();
@@ -84,25 +90,28 @@ export const createCreations = (deps: CreationsDeps) => {
 
   const start = async (): Promise<void> => {
     if (running || queue.length === 0) return;
-    const env = await deps.environmentStatus();
-    if (env.state === "missing" || env.state === "broken") {
-      deps.broadcast("event:error", {
-        context: "erstellen",
-        message:
-          "KI-Umgebung ist nicht eingerichtet (Einstellungen -> KI-Umgebung).",
-      });
-      return;
-    }
-    if (env.state === "outdated") {
-      deps.broadcast("event:error", {
-        context: "warnung",
-        message:
-          "KI-Umgebung ist veraltet - Lauf mit alter Version (Einstellungen -> Aktualisieren).",
-      });
-    }
+    // Claim the queue *before* the first await. The environment check is
+    // async, so a guard behind it would let a second start() (double click
+    // on the UI button) slip through and submit a job into the busy worker.
     running = true;
-    crashStreak = 0;
     try {
+      const env = await deps.environmentStatus();
+      if (env.state === "missing" || env.state === "broken") {
+        deps.broadcast("event:error", {
+          context: "erstellen",
+          message:
+            "KI-Umgebung ist nicht eingerichtet (Einstellungen -> KI-Umgebung).",
+        });
+        return;
+      }
+      if (env.state === "outdated") {
+        deps.broadcast("event:error", {
+          context: "warnung",
+          message:
+            "KI-Umgebung ist veraltet - Lauf mit alter Version (Einstellungen -> Aktualisieren).",
+        });
+      }
+      crashStreak = 0;
       while (queue.length > 0) {
         const jobDef = queue.shift() as CreateJobRequest;
         const eintrag = eintraege.get(jobDef.id);
@@ -110,8 +119,12 @@ export const createCreations = (deps: CreationsDeps) => {
         eintrag.status = "running";
         melde();
         worker ??= deps.newWorker();
+        // Hold the worker in a local: cancel() clears the shared field
+        // while this await is pending, and the catch below still has to
+        // ask *this* worker whether it survived.
+        const aktiv = worker;
         try {
-          await worker.submitJob(toWorkerJob(jobDef), (stage, percent) => {
+          await aktiv.submitJob(toWorkerJob(jobDef), (stage, percent) => {
             eintrag.stage = stage;
             eintrag.progress = percent;
             melde();
@@ -121,10 +134,14 @@ export const createCreations = (deps: CreationsDeps) => {
           crashStreak = 0;
         } catch (fehler) {
           eintrag.status = "failed";
-          eintrag.error = fehlerText(fehler);
-          // A worker that died mid-job counts towards the crash brake;
-          // a domain error (worker still alive) does not.
-          if (!worker.isAlive()) {
+          eintrag.error = istAbbruch(fehler) ? "Abgebrochen." : fehlerText(fehler);
+          if (istAbbruch(fehler)) {
+            // cancel() killed the process; the next job gets a fresh worker.
+            worker = null;
+            crashStreak = 0;
+          } else if (!aktiv.isAlive()) {
+            // A worker that died mid-job counts towards the crash brake;
+            // a domain error (worker still alive) does not.
             worker = null;
             crashStreak += 1;
             if (crashStreak >= CRASH_LIMIT) {
