@@ -23,10 +23,12 @@ export type WorkerLike = Pick<
 export type CreationsDeps = {
   newWorker: () => WorkerLike;
   environmentStatus: () => Promise<EnvironmentStatus>;
+  /** Lazy: electron can only answer this once the app is ready. */
+  workDir: () => string;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
-const toWorkerJob = (job: CreateJobRequest): WorkerJob => ({
+const toWorkerJob = (job: CreateJobRequest, workDir: string): WorkerJob => ({
   id: job.id,
   audioPath: job.audioPath,
   lyricsPath: job.lyricsPath,
@@ -34,6 +36,7 @@ const toWorkerJob = (job: CreateJobRequest): WorkerJob => ({
   outPath: job.outPath,
   bpm: job.bpm,
   syncedLyricsPath: job.syncedLyricsPath,
+  workDir,
 });
 
 const fehlerText = (fehler: unknown): string => {
@@ -105,11 +108,16 @@ export const createCreations = (deps: CreationsDeps) => {
         return;
       }
       if (env.state === "outdated") {
+        // "outdated" is a content hash mismatch, so it includes the case
+        // "the installed sidecar predates the worker protocol". Running
+        // anyway would burn three 120 s READY timeouts before the crash
+        // brake pauses the queue - measured during the subproject-3 run.
         deps.broadcast("event:error", {
-          context: "warnung",
+          context: "erstellen",
           message:
-            "KI-Umgebung ist veraltet - Lauf mit alter Version (Einstellungen -> Aktualisieren).",
+            "KI-Umgebung ist veraltet - bitte aktualisieren (Einstellungen -> KI-Umgebung).",
         });
+        return;
       }
       crashStreak = 0;
       while (queue.length > 0) {
@@ -124,7 +132,7 @@ export const createCreations = (deps: CreationsDeps) => {
         // ask *this* worker whether it survived.
         const aktiv = worker;
         try {
-          await aktiv.submitJob(toWorkerJob(jobDef), (stage, percent) => {
+          await aktiv.submitJob(toWorkerJob(jobDef, deps.workDir()), (stage, percent) => {
             eintrag.stage = stage;
             eintrag.progress = percent;
             melde();
@@ -133,27 +141,30 @@ export const createCreations = (deps: CreationsDeps) => {
           eintrag.progress = 1;
           crashStreak = 0;
         } catch (fehler) {
-          eintrag.status = "failed";
-          eintrag.error = istAbbruch(fehler) ? "Abgebrochen." : fehlerText(fehler);
           if (istAbbruch(fehler)) {
             // cancel() killed the process; the next job gets a fresh worker.
+            eintrag.status = "cancelled";
             worker = null;
             crashStreak = 0;
-          } else if (!aktiv.isAlive()) {
+          } else {
+            eintrag.status = "failed";
+            eintrag.error = fehlerText(fehler);
             // A worker that died mid-job counts towards the crash brake;
             // a domain error (worker still alive) does not.
-            worker = null;
-            crashStreak += 1;
-            if (crashStreak >= CRASH_LIMIT) {
-              deps.broadcast("event:error", {
-                context: "erstellen",
-                message: "Drei Worker-Abstuerze in Folge - Queue pausiert.",
-              });
-              melde();
-              return;
+            if (aktiv.isAlive()) {
+              crashStreak = 0;
+            } else {
+              worker = null;
+              crashStreak += 1;
+              if (crashStreak >= CRASH_LIMIT) {
+                deps.broadcast("event:error", {
+                  context: "erstellen",
+                  message: "Drei Worker-Abstuerze in Folge - Queue pausiert.",
+                });
+                melde();
+                return;
+              }
             }
-          } else {
-            crashStreak = 0;
           }
         }
         melde();

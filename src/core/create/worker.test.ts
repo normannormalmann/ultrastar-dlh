@@ -97,6 +97,27 @@ describe("SidecarWorker", () => {
     expect(worker.isAlive()).toBe(false);
   });
 
+  it("gibt einen stummen Job auf, statt ewig zu warten", async () => {
+    // Der Fake antwortet auf "slow" 5 s lang gar nichts. Faellt die
+    // @@JOB-Zeile ganz aus (etwa weil der Worker eine unlesbare Zeile nur
+    // mit @@ERROR quittiert), haengt die Zusage sonst fuer immer.
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    const worker = new SidecarWorker({
+      pythonBin: await fakeWorkerBin(),
+      jobIdleMs: 4242,
+      setTimer: (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length;
+      },
+      clearTimer: () => {},
+    });
+    const laufend = worker.submitJob(job("slow"));
+    await new Promise((r) => setTimeout(r, 400));
+    timers.filter((t) => t.ms === 4242).at(-1)?.fn();
+    await expect(laufend).rejects.toMatchObject({ kind: "PipelineFailed" });
+    expect(worker.isAlive()).toBe(false);
+  });
+
   it("faehrt nach dem Idle-Timeout herunter", async () => {
     const timers: Array<{ fn: () => void; ms: number }> = [];
     const worker = new SidecarWorker({

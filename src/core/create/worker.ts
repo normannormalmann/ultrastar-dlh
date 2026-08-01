@@ -25,6 +25,15 @@ export type WorkerOptions = {
   managedEnvDir?: string;
   /** Shut the worker down after this much idle time (default 5 minutes). */
   idleMs?: number;
+  /**
+   * Backstop for a job that never ends: if the worker says nothing at all
+   * for this long while a job runs, give up on it (default 10 minutes).
+   * Any output resets it, so a slow stage does not trip the wire - only a
+   * genuinely mute worker does. Without this a job whose @@JOB line never
+   * arrives (a garbled request line answers with @@ERROR only) would leave
+   * the promise pending forever.
+   */
+  jobIdleMs?: number;
   readyTimeoutMs?: number;
   spawnFn?: typeof spawn;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -45,12 +54,14 @@ const PROGRESS_PREFIX = "@@PROGRESS ";
 const ERROR_PREFIX = "@@ERROR ";
 const JOB_PREFIX = "@@JOB ";
 const SHUTDOWN_GRACE_MS = 5_000;
+const JOB_IDLE_MS = 600_000;
 
 export class SidecarWorker {
   private child: ChildProcess | null = null;
   private ready: Promise<void> | null = null;
   private current: RunningJob | null = null;
   private idleTimer: unknown = null;
+  private jobTimer: unknown = null;
   private stderrTail = "";
 
   constructor(private readonly opts: WorkerOptions = {}) {}
@@ -85,8 +96,10 @@ export class SidecarWorker {
         syncedLyrics: job.syncedLyricsPath,
       });
       this.child?.stdin?.write(`${zeile}\n`);
+      this.armJobTimer();
     }).finally(() => {
       this.current = null;
+      this.stopJobTimer();
       this.startIdleTimer();
     });
   }
@@ -104,6 +117,7 @@ export class SidecarWorker {
     this.ready = null;
     this.current = null;
     this.stopIdleTimer();
+    this.stopJobTimer();
     killProcessTree(child);
     running?.reject({ kind: "Cancelled" });
   }
@@ -162,6 +176,7 @@ export class SidecarWorker {
     let rest = "";
     child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", (stueck: string) => {
+      this.armJobTimer();
       rest += stueck;
       const zeilen = rest.split("\n");
       rest = zeilen.pop() ?? "";
@@ -169,6 +184,9 @@ export class SidecarWorker {
     });
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (s: string) => {
+      // Torch and demucs write their progress bars here, so this is the
+      // liveness signal during the long, quiet stages.
+      this.armJobTimer();
       this.stderrTail = (this.stderrTail + s).slice(-500);
     });
     child.on("error", (fehler: Error) => {
@@ -241,6 +259,44 @@ export class SidecarWorker {
       }
     }
     // Anything else is torch/demucs log noise - same policy as runPipeline.
+  }
+
+  /** (Re)start the mute-worker watchdog - only while a job is running. */
+  private armJobTimer(): void {
+    if (!this.current) return;
+    this.stopJobTimer();
+    const setTimer = this.opts.setTimer ?? setTimeout;
+    const frist = this.opts.jobIdleMs ?? JOB_IDLE_MS;
+    this.jobTimer = setTimer(() => this.onJobStalled(frist), frist);
+  }
+
+  private stopJobTimer(): void {
+    if (this.jobTimer === null) return;
+    const clearTimer =
+      this.opts.clearTimer ??
+      ((t: unknown) => clearTimeout(t as Parameters<typeof clearTimeout>[0]));
+    clearTimer(this.jobTimer);
+    this.jobTimer = null;
+  }
+
+  /**
+   * The worker went mute mid-job. It cannot be trusted to finish, so the
+   * process goes and the job fails - the queue's crash brake takes it from
+   * there rather than the job hanging forever.
+   */
+  private onJobStalled(frist: number): void {
+    const running = this.current;
+    if (!running) return;
+    const child = this.child;
+    this.child = null;
+    this.ready = null;
+    this.current = null;
+    this.stopJobTimer();
+    if (child) killProcessTree(child);
+    running.reject({
+      kind: "PipelineFailed",
+      detail: `Worker meldet sich seit ${Math.round(frist / 60_000)} min nicht - Auftrag abgebrochen.`,
+    });
   }
 
   private startIdleTimer(): void {

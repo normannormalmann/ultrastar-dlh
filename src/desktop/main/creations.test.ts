@@ -33,6 +33,7 @@ const fakeDeps = (opts?: {
   const deps = {
     newWorker: () => worker,
     environmentStatus: async () => ({ state: opts?.env ?? "ready" }),
+    workDir: () => "C:/userData/pipeline-cache",
     broadcast: (channel: string, payload: unknown) =>
       events.push({ channel, payload }),
   } as unknown as CreationsDeps;
@@ -98,12 +99,15 @@ describe("creation queue", () => {
     expect(events.some((e) => e.channel === "event:error")).toBe(true);
   });
 
-  it("outdated laeuft mit Warnung weiter", async () => {
+  it("blockiert bei veralteter Umgebung", async () => {
+    // Der Inhalts-Hash macht "outdated" scharf: der installierte Sidecar
+    // kann das Worker-Protokoll noch gar nicht kennen. Loslaufen hiesse
+    // drei READY-Timeouts a 120 s abzubrennen.
     const { deps, events, bearbeitet } = fakeDeps({ env: "outdated" });
     const c = createCreations(deps);
     c.queueAdd([job("a")]);
     await c.start();
-    expect(bearbeitet).toEqual(["a"]);
+    expect(bearbeitet).toEqual([]);
     expect(
       events.some(
         (e) =>
@@ -111,6 +115,28 @@ describe("creation queue", () => {
           String((e.payload as { message: string }).message).includes("veraltet"),
       ),
     ).toBe(true);
+    expect(c.entriesForTests()[0]?.status).toBe("queued");
+  });
+
+  it("reicht ein beschreibbares workDir an den Worker durch", async () => {
+    const gesehen: Array<string | undefined> = [];
+    const deps = {
+      newWorker: () => ({
+        isAlive: () => true,
+        submitJob: async (j: { workDir?: string }) => {
+          gesehen.push(j.workDir);
+        },
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+      }),
+      environmentStatus: async () => ({ state: "ready" }),
+      workDir: () => "C:/userData/pipeline-cache",
+      broadcast: () => {},
+    } as unknown as CreationsDeps;
+    const c = createCreations(deps);
+    c.queueAdd([job("a")]);
+    await c.start();
+    expect(gesehen).toEqual(["C:/userData/pipeline-cache"]);
   });
 
   it("queueRemove entfernt nur wartende Jobs", async () => {
@@ -148,6 +174,7 @@ describe("creation queue", () => {
     const deps = {
       newWorker: () => worker,
       environmentStatus: async () => ({ state: "ready" }),
+      workDir: () => "C:/userData/pipeline-cache",
       broadcast: () => {},
     } as unknown as CreationsDeps;
 
@@ -159,7 +186,8 @@ describe("creation queue", () => {
     await laufend;
     expect(bearbeitet).toEqual(["a", "b"]);
     const eintraege = c.entriesForTests();
-    expect(eintraege.find((e) => e.id === "a")?.error).toBe("Abgebrochen.");
+    // Ein Abbruch ist eine Nutzerentscheidung, kein Fehlschlag.
+    expect(eintraege.find((e) => e.id === "a")?.status).toBe("cancelled");
     expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
   });
 
@@ -190,6 +218,7 @@ describe("creation queue", () => {
         shutdown: async () => {},
       }),
       environmentStatus: async () => ({ state: "ready" }),
+      workDir: () => "C:/userData/pipeline-cache",
       broadcast: (channel: string, payload: unknown) =>
         events.push({ channel, payload }),
     } as unknown as CreationsDeps;

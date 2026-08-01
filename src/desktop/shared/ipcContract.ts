@@ -95,7 +95,13 @@ export type CreateJobRequest = {
   title?: string;
 };
 
-export type CreationStatus = "queued" | "running" | "completed" | "failed";
+export type CreationStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  /** Stopped by the user - not a fault, and not shown as one. */
+  | "cancelled";
 
 export type CreationEntry = {
   id: string;

@@ -20,6 +20,7 @@ import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
 import {
   cancelEnvironmentInstall,
+  creationWorkDir,
   environmentStatusForApp,
   installEnvironmentForApp,
   managedEnvDir,
@@ -62,6 +63,7 @@ let genreEnrichCancel = false;
 export const creations = createCreations({
   newWorker: () => new SidecarWorker({ managedEnvDir: managedEnvDir() }),
   environmentStatus: environmentStatusForApp,
+  workDir: creationWorkDir,
   broadcast,
 });
 

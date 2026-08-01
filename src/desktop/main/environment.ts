@@ -18,6 +18,14 @@ import { broadcast } from "./state.ts";
 export const managedEnvDir = (): string =>
   join(app.getPath("userData"), "python-env");
 
+/**
+ * Stage cache for creation jobs. Passed explicitly on purpose: the sidecar
+ * falls back to ".pipeline-cache" *relative to the process cwd*, which in a
+ * packaged install is wherever the exe sits - often not writable.
+ */
+export const creationWorkDir = (): string =>
+  join(app.getPath("userData"), "pipeline-cache");
+
 /** Packaged builds carry the sidecar as an extraResource; dev uses the repo. */
 export const sidecarDir = (): string =>
   app.isPackaged
