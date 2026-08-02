@@ -160,8 +160,10 @@ export const createCreations = (deps: CreationsDeps) => {
         // while this await is pending, and the catch below still has to
         // ask *this* worker whether it survived.
         const aktiv = worker;
-        const jobDir = deps.jobDir(jobDef.id);
         try {
+          // Inside the try: jobDir() validates the id and can throw, which
+          // outside would abandon the entry on "running" and drop the queue.
+          const jobDir = deps.jobDir(jobDef.id);
           eintrag.stage = "beschaffen";
           melde();
           laufenderAbbruch = new AbortController();
@@ -183,6 +185,10 @@ export const createCreations = (deps: CreationsDeps) => {
               melde();
             },
           );
+          // Cleared here, not after assemble: from now on the worker is
+          // idle again, so a cancel during packaging must not cost the next
+          // job a cold start.
+          workerHatAuftrag = false;
           eintrag.stage = "paket";
           eintrag.progress = 0.9;
           melde();
@@ -190,15 +196,19 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             deps.broadcast("event:error", { context: "warnung", message: w });
           }
-          workerHatAuftrag = false;
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
           // After the status, and swallowing: the song is in the library. A
           // scratch dir that will not go away (Windows keeps a handle on it
           // more often than one would like) must not turn a finished job
-          // into a reported failure.
-          await deps.aufraeumen(jobDir).catch(() => {});
+          // into a reported failure. try/catch, not .catch(): a dep that
+          // throws synchronously would never reach a rejection handler.
+          try {
+            await deps.aufraeumen(jobDir);
+          } catch {
+            // Scratch dir stays behind; the job succeeded regardless.
+          }
         } catch (fehler) {
           const hatteAuftrag = workerHatAuftrag;
           workerHatAuftrag = false;

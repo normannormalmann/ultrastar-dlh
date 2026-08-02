@@ -109,7 +109,15 @@ export const acquireMedia = (
     // Nobody else creates it: yt-dlp makes its own -o parent, but the
     // local-file branch writes embedded.jpg here first, and ffmpeg would
     // fail silently into "no embedded art".
-    yield* Effect.promise(() => mkdir(opts.jobDir, { recursive: true }));
+    yield* Effect.tryPromise({
+      try: () => mkdir(opts.jobDir, { recursive: true }),
+      // tryPromise, not promise: a failed mkdir (EACCES, ENOSPC) would
+      // otherwise escape Effect.either as a defect and render as garbage.
+      catch: (e): MediaError => ({
+        kind: "UnreadableFile",
+        detail: `Arbeitsverzeichnis nicht anlegbar: ${e instanceof Error ? e.message : String(e)}`,
+      }),
+    });
 
     if (opts.quelle.kind === "datei") {
       const pfad = opts.quelle.pfad;

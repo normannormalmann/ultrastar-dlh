@@ -3,6 +3,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  type rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -83,6 +84,59 @@ describe("verschiebeStandard", () => {
     await writeFile(join(quelle, "song.txt"), "inhalt");
     const ziel = join(library, "Ziel");
     await verschiebeStandard(quelle, ziel);
+    expect(await readFile(join(ziel, "song.txt"), "utf8")).toBe("inhalt");
+    expect(await readdir(jobDir)).not.toContain("paket");
+  });
+
+  // rename liefert auf ein bestehendes Verzeichnis EPERM, nicht EXDEV - der
+  // Kopierzweig ist ohne Injektion gar nicht erreichbar. Genau dort sitzt
+  // aber der gefaehrliche Teil: cp() merged in bestehende Ordner (gemessen:
+  // errorOnExist gilt nur je Datei), und der Rollback wuerde fremde Ordner
+  // loeschen. Bei Bibliothek auf J: und userData auf C: ist das der Normalpfad.
+  const exdev = (): never => {
+    throw Object.assign(new Error("EXDEV"), { code: "EXDEV" });
+  };
+
+  it("mergt im Kopierzweig nicht in einen bestehenden Ordner", async () => {
+    const { library, jobDir } = await aufbau();
+    const quelle = join(jobDir, "paket");
+    await mkdir(quelle, { recursive: true });
+    await writeFile(join(quelle, "song.txt"), "neu");
+    const ziel = join(library, "Bestand");
+    await mkdir(ziel, { recursive: true });
+    // Kein kollidierender Name - genau der Fall, den errorOnExist durchlaesst.
+    await writeFile(join(ziel, "notizen.txt"), "handkorrigiert");
+    await expect(
+      verschiebeStandard(quelle, ziel, exdev as unknown as typeof rename),
+    ).rejects.toThrow();
+    expect((await readdir(ziel)).sort()).toEqual(["notizen.txt"]);
+  });
+
+  it("loescht im Kopierzweig keinen fremden Ordner beim Aufraeumen", async () => {
+    const { library, jobDir } = await aufbau();
+    const quelle = join(jobDir, "paket");
+    await mkdir(quelle, { recursive: true });
+    await writeFile(join(quelle, "song.txt"), "neu");
+    const ziel = join(library, "Bestand");
+    await mkdir(ziel, { recursive: true });
+    // Kollidierender Name: hier schlug cp fehl und der Rollback raeumte
+    // den Ordner des Nutzers ab.
+    await writeFile(join(ziel, "song.txt"), "handkorrigiert");
+    await expect(
+      verschiebeStandard(quelle, ziel, exdev as unknown as typeof rename),
+    ).rejects.toThrow();
+    expect(await readFile(join(ziel, "song.txt"), "utf8")).toBe(
+      "handkorrigiert",
+    );
+  });
+
+  it("kopiert ueber Laufwerksgrenzen und raeumt die Quelle weg", async () => {
+    const { library, jobDir } = await aufbau();
+    const quelle = join(jobDir, "paket");
+    await mkdir(quelle, { recursive: true });
+    await writeFile(join(quelle, "song.txt"), "inhalt");
+    const ziel = join(library, "Neu");
+    await verschiebeStandard(quelle, ziel, exdev as unknown as typeof rename);
     expect(await readFile(join(ziel, "song.txt"), "utf8")).toBe("inhalt");
     expect(await readdir(jobDir)).not.toContain("paket");
   });

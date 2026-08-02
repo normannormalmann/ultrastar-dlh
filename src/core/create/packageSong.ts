@@ -76,18 +76,26 @@ export const freierZielpfad = async (
 export const verschiebeStandard = async (
   von: string,
   nach: string,
+  renameFn: typeof rename = rename,
 ): Promise<void> => {
   try {
-    await rename(von, nach);
+    await renameFn(von, nach);
     return;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw e;
+  }
+  // freierZielpfad checked this, but a window remains until here. Measured,
+  // not assumed: errorOnExist only guards individual FILES - cp() walks
+  // straight into an existing directory and merges. And the rollback below
+  // would then delete a folder that is not ours. So refuse up front.
+  if (existsSync(nach)) {
+    throw new Error(`Zielordner existiert bereits: ${nach}`);
   }
   try {
     await cp(von, nach, { recursive: true, force: false, errorOnExist: true });
   } catch (e) {
     // A copy that died halfway would leave a half song for the library
-    // scan to trip over.
+    // scan to trip over. Safe now: nach was ours alone.
     await rm(nach, { recursive: true, force: true });
     throw e;
   }
