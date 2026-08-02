@@ -35,7 +35,10 @@ export type CreationsDeps = {
     job: CreateJobRequest,
     jobDir: string,
     onProgress: (anteil: number) => void,
+    signal: AbortSignal,
   ) => Promise<AcquiredMedia>;
+  /** Only after success - a failed job keeps its scratch dir for diagnosis. */
+  aufraeumen: (jobDir: string) => Promise<void>;
   assemble: (
     job: CreateJobRequest,
     medien: AcquiredMedia,
@@ -80,6 +83,9 @@ export const createCreations = (deps: CreationsDeps) => {
   let running = false;
   let crashStreak = 0;
   let worker: WorkerLike | null = null;
+  // During acquisition no worker job is pending, so cancelCurrentJob() alone
+  // would be a no-op and yt-dlp would keep running.
+  let laufenderAbbruch: AbortController | null = null;
 
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
@@ -156,10 +162,16 @@ export const createCreations = (deps: CreationsDeps) => {
         try {
           eintrag.stage = "beschaffen";
           melde();
-          const medien = await deps.acquire(jobDef, jobDir, (anteil) => {
-            eintrag.progress = anteil * 0.25;
-            melde();
-          });
+          laufenderAbbruch = new AbortController();
+          const medien = await deps.acquire(
+            jobDef,
+            jobDir,
+            (anteil) => {
+              eintrag.progress = anteil * 0.25;
+              melde();
+            },
+            laufenderAbbruch.signal,
+          );
           await aktiv.submitJob(
             toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
             (stage, percent) => {
@@ -175,6 +187,7 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             deps.broadcast("event:error", { context: "warnung", message: w });
           }
+          await deps.aufraeumen(jobDir);
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
@@ -214,6 +227,8 @@ export const createCreations = (deps: CreationsDeps) => {
 
   /** Cancels the running job; the queue continues with the next one. */
   const cancel = (): void => {
+    laufenderAbbruch?.abort();
+    laufenderAbbruch = null;
     worker?.cancelCurrentJob();
     worker = null;
   };

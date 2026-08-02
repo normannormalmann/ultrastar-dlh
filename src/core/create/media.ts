@@ -43,6 +43,8 @@ export type AcquireOptions = {
   cookiesBrowser?: string;
   videoQuality?: VideoQuality;
   onProgress?: (anteil: number) => void;
+  /** Reaches yt-dlp: a cancel during the download kills the process tree. */
+  signal?: AbortSignal;
   deps?: AcquireDeps;
 };
 
@@ -98,6 +100,12 @@ export const acquireMedia = (
     const runFfmpeg = opts.deps?.runFfmpeg ?? ffmpegStandard;
     const fetchFn = opts.deps?.fetchFn ?? fetch;
 
+    const pruefeAbbruch = (): MediaError | null =>
+      opts.signal?.aborted ? { kind: "Cancelled", detail: "Abgebrochen." } : null;
+
+    const vorher = pruefeAbbruch();
+    if (vorher) return yield* Effect.fail(vorher);
+
     if (opts.quelle.kind === "datei") {
       const pfad = opts.quelle.pfad;
       yield* Effect.tryPromise({
@@ -137,9 +145,20 @@ export const acquireMedia = (
         (p) => opts.onProgress?.((p.percent ?? 0) * 0.8),
         opts.cookiesBrowser,
         opts.videoQuality,
+        opts.signal,
       ),
-      (e): MediaError => ({ kind: "DownloadFailed", detail: e.message }),
+      (e): MediaError =>
+        // A killed yt-dlp reports a plain error; only the signal tells us
+        // this was the user, not a broken download.
+        opts.signal?.aborted
+          ? { kind: "Cancelled", detail: "Abgebrochen." }
+          : { kind: "DownloadFailed", detail: e.message },
     );
+
+    // A cancel that lands during the download surfaces as a yt-dlp error;
+    // it must be reported as the user decision it is, not as a failure.
+    const nachDownload = pruefeAbbruch();
+    if (nachDownload) return yield* Effect.fail(nachDownload);
 
     // Copy the audio stream out instead of handing the sidecar the .mp4:
     // the stage cache keys on an audio hash, and a small stable file is

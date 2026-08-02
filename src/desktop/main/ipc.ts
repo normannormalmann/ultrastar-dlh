@@ -18,7 +18,7 @@ import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   cancelEnvironmentInstall,
@@ -73,8 +73,11 @@ export const creations = createCreations({
   jobDir: creationJobDir,
   libraryDir: () => state.downloadDir,
   layout: () => state.folderLayout,
-  acquire: (job, jobDir, onProgress) =>
-    Effect.runPromise(acquireMedia({ quelle: job.quelle, jobDir, onProgress })),
+  acquire: (job, jobDir, onProgress, signal) =>
+    Effect.runPromise(
+      acquireMedia({ quelle: job.quelle, jobDir, onProgress, signal }),
+    ),
+  aufraeumen: (jobDir) => rm(jobDir, { recursive: true, force: true }),
   assemble: async (job, medien, jobDir) => {
     const roh = await readFile(join(jobDir, "song_data.json"), "utf8");
     return Effect.runPromise(

@@ -43,6 +43,7 @@ const fakeDeps = (opts?: {
       dirName: "Interpret - Titel",
       warnungen: [],
     }),
+    aufraeumen: async () => {},
     broadcast: (channel: string, payload: unknown) =>
       events.push({ channel, payload }),
   } as unknown as CreationsDeps;
@@ -150,6 +151,7 @@ describe("creation queue", () => {
         dirName: "x",
         warnungen: [],
       }),
+      aufraeumen: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
     const c = createCreations(deps);
@@ -211,6 +213,7 @@ describe("creation queue", () => {
         dirName: "x",
         warnungen: [],
       }),
+      aufraeumen: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
 
@@ -289,6 +292,44 @@ describe("creation queue", () => {
     expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
   });
 
+  it("Abbruch waehrend der Beschaffung stoppt den Job", async () => {
+    const { deps } = fakeDeps();
+    let abgebrochen = false;
+    const erweitert = {
+      ...deps,
+      acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
+        new Promise((_res, rej) => {
+          signal.addEventListener("abort", () => {
+            abgebrochen = true;
+            rej({ kind: "Cancelled", detail: "" });
+          });
+        }),
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a")]);
+    const laufend = c.start();
+    await Promise.resolve();
+    c.cancel();
+    await laufend;
+    expect(abgebrochen).toBe(true);
+    expect(c.entriesForTests()[0]?.status).toBe("cancelled");
+  });
+
+  it("raeumt das Kratzverzeichnis nach Erfolg weg, nach einem Fehler nicht", async () => {
+    const geraeumt: string[] = [];
+    const { deps } = fakeDeps({ verhalten: (id) => (id === "b" ? "fail" : "ok") });
+    const erweitert = {
+      ...deps,
+      aufraeumen: async (d: string) => {
+        geraeumt.push(d);
+      },
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a"), job("b")]);
+    await c.start();
+    expect(geraeumt).toEqual(["C:/userData/jobs/a"]);
+  });
+
   it("meldet Fortschritt des laufenden Jobs", async () => {
     const events: Array<{ channel: string; payload: unknown }> = [];
     const deps = {
@@ -314,6 +355,7 @@ describe("creation queue", () => {
         dirName: "x",
         warnungen: [],
       }),
+      aufraeumen: async () => {},
       // Snapshot: melde() broadcasts the live entry objects, so the later
       // "paket" stage would overwrite the "separate" we want to observe.
       broadcast: (channel: string, payload: unknown) =>

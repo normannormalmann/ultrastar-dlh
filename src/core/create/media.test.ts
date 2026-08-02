@@ -100,6 +100,30 @@ describe("acquireMedia", () => {
     }
   });
 
+  it("meldet einen Abbruch typisiert, statt weiterzulaufen", async () => {
+    const dir = await jobDir();
+    const controller = new AbortController();
+    controller.abort();
+    const fehler = await Effect.runPromise(
+      Effect.either(
+        acquireMedia({
+          quelle: { kind: "youtube", url: "https://youtu.be/abc12345678" },
+          jobDir: dir,
+          signal: controller.signal,
+          deps: {
+            downloadVideo: (_l, ziel) =>
+              Effect.promise(async () => {
+                await writeFile(ziel, "video");
+              }),
+            runFfmpeg: async () => {},
+          },
+        }),
+      ),
+    );
+    expect(fehler._tag).toBe("Left");
+    if (fehler._tag === "Left") expect(fehler.left.kind).toBe("Cancelled");
+  });
+
   it("reicht eine lokale Datei durch und zieht ihr eingebettetes Bild", async () => {
     const dir = await jobDir();
     const quelle = join(dir, "eigene.mp3");
