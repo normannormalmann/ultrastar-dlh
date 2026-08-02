@@ -86,6 +86,8 @@ export const createCreations = (deps: CreationsDeps) => {
   // During acquisition no worker job is pending, so cancelCurrentJob() alone
   // would be a no-op and yt-dlp would keep running.
   let laufenderAbbruch: AbortController | null = null;
+  /** True only while the worker actually holds a job - see cancel(). */
+  let workerHatAuftrag = false;
 
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
@@ -172,6 +174,7 @@ export const createCreations = (deps: CreationsDeps) => {
             },
             laufenderAbbruch.signal,
           );
+          workerHatAuftrag = true;
           await aktiv.submitJob(
             toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
             (stage, percent) => {
@@ -187,15 +190,24 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             deps.broadcast("event:error", { context: "warnung", message: w });
           }
-          await deps.aufraeumen(jobDir);
+          workerHatAuftrag = false;
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
+          // After the status, and swallowing: the song is in the library. A
+          // scratch dir that will not go away (Windows keeps a handle on it
+          // more often than one would like) must not turn a finished job
+          // into a reported failure.
+          await deps.aufraeumen(jobDir).catch(() => {});
         } catch (fehler) {
+          const hatteAuftrag = workerHatAuftrag;
+          workerHatAuftrag = false;
           if (istAbbruch(fehler)) {
-            // cancel() killed the process; the next job gets a fresh worker.
             eintrag.status = "cancelled";
-            worker = null;
+            // Only a worker that actually held the job was killed. One that
+            // was cancelled during acquisition is idle and warm - throwing
+            // it away would cost the next job a full model reload.
+            if (hatteAuftrag) worker = null;
             crashStreak = 0;
           } else {
             eintrag.status = "failed";
@@ -229,13 +241,20 @@ export const createCreations = (deps: CreationsDeps) => {
   const cancel = (): void => {
     laufenderAbbruch?.abort();
     laufenderAbbruch = null;
-    worker?.cancelCurrentJob();
-    worker = null;
+    if (workerHatAuftrag) {
+      worker?.cancelCurrentJob();
+      worker = null;
+    }
   };
 
   /** App exit: no orphaned python process holding warm VRAM. */
   const shutdown = async (): Promise<void> => {
     queue = [];
+    // Closing the app mid-download must not orphan yt-dlp - the same reason
+    // cancel() carries an AbortController.
+    laufenderAbbruch?.abort();
+    laufenderAbbruch = null;
+    workerHatAuftrag = false;
     const alt = worker;
     worker = null;
     alt?.cancelCurrentJob();

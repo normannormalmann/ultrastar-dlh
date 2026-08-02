@@ -1,9 +1,20 @@
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { Effect } from "effect";
-import { assemblePackage, freierZielpfad } from "./packageSong.ts";
+import {
+  assemblePackage,
+  freierZielpfad,
+  verschiebeStandard,
+} from "./packageSong.ts";
 import type { SongData } from "./songData.ts";
 
 const songData = (): SongData => ({
@@ -64,6 +75,34 @@ describe("freierZielpfad", () => {
   });
 });
 
+describe("verschiebeStandard", () => {
+  it("verschiebt einen Ordner im selben Dateisystem", async () => {
+    const { library, jobDir } = await aufbau();
+    const quelle = join(jobDir, "paket");
+    await mkdir(quelle, { recursive: true });
+    await writeFile(join(quelle, "song.txt"), "inhalt");
+    const ziel = join(library, "Ziel");
+    await verschiebeStandard(quelle, ziel);
+    expect(await readFile(join(ziel, "song.txt"), "utf8")).toBe("inhalt");
+    expect(await readdir(jobDir)).not.toContain("paket");
+  });
+
+  it("ueberschreibt einen bestehenden Ordner nicht, sondern scheitert", async () => {
+    const { library, jobDir } = await aufbau();
+    const quelle = join(jobDir, "paket");
+    await mkdir(quelle, { recursive: true });
+    await writeFile(join(quelle, "song.txt"), "neu");
+    // Handkorrigierte Notenarbeit im Zielordner - die darf nichts anfassen.
+    const ziel = join(library, "Bestand");
+    await mkdir(ziel, { recursive: true });
+    await writeFile(join(ziel, "song.txt"), "handkorrigiert");
+    await expect(verschiebeStandard(quelle, ziel)).rejects.toThrow();
+    expect(await readFile(join(ziel, "song.txt"), "utf8")).toBe(
+      "handkorrigiert",
+    );
+  });
+});
+
 describe("assemblePackage", () => {
   it("baut einen vollstaendigen Ordner mit song.txt und Video", async () => {
     const { library, jobDir } = await aufbau();
@@ -114,7 +153,13 @@ describe("assemblePackage", () => {
           ...basis(library, jobDir),
           deps: {
             findCoverFn: () => Effect.succeed(null),
-            verschiebe: async () => {
+            // Fails *after* touching the target, like a copy that dies
+            // halfway. A mover that throws before writing anything would
+            // let this test pass no matter what the real one does.
+            verschiebe: async (_von, nach) => {
+              await mkdir(nach, { recursive: true });
+              await writeFile(join(nach, "halb.mp4"), "halb");
+              await rm(nach, { recursive: true, force: true });
               throw new Error("Laufwerk voll");
             },
           },
@@ -124,6 +169,30 @@ describe("assemblePackage", () => {
     expect(fehler._tag).toBe("Left");
     if (fehler._tag === "Left") expect(fehler.left.kind).toBe("MoveFailed");
     expect(await readdir(library)).toEqual([]);
+  });
+
+  it("legt im Layout 'artist' die Zwischenebene an", async () => {
+    const { library, jobDir } = await aufbau();
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({ ...basis(library, jobDir), layout: "artist" }),
+    );
+    expect(ergebnis.songDir).toBe(
+      join(library, "Interpret", "Interpret_-_Titel"),
+    );
+    expect(await readdir(ergebnis.songDir)).toContain("song.txt");
+  });
+
+  it("ein leerer Cover-Body zaehlt als kein Cover", async () => {
+    const { library, jobDir } = await aufbau();
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({
+        ...basis(library, jobDir),
+        deps: { findCoverFn: () => Effect.succeed(new Uint8Array()) },
+      }),
+    );
+    expect(await readdir(ergebnis.songDir)).not.toContain("cover.jpg");
+    const txt = await readFile(join(ergebnis.songDir, "song.txt"), "utf8");
+    expect(txt).not.toContain("#COVER");
   });
 
   it("legt im Datei-Eingang die Tonspur ins Paket und laesst #VIDEO weg", async () => {

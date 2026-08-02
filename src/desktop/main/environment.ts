@@ -31,8 +31,15 @@ export const creationWorkDir = (): string =>
  * creationWorkDir(): that one is the sidecar's stage cache, keyed by audio
  * hash and shared across jobs on purpose. Media must not pollute it.
  */
-export const creationJobDir = (jobId: string): string =>
-  join(app.getPath("userData"), "jobs", jobId);
+export const creationJobDir = (jobId: string): string => {
+  // The result is handed to rm(recursive, force) after a finished job. An
+  // id containing ".." would delete outside the jobs folder, so it is
+  // rejected here rather than trusted from the renderer.
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) {
+    throw new Error(`Ungueltige Job-Id: ${jobId}`);
+  }
+  return join(app.getPath("userData"), "jobs", jobId);
+};
 
 /** Packaged builds carry the sidecar as an extraResource; dev uses the repo. */
 export const sidecarDir = (): string =>

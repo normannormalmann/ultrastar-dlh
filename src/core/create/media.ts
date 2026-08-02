@@ -4,7 +4,7 @@
 // Nothing here writes into the library; the job scratch dir holds it all
 // until assemblePackage moves the finished folder over.
 import { spawn } from "node:child_process";
-import { access, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { downloadYoutubeVideoWithProgress } from "../api/youtube/download.ts";
@@ -106,10 +106,21 @@ export const acquireMedia = (
     const vorher = pruefeAbbruch();
     if (vorher) return yield* Effect.fail(vorher);
 
+    // Nobody else creates it: yt-dlp makes its own -o parent, but the
+    // local-file branch writes embedded.jpg here first, and ffmpeg would
+    // fail silently into "no embedded art".
+    yield* Effect.promise(() => mkdir(opts.jobDir, { recursive: true }));
+
     if (opts.quelle.kind === "datei") {
       const pfad = opts.quelle.pfad;
       yield* Effect.tryPromise({
-        try: () => access(pfad),
+        // stat().isFile(), not access(): a directory passes access() and
+        // would only blow up much later inside the worker.
+        try: async () => {
+          if (!(await stat(pfad)).isFile()) {
+            throw new Error("Kein regulaeres File.");
+          }
+        },
         catch: (e): MediaError => ({
           kind: "UnreadableFile",
           detail: `Datei nicht lesbar: ${e instanceof Error ? e.message : String(e)}`,

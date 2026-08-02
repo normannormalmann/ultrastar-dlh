@@ -396,6 +396,8 @@ export const downloadYoutubeVideoWithProgress = (
       try {
         await runYtDlpDownload(fullArgs, onProgress, signal);
       } catch (err) {
+        // The user cancelled - no retry chain, no second process.
+        if (signal?.aborted) throw err;
         const message = err instanceof Error ? err.message : String(err);
 
         const isDpapi = message.includes("DPAPI");
@@ -405,6 +407,7 @@ export const downloadYoutubeVideoWithProgress = (
           message.includes("confirm your age");
 
         const tryFallbackWithoutCookies = async () => {
+          if (signal?.aborted) throw err;
           onProgress({ percent: 0 });
           const noCookiesArgs = [...baseArgs, "--", link];
           try {
@@ -450,7 +453,10 @@ export const downloadYoutubeVideoWithProgress = (
             try {
               await runYtDlpDownload(fallbackArgs, onProgress, signal);
               return;
-            } catch {
+            } catch (fallbackErr) {
+              // A cancel killed this attempt: retrying would spawn a yt-dlp
+              // that the already-fired signal can no longer reach.
+              if (signal?.aborted) throw fallbackErr;
               await tryFallbackWithoutCookies();
               return;
             }
@@ -466,7 +472,10 @@ export const downloadYoutubeVideoWithProgress = (
             try {
               await runYtDlpDownload(fallbackArgs, onProgress, signal);
               return;
-            } catch {
+            } catch (fallbackErr) {
+              // A cancel killed this attempt: retrying would spawn a yt-dlp
+              // that the already-fired signal can no longer reach.
+              if (signal?.aborted) throw fallbackErr;
               await tryFallbackWithoutCookies();
               return;
             }

@@ -55,22 +55,43 @@ export const freierZielpfad = async (
   const teile = relPath.split("/");
   const blatt = teile.pop() as string;
   const eltern = teile.join("/");
-  for (let n = 1; ; n += 1) {
+  // Bounded: if existsSync kept saying true (a permission error, a corrupt
+  // library) an open loop would spin the main process forever.
+  for (let n = 1; n <= 1000; n += 1) {
     const name = n === 1 ? blatt : `${blatt} (${n})`;
     const rel = eltern ? `${eltern}/${name}` : name;
     const pfad = join(libraryDir, rel);
     if (!existsSync(pfad)) return { pfad, dirName: name };
   }
+  throw new Error(`Kein freier Ordnername fuer "${blatt}" gefunden.`);
 };
 
-/** rename fails across drives (EXDEV) - the library often lives elsewhere. */
-const verschiebeStandard = async (von: string, nach: string): Promise<void> => {
+/**
+ * rename fails across drives (EXDEV) - the library often lives elsewhere.
+ * Only EXDEV falls back to copying: any other error (a lock, a folder that
+ * appeared after freierZielpfad looked) has to surface. cp() defaults to
+ * force:true and would otherwise merge into and overwrite an existing song
+ * folder - the very thing freierZielpfad exists to prevent.
+ */
+export const verschiebeStandard = async (
+  von: string,
+  nach: string,
+): Promise<void> => {
   try {
     await rename(von, nach);
-  } catch {
-    await cp(von, nach, { recursive: true });
-    await rm(von, { recursive: true, force: true });
+    return;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw e;
   }
+  try {
+    await cp(von, nach, { recursive: true, force: false, errorOnExist: true });
+  } catch (e) {
+    // A copy that died halfway would leave a half song for the library
+    // scan to trip over.
+    await rm(nach, { recursive: true, force: true });
+    throw e;
+  }
+  await rm(von, { recursive: true, force: true });
 };
 
 export const assemblePackage = (
@@ -87,7 +108,9 @@ export const assemblePackage = (
 
     // The Cover Art Archive outranks the thumbnail: a real album cover is
     // square and unlettered, a video thumbnail is neither.
-    const gefunden = yield* findCoverFn(opts.meta.artist, opts.meta.title);
+    const roh = yield* findCoverFn(opts.meta.artist, opts.meta.title);
+    // An empty body would write a 0-byte cover.jpg and still set #COVER.
+    const gefunden = roh !== null && roh.length > 0 ? roh : null;
     const hatCover = gefunden !== null || opts.medien.coverKandidat !== undefined;
     if (!hatCover) warnungen.push("Kein Cover gefunden - Paket ohne Bild.");
 

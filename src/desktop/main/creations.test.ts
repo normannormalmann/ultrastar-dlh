@@ -330,6 +330,83 @@ describe("creation queue", () => {
     expect(geraeumt).toEqual(["C:/userData/jobs/a"]);
   });
 
+  it("ein fehlgeschlagenes Aufraeumen macht aus einem fertigen Song keinen Fehler", async () => {
+    const { deps } = fakeDeps();
+    const erweitert = {
+      ...deps,
+      aufraeumen: async () => {
+        // Windows haelt gern noch ein Handle auf das Kratzverzeichnis.
+        throw new Error("EBUSY");
+      },
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a")]);
+    await c.start();
+    expect(c.entriesForTests()[0]?.status).toBe("completed");
+  });
+
+  it("ein Abbruch in der Beschaffung behaelt den warmen Worker", async () => {
+    const { deps } = fakeDeps();
+    let erzeugt = 0;
+    const erweitert = {
+      ...deps,
+      newWorker: () => {
+        erzeugt += 1;
+        return {
+          isAlive: () => true,
+          submitJob: async () => {},
+          cancelCurrentJob: () => {},
+          shutdown: async () => {},
+        };
+      },
+      acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
+        new Promise((res, rej) => {
+          if (signal.aborted) {
+            rej({ kind: "Cancelled", detail: "" });
+            return;
+          }
+          signal.addEventListener("abort", () =>
+            rej({ kind: "Cancelled", detail: "" }),
+          );
+          setTimeout(() => res({ audioPath: "a.m4a" }), 0);
+        }),
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a"), job("b")]);
+    const laufend = c.start();
+    await Promise.resolve();
+    c.cancel();
+    await laufend;
+    // Der Worker hatte nie einen Auftrag - ihn wegzuwerfen wuerde den
+    // naechsten Job einen vollen Kaltstart kosten.
+    expect(erzeugt).toBe(1);
+    expect(c.entriesForTests().find((e) => e.id === "a")?.status).toBe(
+      "cancelled",
+    );
+  });
+
+  it("shutdown bricht eine laufende Beschaffung ab", async () => {
+    const { deps } = fakeDeps();
+    let abgebrochen = false;
+    const erweitert = {
+      ...deps,
+      acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
+        new Promise((_res, rej) => {
+          signal.addEventListener("abort", () => {
+            abgebrochen = true;
+            rej({ kind: "Cancelled", detail: "" });
+          });
+        }),
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a")]);
+    const laufend = c.start();
+    await Promise.resolve();
+    await c.shutdown();
+    await laufend;
+    expect(abgebrochen).toBe(true);
+  });
+
   it("meldet Fortschritt des laufenden Jobs", async () => {
     const events: Array<{ channel: string; payload: unknown }> = [];
     const deps = {

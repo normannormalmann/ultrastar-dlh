@@ -124,6 +124,56 @@ describe("acquireMedia", () => {
     if (fehler._tag === "Left") expect(fehler.left.kind).toBe("Cancelled");
   });
 
+  it("meldet einen Abbruch mitten im Download als Cancelled, nicht als Fehler", async () => {
+    const dir = await jobDir();
+    const controller = new AbortController();
+    const fehler = await Effect.runPromise(
+      Effect.either(
+        acquireMedia({
+          quelle: { kind: "youtube", url: "https://youtu.be/abc12345678" },
+          jobDir: dir,
+          signal: controller.signal,
+          deps: {
+            // Wie das echte yt-dlp: der Abbruch toetet den Prozess, der
+            // danach mit einem gewoehnlichen Fehler endet. Nur das Signal
+            // verraet, dass das der Nutzer war.
+            downloadVideo: () =>
+              Effect.suspend(() => {
+                controller.abort();
+                return Effect.fail(new Error("yt-dlp beendet (Signal)"));
+              }),
+            runFfmpeg: async () => {},
+          },
+        }),
+      ),
+    );
+    expect(fehler._tag).toBe("Left");
+    if (fehler._tag === "Left") expect(fehler.left.kind).toBe("Cancelled");
+  });
+
+  it("legt das Kratzverzeichnis an, statt sich darauf zu verlassen", async () => {
+    const wurzel = await jobDir();
+    const dir = join(wurzel, "noch-nicht-da");
+    const ergebnis = await Effect.runPromise(
+      acquireMedia({
+        quelle: { kind: "youtube", url: "https://youtu.be/abc12345678" },
+        jobDir: dir,
+        deps: {
+          downloadVideo: (_l, ziel) =>
+            Effect.promise(async () => {
+              await writeFile(ziel, "video");
+            }),
+          runFfmpeg: async (args) => {
+            await writeFile(args[args.length - 1] as string, "audio");
+          },
+          fetchFn: (async () =>
+            new Response("weg", { status: 404 })) as unknown as typeof fetch,
+        },
+      }),
+    );
+    expect(ergebnis.audioPath).toBe(join(dir, "audio.m4a"));
+  });
+
   it("reicht eine lokale Datei durch und zieht ihr eingebettetes Bild", async () => {
     const dir = await jobDir();
     const quelle = join(dir, "eigene.mp3");
