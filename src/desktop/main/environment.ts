@@ -26,6 +26,14 @@ export const managedEnvDir = (): string =>
 export const creationWorkDir = (): string =>
   join(app.getPath("userData"), "pipeline-cache");
 
+/**
+ * Scratch space for one job's media. Deliberately separate from
+ * creationWorkDir(): that one is the sidecar's stage cache, keyed by audio
+ * hash and shared across jobs on purpose. Media must not pollute it.
+ */
+export const creationJobDir = (jobId: string): string =>
+  join(app.getPath("userData"), "jobs", jobId);
+
 /** Packaged builds carry the sidecar as an extraResource; dev uses the repo. */
 export const sidecarDir = (): string =>
   app.isPackaged

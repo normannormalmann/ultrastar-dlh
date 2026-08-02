@@ -18,14 +18,20 @@ import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   cancelEnvironmentInstall,
+  creationJobDir,
   creationWorkDir,
   environmentStatusForApp,
   installEnvironmentForApp,
   managedEnvDir,
 } from "./environment.ts";
 import { SidecarWorker } from "../../core/create/worker.ts";
+import { acquireMedia } from "../../core/create/media.ts";
+import { assemblePackage } from "../../core/create/packageSong.ts";
+import { parseSongData } from "../../core/create/songData.ts";
 import { createCreations } from "./creations.ts";
 import type { CreateJobRequest } from "../shared/ipcContract.ts";
 import {
@@ -64,6 +70,29 @@ export const creations = createCreations({
   newWorker: () => new SidecarWorker({ managedEnvDir: managedEnvDir() }),
   environmentStatus: environmentStatusForApp,
   workDir: creationWorkDir,
+  jobDir: creationJobDir,
+  libraryDir: () => state.downloadDir,
+  layout: () => state.folderLayout,
+  acquire: (job, jobDir, onProgress) =>
+    Effect.runPromise(acquireMedia({ quelle: job.quelle, jobDir, onProgress })),
+  assemble: async (job, medien, jobDir) => {
+    const roh = await readFile(join(jobDir, "song_data.json"), "utf8");
+    return Effect.runPromise(
+      assemblePackage({
+        songData: parseSongData(JSON.parse(roh)),
+        medien,
+        meta: {
+          artist: job.artist,
+          title: job.title,
+          genre: job.genre,
+          year: job.year,
+        },
+        libraryDir: state.downloadDir,
+        layout: state.folderLayout,
+        jobDir,
+      }),
+    );
+  },
   broadcast,
 });
 

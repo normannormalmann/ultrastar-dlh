@@ -3,8 +3,11 @@
 // with warm models, and a crash brake. Deliberately electron-free so the
 // queue logic is testable without electron mocks - the wired instance
 // lives in ipc.ts, where electron imports belong.
+import { join } from "node:path";
 import type { SidecarWorker, WorkerJob } from "../../core/create/worker.ts";
 import type { EnvironmentStatus } from "../../core/create/environment.ts";
+import type { AcquiredMedia } from "../../core/create/media.ts";
+import type { FolderLayout } from "../../core/download/naming.ts";
 import type {
   CreateJobRequest,
   CreationEntry,
@@ -23,17 +26,35 @@ export type WorkerLike = Pick<
 export type CreationsDeps = {
   newWorker: () => WorkerLike;
   environmentStatus: () => Promise<EnvironmentStatus>;
-  /** Lazy: electron can only answer this once the app is ready. */
+  /** Lazy: electron can only answer these once the app is ready. */
   workDir: () => string;
+  jobDir: (jobId: string) => string;
+  libraryDir: () => string;
+  layout: () => FolderLayout;
+  acquire: (
+    job: CreateJobRequest,
+    jobDir: string,
+    onProgress: (anteil: number) => void,
+  ) => Promise<AcquiredMedia>;
+  assemble: (
+    job: CreateJobRequest,
+    medien: AcquiredMedia,
+    jobDir: string,
+  ) => Promise<{ songDir: string; dirName: string; warnungen: string[] }>;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
-const toWorkerJob = (job: CreateJobRequest, workDir: string): WorkerJob => ({
+const toWorkerJob = (
+  job: CreateJobRequest,
+  medien: AcquiredMedia,
+  workDir: string,
+  jobDir: string,
+): WorkerJob => ({
   id: job.id,
-  audioPath: job.audioPath,
+  audioPath: medien.audioPath,
   lyricsPath: job.lyricsPath,
   language: job.language,
-  outPath: job.outPath,
+  outPath: join(jobDir, "song_data.json"),
   bpm: job.bpm,
   syncedLyricsPath: job.syncedLyricsPath,
   workDir,
@@ -131,12 +152,29 @@ export const createCreations = (deps: CreationsDeps) => {
         // while this await is pending, and the catch below still has to
         // ask *this* worker whether it survived.
         const aktiv = worker;
+        const jobDir = deps.jobDir(jobDef.id);
         try {
-          await aktiv.submitJob(toWorkerJob(jobDef, deps.workDir()), (stage, percent) => {
-            eintrag.stage = stage;
-            eintrag.progress = percent;
+          eintrag.stage = "beschaffen";
+          melde();
+          const medien = await deps.acquire(jobDef, jobDir, (anteil) => {
+            eintrag.progress = anteil * 0.25;
             melde();
           });
+          await aktiv.submitJob(
+            toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
+            (stage, percent) => {
+              eintrag.stage = stage;
+              eintrag.progress = 0.25 + percent * 0.65;
+              melde();
+            },
+          );
+          eintrag.stage = "paket";
+          eintrag.progress = 0.9;
+          melde();
+          const paket = await deps.assemble(jobDef, medien, jobDir);
+          for (const w of paket.warnungen) {
+            deps.broadcast("event:error", { context: "warnung", message: w });
+          }
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;

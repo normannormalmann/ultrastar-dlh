@@ -34,6 +34,15 @@ const fakeDeps = (opts?: {
     newWorker: () => worker,
     environmentStatus: async () => ({ state: opts?.env ?? "ready" }),
     workDir: () => "C:/userData/pipeline-cache",
+    jobDir: (id: string) => `C:/userData/jobs/${id}`,
+    libraryDir: () => "C:/library",
+    layout: () => "flat",
+    acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+    assemble: async () => ({
+      songDir: "C:/library/Interpret - Titel",
+      dirName: "Interpret - Titel",
+      warnungen: [],
+    }),
     broadcast: (channel: string, payload: unknown) =>
       events.push({ channel, payload }),
   } as unknown as CreationsDeps;
@@ -42,10 +51,11 @@ const fakeDeps = (opts?: {
 
 const job = (id: string) => ({
   id,
-  audioPath: "a.wav",
-  lyricsPath: "l.txt",
+  quelle: { kind: "youtube" as const, url: `https://youtu.be/${id}` },
   language: "de",
-  outPath: `${id}.json`,
+  artist: "Interpret",
+  title: id,
+  lyricsPath: "l.txt",
 });
 
 describe("creation queue", () => {
@@ -131,6 +141,15 @@ describe("creation queue", () => {
       }),
       environmentStatus: async () => ({ state: "ready" }),
       workDir: () => "C:/userData/pipeline-cache",
+      jobDir: (id: string) => `C:/userData/jobs/${id}`,
+      libraryDir: () => "C:/library",
+      layout: () => "flat",
+      acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      assemble: async () => ({
+        songDir: "C:/library/x",
+        dirName: "x",
+        warnungen: [],
+      }),
       broadcast: () => {},
     } as unknown as CreationsDeps;
     const c = createCreations(deps);
@@ -151,12 +170,20 @@ describe("creation queue", () => {
     const bearbeitet: string[] = [];
     let alive = false;
     let rejectLaufend: ((fehler: unknown) => void) | null = null;
+    // Signals that "a" really sits in the worker. Since acquisition now runs
+    // first, a fixed number of microtask ticks would cancel too early - the
+    // job would not be in the worker yet and nothing would reject it.
+    let jobLaeuft: (() => void) | null = null;
+    const laeuft = new Promise<void>((res) => {
+      jobLaeuft = res;
+    });
     const worker = {
       isAlive: () => alive,
       submitJob: (j: { id: string }) => {
         bearbeitet.push(j.id);
         alive = true;
         if (j.id !== "a") return Promise.resolve();
+        jobLaeuft?.();
         // "a" haengt, bis cancelCurrentJob es abweist - wie der echte Worker.
         return new Promise<void>((_res, rej) => {
           rejectLaufend = rej;
@@ -175,13 +202,22 @@ describe("creation queue", () => {
       newWorker: () => worker,
       environmentStatus: async () => ({ state: "ready" }),
       workDir: () => "C:/userData/pipeline-cache",
+      jobDir: (id: string) => `C:/userData/jobs/${id}`,
+      libraryDir: () => "C:/library",
+      layout: () => "flat",
+      acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      assemble: async () => ({
+        songDir: "C:/library/x",
+        dirName: "x",
+        warnungen: [],
+      }),
       broadcast: () => {},
     } as unknown as CreationsDeps;
 
     const c = createCreations(deps);
     c.queueAdd([job("a"), job("b")]);
     const laufend = c.start();
-    await Promise.resolve();
+    await laeuft;
     c.cancel();
     await laufend;
     expect(bearbeitet).toEqual(["a", "b"]);
@@ -203,6 +239,56 @@ describe("creation queue", () => {
     ]);
   });
 
+  it("durchlaeuft Beschaffung, Pipeline und Paketbau in dieser Reihenfolge", async () => {
+    const ablauf: string[] = [];
+    const { deps } = fakeDeps();
+    const erweitert = {
+      ...deps,
+      acquire: async () => {
+        ablauf.push("beschaffen");
+        return { audioPath: "a.m4a", videoPath: "v.mp4" };
+      },
+      assemble: async () => {
+        ablauf.push("paket");
+        return { songDir: "C:/library/x", dirName: "x", warnungen: [] };
+      },
+      newWorker: () => ({
+        isAlive: () => true,
+        submitJob: async () => {
+          ablauf.push("pipeline");
+        },
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+      }),
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a")]);
+    await c.start();
+    expect(ablauf).toEqual(["beschaffen", "pipeline", "paket"]);
+    expect(c.entriesForTests()[0]?.status).toBe("completed");
+  });
+
+  it("eine gescheiterte Beschaffung stoppt die Queue nicht", async () => {
+    const { deps } = fakeDeps();
+    const versucht: string[] = [];
+    const erweitert = {
+      ...deps,
+      acquire: async (j: { id: string }) => {
+        versucht.push(j.id);
+        if (j.id === "a") throw { kind: "DownloadFailed", detail: "kaputt" };
+        return { audioPath: "a.m4a" };
+      },
+    } as unknown as CreationsDeps;
+    const c = createCreations(erweitert);
+    c.queueAdd([job("a"), job("b")]);
+    await c.start();
+    expect(versucht).toEqual(["a", "b"]);
+    const eintraege = c.entriesForTests();
+    expect(eintraege.find((e) => e.id === "a")?.status).toBe("failed");
+    expect(eintraege.find((e) => e.id === "a")?.error).toBe("kaputt");
+    expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
+  });
+
   it("meldet Fortschritt des laufenden Jobs", async () => {
     const events: Array<{ channel: string; payload: unknown }> = [];
     const deps = {
@@ -219,8 +305,19 @@ describe("creation queue", () => {
       }),
       environmentStatus: async () => ({ state: "ready" }),
       workDir: () => "C:/userData/pipeline-cache",
+      jobDir: (id: string) => `C:/userData/jobs/${id}`,
+      libraryDir: () => "C:/library",
+      layout: () => "flat",
+      acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      assemble: async () => ({
+        songDir: "C:/library/x",
+        dirName: "x",
+        warnungen: [],
+      }),
+      // Snapshot: melde() broadcasts the live entry objects, so the later
+      // "paket" stage would overwrite the "separate" we want to observe.
       broadcast: (channel: string, payload: unknown) =>
-        events.push({ channel, payload }),
+        events.push({ channel, payload: structuredClone(payload) }),
     } as unknown as CreationsDeps;
     const c = createCreations(deps);
     c.queueAdd([job("a")]);
