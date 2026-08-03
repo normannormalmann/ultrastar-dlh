@@ -2316,12 +2316,9 @@ import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
 import StepSong from "../components/create/StepSong.tsx";
-import {
-  type Entwurf,
-  type Schritt,
-  leererEntwurf,
-  schrittFertig,
-} from "./createDraft.ts";
+// Nicht leererEntwurf mitimportieren: CreateView benutzt es nicht, App.tsx
+// tut es. Biomes noUnusedImports schlaegt sonst zu.
+import { type Entwurf, type Schritt, schrittFertig } from "./createDraft.ts";
 
 const TITEL: Record<Schritt, string> = {
   1: "Song",
