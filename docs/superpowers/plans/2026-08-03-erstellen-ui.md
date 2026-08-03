@@ -105,8 +105,12 @@ describe("resolveLyrics", () => {
   });
 
   it("lehnt einsetzen ohne Vorlage ab", () => {
+    // Nur der Verweis, sonst nichts: erst dann ist es ein alleinstehender
+    // Refrain-Verweis. Folgt eine gesungene Zeile ("[Chorus]\nStrophe"),
+    // ist die Klammerzeile eine Ueberschrift und wird schlicht entfernt --
+    // es entsteht gar keine Rueckfrage, und eine Antwort waere ein No-op.
     expect(() =>
-      resolveLyrics("[Chorus]\nStrophe", [
+      resolveLyrics("[Chorus]", [
         { kind: "chorus_reference", zeilenIndex: 0, wahl: "einsetzen" },
       ]),
     ).toThrow(/nichts einzusetzen/);
