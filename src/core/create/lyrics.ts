@@ -149,7 +149,7 @@ const nurZeilen = (behalten: Eintrag[]): string[] =>
 
 /**
  * Bereitet rohen Liedtext auf. Entfernt, was nie gesungen wird, und meldet
- * Mehrdeutigkeiten als offene Fragen -- entscheidet sie aber nicht:
+ * Mehrdeutigkeiten als offene Fragen — entscheidet sie aber nicht:
  * kopflos ist niemand zu fragen, das erledigt spaeter die UI.
  */
 export const normalizeLyrics = (raw: string): NormalizedLyrics => {
