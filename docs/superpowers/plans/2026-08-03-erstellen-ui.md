@@ -1314,59 +1314,67 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `CreationsDeps.speichereQueue: (jobs: CreateJobRequest[]) => Promise<void>`
   - `creations.initialisiere(): Promise<void>` — lädt die Queue, setzt jeden Job auf `queued`, startet **nicht**.
   - `creations.wartendeIds(): string[]`
+  - `creations.alleEintraege(): CreationEntry[]` — das bisherige `entriesForTests()` wird umbenannt: ab jetzt liest es auch die Produktion (siehe Step 4).
+  - `InitialState.creations: CreationEntry[]` in `src/desktop/shared/ipcContract.ts`.
 
 - [ ] **Step 1: Die fehlschlagenden Tests schreiben**
+
+An `src/desktop/main/creations.test.ts` anhängen. Die Datei hat `fakeDeps()` (liefert `{ deps, events, bearbeitet }`) und `job(id)`; die neuen Deps brauchen Standardwerte in `fakeDeps()` **und** in den drei inline gebauten Dep-Objekten (`ladeQueue: async () => []`, `speichereQueue: async () => {}`) — sonst gibt es keinen `tsc`-Fehler, sondern einen Laufzeit-`TypeError`.
 
 ```ts
 it("laedt wartende Jobs beim Start und startet nichts", async () => {
   let gestartet = false;
   const c = createCreations({
-    ...basisDeps(),
-    ladeQueue: async () => [basisJob(), { ...basisJob(), id: "zwei" }],
+    ...fakeDeps().deps,
+    ladeQueue: async () => [job("a"), job("zwei")],
     newWorker: () => {
       gestartet = true;
-      return basisWorker();
+      return {
+        isAlive: () => true,
+        submitJob: async () => {},
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+      };
     },
   });
   await c.initialisiere();
-  expect(c.entriesForTests().map((e) => e.status)).toEqual([
-    "queued",
-    "queued",
-  ]);
-  expect(c.wartendeIds()).toHaveLength(2);
+  expect(c.alleEintraege().map((e) => e.status)).toEqual(["queued", "queued"]);
+  expect(c.wartendeIds()).toEqual(["a", "zwei"]);
   expect(gestartet).toBe(false);
 });
 
 it("speichert bei jeder Aenderung der Queue", async () => {
   const gespeichert: number[] = [];
   const c = createCreations({
-    ...basisDeps(),
+    ...fakeDeps().deps,
     speichereQueue: async (jobs) => {
       gespeichert.push(jobs.length);
     },
   });
-  c.queueAdd([basisJob(), { ...basisJob(), id: "zwei" }]);
+  c.queueAdd([job("a"), job("zwei")]);
   c.queueRemove("zwei");
   c.queueClear();
   await Bun.sleep(1);
   expect(gespeichert).toEqual([2, 1, 0]);
 });
+```
 
+Dazu zwei Tests, die die Absicht festnageln, statt sie nur zu beschreiben: `start()` speichert nach dem Griff in die Queue (`gespeichert` ist `[1, 0]`), und `shutdown()` speichert **nicht** (`[1]`) — das Leeren beim Beenden ist keine Nutzerentscheidung, die Datei muss den Programmschluss überleben. Und der Fehlerpfad, mit den `events` aus `fakeDeps()` statt einem eigenen `broadcast`:
+
+```ts
 it("bricht die Queue nicht ab, wenn das Speichern scheitert", async () => {
-  const fehler: string[] = [];
+  const { deps, events } = fakeDeps();
   const c = createCreations({
-    ...basisDeps(),
+    ...deps,
     speichereQueue: async () => {
       throw new Error("Platte voll");
     },
-    broadcast: (kanal, nutzlast) => {
-      if (kanal === "event:error") {
-        fehler.push((nutzlast as { message: string }).message);
-      }
-    },
   });
-  expect(c.queueAdd([basisJob()])).toBe(1);
+  expect(c.queueAdd([job("a")])).toBe(1);
   await Bun.sleep(1);
+  const fehler = events
+    .filter((e) => e.channel === "event:error")
+    .map((e) => (e.payload as { message: string }).message);
   expect(fehler.join(" ")).toContain("Platte voll");
 });
 ```
@@ -1423,7 +1431,7 @@ Im Körper von `createCreations`:
   const wartendeIds = (): string[] => queue.map((j) => j.id);
 ```
 
-`sichere()` aufrufen: in `queueAdd`, `queueRemove`, `queueClear` jeweils nach `melde()`, und in `start()` unmittelbar nach `const jobDef = queue.shift() as CreateJobRequest;` — ein begonnener Job ist aus der wartenden Queue heraus. `initialisiere` und `wartendeIds` ins Rückgabeobjekt aufnehmen.
+`sichere()` aufrufen: in `queueAdd`, `queueRemove`, `queueClear` jeweils nach `melde()`, und in `start()` unmittelbar nach `const jobDef = queue.shift() as CreateJobRequest;` — ein begonnener Job ist aus der wartenden Queue heraus. In `shutdown()` **nicht**, mit Kommentar: das Leeren beim Beenden ist keine Nutzerentscheidung. `initialisiere` und `wartendeIds` ins Rückgabeobjekt aufnehmen, `entriesForTests` zu `alleEintraege` umbenennen (18 Aufrufe in der Testdatei).
 
 - [ ] **Step 4: Verdrahten**
 
@@ -1435,20 +1443,27 @@ Im Körper von `createCreations`:
 ```
 mit `import { loadCreateQueue, saveCreateQueue } from "../../core/storage/createQueue.ts";`
 
-`src/desktop/main/index.ts`, dort wo der Zustand nach `app.whenReady()` geladen wird:
+**Eine wiederhergestellte Queue muss auch sichtbar sein.** `broadcast` in `state.ts` schickt an die offenen Fenster und hält nichts vor: das `melde()` aus `initialisiere()` fällt ins Leere, weil der Renderer erst Minuten später (in React-Zeit) `event:creations` abonniert. Es gibt keinen Nachschlag-Kanal — der Bestand löst das über `app:getInitialState`, das `queue` und `downloaded` genauso trägt. Also `InitialState` um `creations: CreationEntry[]` erweitern und im Handler `creations: creations.alleEintraege()` liefern. Task 11 liest es als Startwert (`useIpcEvent("event:creations", initial.creations)`).
+
+`src/desktop/main/index.ts`: der `app.whenReady()`-Callback wird `async` und lädt **vor** `createWindow()`, sonst rennt der Renderer mit seinem `getInitialState` gegen das Laden:
 
 ```ts
-  await creations.initialisiere();
+  await creations.initialisiere().catch((err: unknown) => {
+    broadcast("event:error", {
+      context: "erstellen",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
 ```
-`creations` wird aus `./ipc.ts` importiert — es ist dort bereits exportiert.
+`creations` und `broadcast` sind dort bereits importiert.
 
 - [ ] **Step 5: Tests, Typen, Commit**
 
 ```bash
 bun test src/desktop/main/creations.test.ts
 bunx tsc --noEmit
-bunx biome check src/desktop/main/creations.ts src/desktop/main/ipc.ts src/desktop/main/index.ts
-git add src/desktop/main/
+bunx biome check src/desktop/main/creations.ts src/desktop/main/creations.test.ts src/desktop/main/ipc.ts src/desktop/main/index.ts src/desktop/shared/ipcContract.ts
+git add src/desktop/main/creations.ts src/desktop/main/creations.test.ts src/desktop/main/ipc.ts src/desktop/main/index.ts src/desktop/shared/ipcContract.ts
 git commit -m "feat(create): the creation queue survives a restart
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -2416,7 +2431,7 @@ Props um `creationCount: number` erweitern und die Badge-Zeile auf `queueCount +
 `App.tsx` im `Shell`:
 
 ```tsx
-  const creations = useIpcEvent("event:creations", []);
+  const creations = useIpcEvent("event:creations", initial.creations);
   const [entwurf, setEntwurf] = useState<Entwurf>(() =>
     leererEntwurf(crypto.randomUUID()),
   );
