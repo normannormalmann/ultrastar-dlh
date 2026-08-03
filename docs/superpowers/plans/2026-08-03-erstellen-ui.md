@@ -2498,6 +2498,15 @@ const mmss = (sek: number): string => {
 };
 
 /**
+ * yt-dlp lists thumbnails smallest first, so the last one is the useful size
+ * for step 4's cover candidate. Not displayed here: the renderer's CSP is
+ * `img-src 'self' data:`, so a remote URL would only draw a broken image. The
+ * main process fetches it and hands back a data URL.
+ */
+const besterThumbnail = (v: YoutubeVideo): string | null =>
+  v.thumbnails.at(-1)?.url ?? null;
+
+/**
  * Step 2. The search hit is the normal way - it brings the duration along,
  * which step 3 needs for LRCLIB. The two side entrances have to probe for it.
  */
@@ -2610,15 +2619,6 @@ export const StepSource: FC<{
           <tbody>
             {treffer.map((v) => (
               <tr key={v.id}>
-                <td style={{ width: 120 }}>
-                  {v.thumbnails[0]?.url && (
-                    <img
-                      src={v.thumbnails[0].url}
-                      alt=""
-                      style={{ width: 110, borderRadius: 4 }}
-                    />
-                  )}
-                </td>
                 <td>
                   {v.title}
                   <br />
@@ -2634,7 +2634,7 @@ export const StepSource: FC<{
                       onChange({
                         quelle: { kind: "youtube", url: v.url },
                         durationSec: v.duration,
-                        thumbnailUrl: v.thumbnails[0]?.url ?? null,
+                        thumbnailUrl: besterThumbnail(v),
                       })
                     }
                   >
