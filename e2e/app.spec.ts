@@ -20,3 +20,29 @@ test("app boots and shows the search view", async () => {
 
   await app.close();
 });
+
+test("the creation wizard reaches step 2", async () => {
+  const app = await electron.launch({ args: ["out/main/index.js"] });
+  const window = await app.firstWindow();
+
+  await window.getByRole("button", { name: "Erstellen", exact: true }).click();
+  await expect(
+    window.getByRole("heading", { name: /Song erstellen/ }),
+  ).toBeVisible();
+
+  // Step 1 gates on artist and title.
+  const weiter = window.getByRole("button", { name: "Weiter" });
+  await expect(weiter).toBeDisabled();
+
+  await window.getByPlaceholder("Interpret…").fill("Falco");
+  await window.getByPlaceholder("Titel…").fill("Rock Me Amadeus");
+  await expect(weiter).toBeEnabled();
+  await weiter.click();
+
+  // Step 2 is source selection - nothing is searched on its own.
+  await expect(
+    window.getByRole("button", { name: "Bei YouTube suchen" }),
+  ).toBeVisible();
+
+  await app.close();
+});
