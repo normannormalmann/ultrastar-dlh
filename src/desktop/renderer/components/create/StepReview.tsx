@@ -2,7 +2,12 @@ import type { FC } from "react";
 import { useState } from "react";
 import { resolveLyrics } from "../../../../core/create/lyrics.ts";
 import type { DownloadedEntry } from "../../../shared/ipcContract.ts";
-import { type Entwurf, istDuplikat, zuJob } from "../../views/createDraft.ts";
+import {
+  type Entwurf,
+  istDuplikat,
+  spracheName,
+  zuJob,
+} from "../../views/createDraft.ts";
 
 /** Step 5: what will be built, before ten minutes of GPU time are spent. */
 export const StepReview: FC<{
@@ -40,7 +45,7 @@ export const StepReview: FC<{
           </tr>
           <tr>
             <td>Sprache</td>
-            <td>{entwurf.language}</td>
+            <td>{spracheName(entwurf.language)}</td>
           </tr>
           <tr>
             <td>Quelle</td>

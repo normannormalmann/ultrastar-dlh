@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { Entwurf } from "../../views/createDraft.ts";
+import { type Entwurf, SPRACHEN } from "../../views/createDraft.ts";
 
 /** Step 1: the header data. Artist and title also drive the folder name. */
 export const StepSong: FC<{
@@ -24,12 +24,20 @@ export const StepSong: FC<{
       />
     </div>
     <div className="row" style={{ marginBottom: 8 }}>
-      <input
+      {/* A list, not a text field: the value travels to whisper, which knows
+          ISO codes and nothing else. */}
+      <select
         className="input"
-        placeholder="Sprache"
+        aria-label="Sprache"
         value={entwurf.language}
         onChange={(ev) => onChange({ language: ev.target.value })}
-      />
+      >
+        {SPRACHEN.map((s) => (
+          <option key={s.code} value={s.code}>
+            {s.name}
+          </option>
+        ))}
+      </select>
       <input
         className="input"
         placeholder="Genre (optional)"
