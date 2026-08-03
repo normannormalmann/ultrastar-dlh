@@ -1483,11 +1483,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces:
   - `creationCoverDir(jobId: string): string` (in `environment.ts`)
   - `type CoverKandidat = { kind: "caa" | "thumbnail"; pfad: string; dataUrl: string }`
-  - `holeCoverKandidatenIn(dir: string, a: KandidatenAnfrage): Promise<CoverKandidat[]>`
-  - `holeCoverKandidaten(jobId: string, a: KandidatenAnfrage): Promise<CoverKandidat[]>`
-  - `raeumeWaisenIn(wurzel: string, bekannteIds: string[]): Promise<void>`
-  - `raeumeCoverJob(jobId: string): Promise<void>`, `raeumeCoverWaisen(bekannteIds: string[]): Promise<void>`
+  - in `coverCandidates.ts` (elektronfrei, nimmt Verzeichnisse): `holeCoverKandidatenIn(dir, a)`, `raeumeWaisenIn(wurzel, bekannteIds)`
+  - in `ipc.ts` (darf Electron fragen): `holeCoverKandidaten(jobId, a)`, `raeumeCoverJob(jobId)` (modul-lokal), `raeumeCoverWaisen(bekannteIds)`
   - `CreationsDeps.raeumeCover: (jobId: string) => Promise<void>`
+
+**Wichtig:** die jobId-Wrapper dürfen **nicht** in `coverCandidates.ts` stehen. `creationCoverDir` kommt aus `environment.ts`, das `electron` und `state.ts` importiert — der Test scheitert dann am Modulgraph („Export named 'BrowserWindow' not found"), bevor die erste Zusicherung läuft. Dieselbe Trennung wie `creations.ts` gegen `ipc.ts`.
 
 - [ ] **Step 1: `creationCoverDir` ergänzen**
 
@@ -1520,11 +1520,15 @@ import { Effect } from "effect";
 import { holeCoverKandidatenIn, raeumeWaisenIn } from "./coverCandidates.ts";
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-const alsAntwort = (): Response =>
-  ({
-    ok: true,
-    arrayBuffer: async () => jpeg.buffer.slice(0),
-  }) as unknown as Response;
+
+// Der übliche Cast des Repos (coverArtArchive.test.ts): Buns `typeof fetch`
+// trägt zusätzlich `preconnect`, eine nackte async-Funktion ist nicht
+// zuweisbar. Derselbe Defekt wie in Task 3.
+const fakeFetch = (antwort: () => Response): typeof fetch =>
+  (async () => antwort()) as unknown as typeof fetch;
+
+const mitBytes = (): Response =>
+  new Response(jpeg as unknown as BodyInit, { status: 200 });
 
 describe("holeCoverKandidatenIn", () => {
   it("legt beide Kandidaten ab und liefert Data-URLs", async () => {
@@ -1533,7 +1537,10 @@ describe("holeCoverKandidatenIn", () => {
       artist: "Falco",
       title: "Rock Me Amadeus",
       thumbnailUrl: "https://example.invalid/t.jpg",
-      deps: { findCoverFn: () => Effect.succeed(jpeg), fetchFn: alsAntwort },
+      deps: {
+        findCoverFn: () => Effect.succeed(jpeg),
+        fetchFn: fakeFetch(mitBytes),
+      },
     });
     expect(kandidaten.map((k) => k.kind)).toEqual(["caa", "thumbnail"]);
     expect(kandidaten[0]?.dataUrl.startsWith("data:image/jpeg;base64,")).toBe(
@@ -1549,7 +1556,10 @@ describe("holeCoverKandidatenIn", () => {
       artist: "Nische",
       title: "Unbekannt",
       thumbnailUrl: "https://example.invalid/t.jpg",
-      deps: { findCoverFn: () => Effect.succeed(null), fetchFn: alsAntwort },
+      deps: {
+        findCoverFn: () => Effect.succeed(null),
+        fetchFn: fakeFetch(mitBytes),
+      },
     });
     expect(kandidaten.map((k) => k.kind)).toEqual(["thumbnail"]);
     await rm(dir, { recursive: true, force: true });
@@ -1718,15 +1728,16 @@ Aufrufen — jeweils feuernd und schluckend, denn ein hängender Windows-Handle 
     });
   };
 ```
-in `queueRemove(id)` (nach `melde()`), und in `start()` am Ende jedes Job-Durchlaufs — im Erfolgszweig nach `deps.aufraeumen(jobDir)` und im `catch` nach dem Setzen von `failed`/`cancelled`: `raeumeCoverStill(jobDef.id);`
+Aufrufen in `queueRemove(id)` (nach `sichere()`), in `queueClear()` für jede entfernte wartende Id — sonst bliebe deren Cache bis zum nächsten Programmstart liegen, anders als bei `queueRemove` —, und in `start()` **einmal** am Ende jedes Job-Durchlaufs, direkt vor dem abschließenden `melde()`: das deckt Erfolg, Fehlschlag und Abbruch in einer Zeile ab, statt drei Zweige einzeln zu bedienen.
 
-In `ipc.ts`: `raeumeCover: raeumeCoverJob,` (Import aus `./coverCandidates.ts`).
+In `ipc.ts`: `raeumeCover: raeumeCoverJob,` — die dortige modul-lokale Fassung.
 
-In `index.ts`, direkt nach `await creations.initialisiere();`:
+In `index.ts`, direkt nach `creations.initialisiere()` und **vor** `createWindow()`:
 
 ```ts
   // Orphans from a session that fetched candidates but never queued the job.
-  await raeumeCoverWaisen(creations.wartendeIds());
+  // Swallowed: a cache sweep must not keep the window from opening.
+  await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
 ```
 
 - [ ] **Step 6: Tests, Typen, Commit**
