@@ -1218,6 +1218,18 @@ In `start()` direkt nach `const jobDir = deps.jobDir(jobDef.id);`:
           // failed, not abandon the queue.
           const dateien = await deps.schreibeJobDateien(jobDef, jobDir);
 ```
+
+**Achtung, gemessen:** dieses zusätzliche `await` sitzt *vor*
+`laufenderAbbruch = new AbortController()`. Drei bestehende Tests
+(„Abbruch waehrend der Beschaffung", „behaelt den warmen Worker",
+„shutdown bricht eine laufende Beschaffung ab") synchronisieren über eine
+feste Zahl von `await Promise.resolve()`; mit dem neuen `await` läuft
+`cancel()` bevor der Controller existiert, und zwei der Tests **hängen**
+danach stumm (bun gibt gar nichts aus), statt zu scheitern. Die
+Tick-Zählung dort durch ein Tor ersetzen, das die `acquire`-Attrappe
+öffnet, statt die Reihenfolge im Produktionscode zu verbiegen — erst
+schreiben, dann beschaffen ist richtig, damit ein Plattenfehler vor dem
+langen Download auffällt.
 Den `submitJob`-Aufruf auf `toWorkerJob(jobDef, medien, dateien, deps.workDir(), jobDir)` umstellen. Nach `const paket = await deps.assemble(...)`:
 
 ```ts
