@@ -103,6 +103,12 @@ export type CreationEntry = {
   stage?: string;
   progress?: number; // 0..1
   error?: string;
+  /** Finished job only: the folder in the library, for "open folder". */
+  songDir?: string;
+  /** The leaf name actually used - it can carry a "(2)" suffix. */
+  dirName?: string;
+  /** From song_data.json meta: the sync is shaky and wants the editor. */
+  lowConfidence?: boolean;
 };
 
 /** RepairResult with an IPC-friendly errors field (Map → Array). */

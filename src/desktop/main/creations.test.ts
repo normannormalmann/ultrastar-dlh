@@ -1,5 +1,7 @@
 // src/desktop/main/creations.test.ts
 import { describe, expect, it } from "bun:test";
+import { join } from "node:path";
+import type { WorkerJob } from "../../core/create/worker.ts";
 import { createCreations, type CreationsDeps } from "./creations.ts";
 
 type FakeVerhalten = "ok" | "fail" | "crash";
@@ -38,10 +40,14 @@ const fakeDeps = (opts?: {
     libraryDir: () => "C:/library",
     layout: () => "flat",
     acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+    schreibeJobDateien: async (_job: unknown, jobDir: string) => ({
+      lyricsPath: `${jobDir}/lyrics.txt`,
+    }),
     assemble: async () => ({
       songDir: "C:/library/Interpret - Titel",
       dirName: "Interpret - Titel",
       warnungen: [],
+      lowConfidence: false,
     }),
     aufraeumen: async () => {},
     broadcast: (channel: string, payload: unknown) =>
@@ -50,13 +56,28 @@ const fakeDeps = (opts?: {
   return { deps, events, bearbeitet };
 };
 
+/**
+ * The three tests that cancel *during* acquisition used to synchronise on a
+ * fixed number of microtasks. That is brittle: every extra await inside
+ * start() before acquire shifts the tick count, the cancel then arrives
+ * before the AbortController exists, and the test deadlocks instead of
+ * failing. So they wait for acquisition to actually begin.
+ */
+const beschaffungsTor = () => {
+  let melde: () => void = () => {};
+  const begonnen = new Promise<void>((res) => {
+    melde = res;
+  });
+  return { begonnen, melde: () => melde() };
+};
+
 const job = (id: string) => ({
   id,
   quelle: { kind: "youtube" as const, url: `https://youtu.be/${id}` },
   language: "de",
   artist: "Interpret",
   title: id,
-  lyricsPath: "l.txt",
+  lyricsText: "Zeile",
 });
 
 describe("creation queue", () => {
@@ -146,10 +167,14 @@ describe("creation queue", () => {
       libraryDir: () => "C:/library",
       layout: () => "flat",
       acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      schreibeJobDateien: async (_job: unknown, jobDir: string) => ({
+        lyricsPath: `${jobDir}/lyrics.txt`,
+      }),
       assemble: async () => ({
         songDir: "C:/library/x",
         dirName: "x",
         warnungen: [],
+        lowConfidence: false,
       }),
       aufraeumen: async () => {},
       broadcast: () => {},
@@ -208,10 +233,14 @@ describe("creation queue", () => {
       libraryDir: () => "C:/library",
       layout: () => "flat",
       acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      schreibeJobDateien: async (_job: unknown, jobDir: string) => ({
+        lyricsPath: `${jobDir}/lyrics.txt`,
+      }),
       assemble: async () => ({
         songDir: "C:/library/x",
         dirName: "x",
         warnungen: [],
+        lowConfidence: false,
       }),
       aufraeumen: async () => {},
       broadcast: () => {},
@@ -294,11 +323,13 @@ describe("creation queue", () => {
 
   it("Abbruch waehrend der Beschaffung stoppt den Job", async () => {
     const { deps } = fakeDeps();
+    const tor = beschaffungsTor();
     let abgebrochen = false;
     const erweitert = {
       ...deps,
       acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
         new Promise((_res, rej) => {
+          tor.melde();
           signal.addEventListener("abort", () => {
             abgebrochen = true;
             rej({ kind: "Cancelled", detail: "" });
@@ -308,7 +339,7 @@ describe("creation queue", () => {
     const c = createCreations(erweitert);
     c.queueAdd([job("a")]);
     const laufend = c.start();
-    await Promise.resolve();
+    await tor.begonnen;
     c.cancel();
     await laufend;
     expect(abgebrochen).toBe(true);
@@ -347,6 +378,7 @@ describe("creation queue", () => {
 
   it("ein Abbruch in der Beschaffung behaelt den warmen Worker", async () => {
     const { deps } = fakeDeps();
+    const tor = beschaffungsTor();
     let erzeugt = 0;
     const erweitert = {
       ...deps,
@@ -361,6 +393,7 @@ describe("creation queue", () => {
       },
       acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
         new Promise((res, rej) => {
+          tor.melde();
           if (signal.aborted) {
             rej({ kind: "Cancelled", detail: "" });
             return;
@@ -374,7 +407,7 @@ describe("creation queue", () => {
     const c = createCreations(erweitert);
     c.queueAdd([job("a"), job("b")]);
     const laufend = c.start();
-    await Promise.resolve();
+    await tor.begonnen;
     c.cancel();
     await laufend;
     // Der Worker hatte nie einen Auftrag - ihn wegzuwerfen wuerde den
@@ -387,11 +420,13 @@ describe("creation queue", () => {
 
   it("shutdown bricht eine laufende Beschaffung ab", async () => {
     const { deps } = fakeDeps();
+    const tor = beschaffungsTor();
     let abgebrochen = false;
     const erweitert = {
       ...deps,
       acquire: (_j: unknown, _d: string, _p: unknown, signal: AbortSignal) =>
         new Promise((_res, rej) => {
+          tor.melde();
           signal.addEventListener("abort", () => {
             abgebrochen = true;
             rej({ kind: "Cancelled", detail: "" });
@@ -401,7 +436,7 @@ describe("creation queue", () => {
     const c = createCreations(erweitert);
     c.queueAdd([job("a")]);
     const laufend = c.start();
-    await Promise.resolve();
+    await tor.begonnen;
     await c.shutdown();
     await laufend;
     expect(abgebrochen).toBe(true);
@@ -427,10 +462,14 @@ describe("creation queue", () => {
       libraryDir: () => "C:/library",
       layout: () => "flat",
       acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      schreibeJobDateien: async (_job: unknown, jobDir: string) => ({
+        lyricsPath: `${jobDir}/lyrics.txt`,
+      }),
       assemble: async () => ({
         songDir: "C:/library/x",
         dirName: "x",
         warnungen: [],
+        lowConfidence: false,
       }),
       aufraeumen: async () => {},
       // Snapshot: melde() broadcasts the live entry objects, so the later
@@ -446,5 +485,81 @@ describe("creation queue", () => {
       .flatMap((e) => e.payload as Array<{ stage?: string }>)
       .some((e) => e.stage === "separate");
     expect(mitStufe).toBe(true);
+  });
+
+  it("schreibt Liedtext und .lrc in den jobDir und reicht die Pfade weiter", async () => {
+    const geschrieben: string[] = [];
+    // An array, not a `let x: WorkerJob | null`: assigning inside the
+    // callback leaves TypeScript narrowing the variable to null at the
+    // assertion below.
+    const gesehen: WorkerJob[] = [];
+    const c = createCreations({
+      ...fakeDeps().deps,
+      schreibeJobDateien: async (job, jobDir) => {
+        geschrieben.push(job.lyricsText);
+        if (job.syncedLyricsText !== undefined) {
+          geschrieben.push(job.syncedLyricsText);
+        }
+        return {
+          lyricsPath: join(jobDir, "lyrics.txt"),
+          syncedLyricsPath:
+            job.syncedLyricsText === undefined
+              ? undefined
+              : join(jobDir, "synced.lrc"),
+        };
+      },
+      newWorker: () => ({
+        submitJob: async (j: WorkerJob) => {
+          gesehen.push(j);
+        },
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+        isAlive: () => true,
+      }),
+    });
+    c.queueAdd([
+      {
+        ...job("a"),
+        lyricsText: "Zeile eins",
+        syncedLyricsText: "[00:01.00]x",
+      },
+    ]);
+    await c.start();
+    expect(geschrieben).toEqual(["Zeile eins", "[00:01.00]x"]);
+    expect(gesehen[0]?.lyricsPath).toContain("lyrics.txt");
+    expect(gesehen[0]?.syncedLyricsPath).toContain("synced.lrc");
+  });
+
+  it("traegt songDir, dirName und lowConfidence in den fertigen Eintrag", async () => {
+    const c = createCreations({
+      ...fakeDeps().deps,
+      assemble: async () => ({
+        songDir: "J:/Songs/Falco - Rock Me Amadeus",
+        dirName: "Falco - Rock Me Amadeus",
+        warnungen: [],
+        lowConfidence: true,
+      }),
+    });
+    c.queueAdd([job("a")]);
+    await c.start();
+    const e = c.entriesForTests()[0];
+    expect(e?.status).toBe("completed");
+    expect(e?.songDir).toBe("J:/Songs/Falco - Rock Me Amadeus");
+    expect(e?.dirName).toBe("Falco - Rock Me Amadeus");
+    expect(e?.lowConfidence).toBe(true);
+  });
+
+  it("macht den Job zum Fehler, wenn das Schreiben des Texts scheitert", async () => {
+    const c = createCreations({
+      ...fakeDeps().deps,
+      schreibeJobDateien: async () => {
+        throw new Error("Platte voll");
+      },
+    });
+    c.queueAdd([job("a")]);
+    await c.start();
+    const e = c.entriesForTests()[0];
+    expect(e?.status).toBe("failed");
+    expect(e?.error).toContain("Platte voll");
   });
 });

@@ -18,7 +18,7 @@ import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   cancelEnvironmentInstall,
@@ -77,12 +77,22 @@ export const creations = createCreations({
     Effect.runPromise(
       acquireMedia({ quelle: job.quelle, jobDir, onProgress, signal }),
     ),
+  schreibeJobDateien: async (job, jobDir) => {
+    await mkdir(jobDir, { recursive: true });
+    const lyricsPath = join(jobDir, "lyrics.txt");
+    await writeFile(lyricsPath, `${job.lyricsText.trimEnd()}\n`, "utf8");
+    if (job.syncedLyricsText === undefined) return { lyricsPath };
+    const syncedLyricsPath = join(jobDir, "synced.lrc");
+    await writeFile(syncedLyricsPath, job.syncedLyricsText, "utf8");
+    return { lyricsPath, syncedLyricsPath };
+  },
   aufraeumen: (jobDir) => rm(jobDir, { recursive: true, force: true }),
   assemble: async (job, medien, jobDir) => {
     const roh = await readFile(join(jobDir, "song_data.json"), "utf8");
-    return Effect.runPromise(
+    const songData = parseSongData(JSON.parse(roh));
+    const paket = await Effect.runPromise(
       assemblePackage({
-        songData: parseSongData(JSON.parse(roh)),
+        songData,
         medien,
         meta: {
           artist: job.artist,
@@ -93,8 +103,10 @@ export const creations = createCreations({
         libraryDir: state.downloadDir,
         layout: state.folderLayout,
         jobDir,
+        coverWahl: job.coverWahl,
       }),
     );
+    return { ...paket, lowConfidence: songData.meta.lowConfidence };
   },
   broadcast,
 });

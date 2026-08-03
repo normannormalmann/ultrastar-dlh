@@ -37,29 +37,44 @@ export type CreationsDeps = {
     onProgress: (anteil: number) => void,
     signal: AbortSignal,
   ) => Promise<AcquiredMedia>;
+  /**
+   * Writes the job's text payload into the scratch dir. The job carries text
+   * because the renderer has text and the persisted queue must survive a
+   * restart; the worker wants paths.
+   */
+  schreibeJobDateien: (
+    job: CreateJobRequest,
+    jobDir: string,
+  ) => Promise<{ lyricsPath: string; syncedLyricsPath?: string }>;
   /** Only after success - a failed job keeps its scratch dir for diagnosis. */
   aufraeumen: (jobDir: string) => Promise<void>;
   assemble: (
     job: CreateJobRequest,
     medien: AcquiredMedia,
     jobDir: string,
-  ) => Promise<{ songDir: string; dirName: string; warnungen: string[] }>;
+  ) => Promise<{
+    songDir: string;
+    dirName: string;
+    warnungen: string[];
+    lowConfidence: boolean;
+  }>;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
 const toWorkerJob = (
   job: CreateJobRequest,
   medien: AcquiredMedia,
+  dateien: { lyricsPath: string; syncedLyricsPath?: string },
   workDir: string,
   jobDir: string,
 ): WorkerJob => ({
   id: job.id,
   audioPath: medien.audioPath,
-  lyricsPath: job.lyricsPath,
+  lyricsPath: dateien.lyricsPath,
   language: job.language,
   outPath: join(jobDir, "song_data.json"),
   bpm: job.bpm,
-  syncedLyricsPath: job.syncedLyricsPath,
+  syncedLyricsPath: dateien.syncedLyricsPath,
   workDir,
 });
 
@@ -164,6 +179,9 @@ export const createCreations = (deps: CreationsDeps) => {
           // Inside the try: jobDir() validates the id and can throw, which
           // outside would abandon the entry on "running" and drop the queue.
           const jobDir = deps.jobDir(jobDef.id);
+          // Inside the try on purpose: a failed write must mark the job
+          // failed, not abandon the queue.
+          const dateien = await deps.schreibeJobDateien(jobDef, jobDir);
           eintrag.stage = "beschaffen";
           melde();
           laufenderAbbruch = new AbortController();
@@ -178,7 +196,7 @@ export const createCreations = (deps: CreationsDeps) => {
           );
           workerHatAuftrag = true;
           await aktiv.submitJob(
-            toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
+            toWorkerJob(jobDef, medien, dateien, deps.workDir(), jobDir),
             (stage, percent) => {
               eintrag.stage = stage;
               eintrag.progress = 0.25 + percent * 0.65;
@@ -196,6 +214,9 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             deps.broadcast("event:error", { context: "warnung", message: w });
           }
+          eintrag.songDir = paket.songDir;
+          eintrag.dirName = paket.dirName;
+          eintrag.lowConfidence = paket.lowConfidence;
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
