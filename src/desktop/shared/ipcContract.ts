@@ -74,6 +74,11 @@ export type InitialState = {
   status: AppStatus;
   queue: Song[];
   downloaded: DownloadedEntry[];
+  /**
+   * The restored creation queue. Without it a persisted job would stay
+   * invisible: event:creations fires long before the renderer subscribes.
+   */
+  creations: CreationEntry[];
   version: string;
 };
 

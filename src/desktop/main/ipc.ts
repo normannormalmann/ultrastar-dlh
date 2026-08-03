@@ -17,6 +17,10 @@ import { musicbrainzProvider } from "../../core/api/genres/musicbrainz.ts";
 import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
+import {
+  loadCreateQueue,
+  saveCreateQueue,
+} from "../../core/storage/createQueue.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -87,6 +91,8 @@ export const creations = createCreations({
     return { lyricsPath, syncedLyricsPath };
   },
   aufraeumen: (jobDir) => rm(jobDir, { recursive: true, force: true }),
+  ladeQueue: () => Effect.runPromise(loadCreateQueue),
+  speichereQueue: (jobs) => Effect.runPromise(saveCreateQueue(jobs)),
   assemble: async (job, medien, jobDir) => {
     const roh = await readFile(join(jobDir, "song_data.json"), "utf8");
     const songData = parseSongData(JSON.parse(roh));
@@ -119,6 +125,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       status: state.status,
       queue: state.queue,
       downloaded: state.downloaded,
+      creations: creations.alleEintraege(),
       version: app.getVersion(),
     }),
 

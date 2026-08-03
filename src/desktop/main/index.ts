@@ -49,9 +49,17 @@ const createWindow = (): BrowserWindow => {
   return win;
 };
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   registerIpcHandlers(ipcMain);
   prependManagedBinToPath();
+  // Before the first window on purpose: app:getInitialState carries the
+  // restored creations, and the renderer asks for it the moment it mounts.
+  await creations.initialisiere().catch((err: unknown) => {
+    broadcast("event:error", {
+      context: "erstellen",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
   createWindow();
   void initializeState().then(() => {
     // Spec: missing tools are installed automatically on first launch

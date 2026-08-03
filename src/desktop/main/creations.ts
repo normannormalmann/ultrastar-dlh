@@ -58,6 +58,10 @@ export type CreationsDeps = {
     warnungen: string[];
     lowConfidence: boolean;
   }>;
+  /** The waiting jobs of the previous run - see initialisiere(). */
+  ladeQueue: () => Promise<CreateJobRequest[]>;
+  /** Failure is reported, never fatal: a full disk must not stop the queue. */
+  speichereQueue: (jobs: CreateJobRequest[]) => Promise<void>;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
@@ -107,6 +111,39 @@ export const createCreations = (deps: CreationsDeps) => {
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
 
+  const sichere = (): void => {
+    void deps.speichereQueue([...queue]).catch((e: unknown) => {
+      deps.broadcast("event:error", {
+        context: "erstellen",
+        message: `Queue konnte nicht gespeichert werden: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      });
+    });
+  };
+
+  /**
+   * Loads the persisted queue. A stored job never ran to completion, so it
+   * comes back as "queued" - and nothing is started here: a program launch
+   * must not seize the GPU unasked.
+   */
+  const initialisiere = async (): Promise<void> => {
+    const jobs = await deps.ladeQueue();
+    for (const j of jobs) {
+      if (eintraege.has(j.id)) continue;
+      queue.push(j);
+      eintraege.set(j.id, {
+        id: j.id,
+        artist: j.artist,
+        title: j.title,
+        status: "queued",
+      });
+    }
+    melde();
+  };
+
+  const wartendeIds = (): string[] => queue.map((j) => j.id);
+
   const queueAdd = (jobs: CreateJobRequest[]): number => {
     for (const j of jobs) {
       if (eintraege.has(j.id)) continue;
@@ -119,6 +156,7 @@ export const createCreations = (deps: CreationsDeps) => {
       });
     }
     melde();
+    sichere();
     return queue.length;
   };
 
@@ -127,12 +165,14 @@ export const createCreations = (deps: CreationsDeps) => {
     queue = queue.filter((j) => j.id !== id);
     if (eintraege.get(id)?.status === "queued") eintraege.delete(id);
     melde();
+    sichere();
   };
 
   const queueClear = (): void => {
     queue = [];
     for (const [id, e] of eintraege) if (e.status === "queued") eintraege.delete(id);
     melde();
+    sichere();
   };
 
   const start = async (): Promise<void> => {
@@ -166,6 +206,9 @@ export const createCreations = (deps: CreationsDeps) => {
       crashStreak = 0;
       while (queue.length > 0) {
         const jobDef = queue.shift() as CreateJobRequest;
+        // Only waiting jobs are persisted, and this one has begun: a crash
+        // must not resurrect a job whose scratch dir is half written.
+        sichere();
         const eintrag = eintraege.get(jobDef.id);
         if (!eintrag) continue;
         eintrag.status = "running";
@@ -280,6 +323,8 @@ export const createCreations = (deps: CreationsDeps) => {
 
   /** App exit: no orphaned python process holding warm VRAM. */
   const shutdown = async (): Promise<void> => {
+    // No sichere() here on purpose: emptying the in-memory queue is how this
+    // process stops, not a user decision - the file has to survive the exit.
     queue = [];
     // Closing the app mid-download must not orphan yt-dlp - the same reason
     // cancel() carries an AbortController.
@@ -293,12 +338,15 @@ export const createCreations = (deps: CreationsDeps) => {
   };
 
   return {
+    initialisiere,
     queueAdd,
     queueRemove,
     queueClear,
     start,
     cancel,
     shutdown,
-    entriesForTests: (): CreationEntry[] => [...eintraege.values()],
+    wartendeIds,
+    /** A snapshot, for the initial state the renderer asks for at mount. */
+    alleEintraege: (): CreationEntry[] => [...eintraege.values()],
   };
 };

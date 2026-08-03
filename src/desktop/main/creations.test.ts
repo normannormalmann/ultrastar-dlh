@@ -50,6 +50,8 @@ const fakeDeps = (opts?: {
       lowConfidence: false,
     }),
     aufraeumen: async () => {},
+    ladeQueue: async () => [],
+    speichereQueue: async () => {},
     broadcast: (channel: string, payload: unknown) =>
       events.push({ channel, payload }),
   } as unknown as CreationsDeps;
@@ -100,7 +102,7 @@ describe("creation queue", () => {
     c.queueAdd([job("a"), job("b")]);
     await c.start();
     expect(bearbeitet).toEqual(["a", "b"]);
-    const eintraege = c.entriesForTests();
+    const eintraege = c.alleEintraege();
     expect(eintraege.find((e) => e.id === "a")?.status).toBe("failed");
     expect(eintraege.find((e) => e.id === "a")?.error).toBe("kaputt");
     expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
@@ -119,7 +121,7 @@ describe("creation queue", () => {
           String((e.payload as { message: string }).message).includes("pausiert"),
       ),
     ).toBe(true);
-    expect(c.entriesForTests().find((e) => e.id === "d")?.status).toBe("queued");
+    expect(c.alleEintraege().find((e) => e.id === "d")?.status).toBe("queued");
   });
 
   it("blockiert ohne eingerichtete Umgebung", async () => {
@@ -147,7 +149,7 @@ describe("creation queue", () => {
           String((e.payload as { message: string }).message).includes("veraltet"),
       ),
     ).toBe(true);
-    expect(c.entriesForTests()[0]?.status).toBe("queued");
+    expect(c.alleEintraege()[0]?.status).toBe("queued");
   });
 
   it("reicht ein beschreibbares workDir an den Worker durch", async () => {
@@ -177,6 +179,8 @@ describe("creation queue", () => {
         lowConfidence: false,
       }),
       aufraeumen: async () => {},
+      ladeQueue: async () => [],
+      speichereQueue: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
     const c = createCreations(deps);
@@ -190,7 +194,7 @@ describe("creation queue", () => {
     const c = createCreations(deps);
     c.queueAdd([job("a"), job("b")]);
     c.queueRemove("b");
-    expect(c.entriesForTests().map((e) => e.id)).toEqual(["a"]);
+    expect(c.alleEintraege().map((e) => e.id)).toEqual(["a"]);
   });
 
   it("Abbruch beendet nur den laufenden Job, die Queue laeuft weiter", async () => {
@@ -243,6 +247,8 @@ describe("creation queue", () => {
         lowConfidence: false,
       }),
       aufraeumen: async () => {},
+      ladeQueue: async () => [],
+      speichereQueue: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
 
@@ -253,7 +259,7 @@ describe("creation queue", () => {
     c.cancel();
     await laufend;
     expect(bearbeitet).toEqual(["a", "b"]);
-    const eintraege = c.entriesForTests();
+    const eintraege = c.alleEintraege();
     // Ein Abbruch ist eine Nutzerentscheidung, kein Fehlschlag.
     expect(eintraege.find((e) => e.id === "a")?.status).toBe("cancelled");
     expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
@@ -265,7 +271,7 @@ describe("creation queue", () => {
     c.queueAdd([job("a"), job("b")]);
     await Promise.all([c.start(), c.start()]);
     expect(bearbeitet).toEqual(["a", "b"]);
-    expect(c.entriesForTests().map((e) => e.status)).toEqual([
+    expect(c.alleEintraege().map((e) => e.status)).toEqual([
       "completed",
       "completed",
     ]);
@@ -297,7 +303,7 @@ describe("creation queue", () => {
     c.queueAdd([job("a")]);
     await c.start();
     expect(ablauf).toEqual(["beschaffen", "pipeline", "paket"]);
-    expect(c.entriesForTests()[0]?.status).toBe("completed");
+    expect(c.alleEintraege()[0]?.status).toBe("completed");
   });
 
   it("eine gescheiterte Beschaffung stoppt die Queue nicht", async () => {
@@ -315,7 +321,7 @@ describe("creation queue", () => {
     c.queueAdd([job("a"), job("b")]);
     await c.start();
     expect(versucht).toEqual(["a", "b"]);
-    const eintraege = c.entriesForTests();
+    const eintraege = c.alleEintraege();
     expect(eintraege.find((e) => e.id === "a")?.status).toBe("failed");
     expect(eintraege.find((e) => e.id === "a")?.error).toBe("kaputt");
     expect(eintraege.find((e) => e.id === "b")?.status).toBe("completed");
@@ -343,7 +349,7 @@ describe("creation queue", () => {
     c.cancel();
     await laufend;
     expect(abgebrochen).toBe(true);
-    expect(c.entriesForTests()[0]?.status).toBe("cancelled");
+    expect(c.alleEintraege()[0]?.status).toBe("cancelled");
   });
 
   it("raeumt das Kratzverzeichnis nach Erfolg weg, nach einem Fehler nicht", async () => {
@@ -373,7 +379,7 @@ describe("creation queue", () => {
     const c = createCreations(erweitert);
     c.queueAdd([job("a")]);
     await c.start();
-    expect(c.entriesForTests()[0]?.status).toBe("completed");
+    expect(c.alleEintraege()[0]?.status).toBe("completed");
   });
 
   it("ein Abbruch in der Beschaffung behaelt den warmen Worker", async () => {
@@ -413,7 +419,7 @@ describe("creation queue", () => {
     // Der Worker hatte nie einen Auftrag - ihn wegzuwerfen wuerde den
     // naechsten Job einen vollen Kaltstart kosten.
     expect(erzeugt).toBe(1);
-    expect(c.entriesForTests().find((e) => e.id === "a")?.status).toBe(
+    expect(c.alleEintraege().find((e) => e.id === "a")?.status).toBe(
       "cancelled",
     );
   });
@@ -472,6 +478,8 @@ describe("creation queue", () => {
         lowConfidence: false,
       }),
       aufraeumen: async () => {},
+      ladeQueue: async () => [],
+      speichereQueue: async () => {},
       // Snapshot: melde() broadcasts the live entry objects, so the later
       // "paket" stage would overwrite the "separate" we want to observe.
       broadcast: (channel: string, payload: unknown) =>
@@ -542,7 +550,7 @@ describe("creation queue", () => {
     });
     c.queueAdd([job("a")]);
     await c.start();
-    const e = c.entriesForTests()[0];
+    const e = c.alleEintraege()[0];
     expect(e?.status).toBe("completed");
     expect(e?.songDir).toBe("J:/Songs/Falco - Rock Me Amadeus");
     expect(e?.dirName).toBe("Falco - Rock Me Amadeus");
@@ -558,8 +566,92 @@ describe("creation queue", () => {
     });
     c.queueAdd([job("a")]);
     await c.start();
-    const e = c.entriesForTests()[0];
+    const e = c.alleEintraege()[0];
     expect(e?.status).toBe("failed");
     expect(e?.error).toContain("Platte voll");
+  });
+
+  it("laedt wartende Jobs beim Start und startet nichts", async () => {
+    let gestartet = false;
+    const c = createCreations({
+      ...fakeDeps().deps,
+      ladeQueue: async () => [job("a"), job("zwei")],
+      newWorker: () => {
+        gestartet = true;
+        return {
+          isAlive: () => true,
+          submitJob: async () => {},
+          cancelCurrentJob: () => {},
+          shutdown: async () => {},
+        };
+      },
+    });
+    await c.initialisiere();
+    expect(c.alleEintraege().map((e) => e.status)).toEqual(["queued", "queued"]);
+    expect(c.wartendeIds()).toEqual(["a", "zwei"]);
+    // Ein Programmstart darf sich die GPU nicht unaufgefordert nehmen.
+    expect(gestartet).toBe(false);
+  });
+
+  it("speichert bei jeder Aenderung der Queue", async () => {
+    const gespeichert: number[] = [];
+    const c = createCreations({
+      ...fakeDeps().deps,
+      speichereQueue: async (jobs) => {
+        gespeichert.push(jobs.length);
+      },
+    });
+    c.queueAdd([job("a"), job("zwei")]);
+    c.queueRemove("zwei");
+    c.queueClear();
+    await Bun.sleep(1);
+    expect(gespeichert).toEqual([2, 1, 0]);
+  });
+
+  it("nimmt einen begonnenen Job aus der persistierten Queue", async () => {
+    const gespeichert: number[] = [];
+    const c = createCreations({
+      ...fakeDeps().deps,
+      speichereQueue: async (jobs) => {
+        gespeichert.push(jobs.length);
+      },
+    });
+    c.queueAdd([job("a")]);
+    await c.start();
+    // Nur wartende Jobs werden persistiert: nach dem Griff in die Queue ist
+    // sie leer, ein Absturz weckt den halb gelaufenen Job nicht wieder.
+    expect(gespeichert).toEqual([1, 0]);
+  });
+
+  it("shutdown loescht die persistierte Queue nicht", async () => {
+    const gespeichert: number[] = [];
+    const c = createCreations({
+      ...fakeDeps().deps,
+      speichereQueue: async (jobs) => {
+        gespeichert.push(jobs.length);
+      },
+    });
+    c.queueAdd([job("a")]);
+    await c.shutdown();
+    await Bun.sleep(1);
+    // Das Leeren beim Beenden ist keine Nutzerentscheidung - die Datei muss
+    // den Programmschluss ueberleben.
+    expect(gespeichert).toEqual([1]);
+  });
+
+  it("bricht die Queue nicht ab, wenn das Speichern scheitert", async () => {
+    const { deps, events } = fakeDeps();
+    const c = createCreations({
+      ...deps,
+      speichereQueue: async () => {
+        throw new Error("Platte voll");
+      },
+    });
+    expect(c.queueAdd([job("a")])).toBe(1);
+    await Bun.sleep(1);
+    const fehler = events
+      .filter((e) => e.channel === "event:error")
+      .map((e) => (e.payload as { message: string }).message);
+    expect(fehler.join(" ")).toContain("Platte voll");
   });
 });
