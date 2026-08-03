@@ -959,10 +959,14 @@ it("warnt, wenn das gewaehlte Bild verschwunden ist", async () => {
       coverWahl: { pfad: join(jobDir, "gibtsnicht.jpg") },
     }),
   );
-  expect(ergebnis.warnungen.join(" ")).toContain("ohne Bild");
+  // Deliberately not just "ohne Bild": the old "Kein Cover gefunden"
+  // warning ends in those words too, so this test would pass unimplemented.
+  expect(ergebnis.warnungen.join(" ")).toContain("Gewaehltes Bild");
   expect(existsSync(join(ergebnis.songDir, "cover.jpg"))).toBe(false);
 });
 ```
+
+Der Helfer heißt in der Datei `basis(library, jobDir)` neben `aufbau()`; `existsSync` ist dort nicht importiert, `readdir` schon — beides aus der Datei übernehmen statt neu einzuführen.
 
 - [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
