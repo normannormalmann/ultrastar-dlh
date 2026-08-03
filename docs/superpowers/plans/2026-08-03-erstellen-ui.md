@@ -311,7 +311,8 @@ Schritt 3 braucht die Spieldauer für LRCLIB. Beim Suchtreffer kommt sie gratis 
 
 ```ts
 import { describe, expect, it } from "bun:test";
-import { dauerAusFfmpeg, dauerAusYtDlp } from "./probe.ts";
+import { Effect } from "effect";
+import { dauerAusFfmpeg, dauerAusYtDlp, dauerSekunden } from "./probe.ts";
 
 // Real tool output, not invented.
 const YTDLP = "213.0\n";
@@ -352,6 +353,17 @@ describe("dauerAusFfmpeg", () => {
 
   it("liefert null bei Duration N/A", () => {
     expect(dauerAusFfmpeg("  Duration: N/A, bitrate: N/A\n")).toBeNull();
+  });
+});
+
+describe("dauerSekunden", () => {
+  // Bails out before spawning, so this test starts no process.
+  it("weist alles ab, was keine http(s)-URL ist", async () => {
+    for (const url of ["--exec=echo pwned", "file:///etc/passwd", "keine url"]) {
+      expect(
+        await Effect.runPromise(dauerSekunden({ kind: "youtube", url })),
+      ).toBeNull();
+    }
   });
 });
 ```
@@ -432,6 +444,20 @@ const laufe = (
   });
 
 /**
+ * The URL reaches argv as a *positional* argument, so a value starting with
+ * "-" would be read as an option ("--exec=..." being the ugly case), and
+ * yt-dlp's extractors accept far more than http. Both holes close here.
+ */
+const istWebUrl = (roh: string): boolean => {
+  try {
+    const u = new URL(roh);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
  * yt-dlp and ffmpeg live on PATH: managedBinDir() is prepended by the desktop
  * main process, same as in media.ts.
  */
@@ -441,15 +467,21 @@ export const dauerSekunden = (
   Effect.catchAll(
     Effect.tryPromise(async () => {
       if (quelle.kind === "youtube") {
+        if (!istWebUrl(quelle.url)) return null;
         const { stdout } = await laufe("yt-dlp", [
           "--print",
           "duration",
           "--skip-download",
           "--no-warnings",
+          // Nothing after this is read as a flag.
+          "--",
           quelle.url,
         ]);
         return dauerAusYtDlp(stdout);
       }
+      // No "--" for ffmpeg: it has no argv terminator, and the path sits in
+      // the value position of -i, which ffmpeg consumes as a filename
+      // whatever it starts with. A "--" here would BE the filename.
       const { stderr } = await laufe("ffmpeg", ["-i", quelle.pfad]);
       return dauerAusFfmpeg(stderr);
     }),
