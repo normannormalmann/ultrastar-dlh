@@ -2111,7 +2111,9 @@ Ab hier ist der Assistent sichtbar — mit Schritt 1 und Platzhaltern für 2–5
 
 **Interfaces:**
 - Consumes: `Entwurf`, `leererEntwurf`, `schrittFertig` (Task 10); `environmentStatus`, `environmentInstall`.
-- Produces: `CreateView`-Props `{ entwurf: Entwurf; setEntwurf: (e: Entwurf) => void; downloaded: DownloadedEntry[] }`; `ViewId` bekommt `"create"`; `Sidebar` bekommt `creationCount: number`.
+- Produces: `CreateView`-Props `{ entwurf: Entwurf; setEntwurf: (e: Entwurf) => void }`; `ViewId` bekommt `"create"`; `Sidebar` bekommt `creationCount: number`.
+
+**Entscheidung vom 2026-08-03:** `downloaded` wird **nicht** vorab durchgereicht — die Prop entsteht erst in Task 14, wo sie benutzt wird. Ein ungenutzter Parameter ist ein Defekt, auch wenn er später gebraucht wird; dafür wird `App.tsx` zweimal angefasst.
 
 - [ ] **Step 1: `StepSong.tsx` schreiben**
 
@@ -2183,10 +2185,7 @@ export default StepSong;
 import { Wand2 } from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import type {
-  DownloadedEntry,
-  EnvironmentStatus,
-} from "../../shared/ipcContract.ts";
+import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
 import StepSong from "../components/create/StepSong.tsx";
 import {
   type Entwurf,
@@ -2212,8 +2211,7 @@ const UMGEBUNG_TEXT: Record<string, string> = {
 export const CreateView: FC<{
   entwurf: Entwurf;
   setEntwurf: (e: Entwurf) => void;
-  downloaded: DownloadedEntry[];
-}> = ({ entwurf, setEntwurf, downloaded }) => {
+}> = ({ entwurf, setEntwurf }) => {
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [env, setEnv] = useState<EnvironmentStatus | null>(null);
   const [installiert, setInstalliert] = useState(false);
@@ -2301,7 +2299,7 @@ export const CreateView: FC<{
 export default CreateView;
 ```
 
-`downloaded` wird erst in Task 14 gebraucht; es wird jetzt schon durchgereicht, damit `App.tsx` nur einmal angefasst wird. Biome könnte den ungenutzten Parameter anmerken — dann in Task 14 auflösen, nicht durch `_downloaded` verstecken.
+Die Platzhalterzeile „Schritt … folgt." ist ein **bewusster Zwischenstand**: nach dieser Task lässt sich die App starten und der Weg begehen. Tasks 12–14 ersetzen sie Schritt für Schritt; nach Task 14 ist keine Platzhalterzeile mehr übrig.
 
 - [ ] **Step 3: Sidebar und App verdrahten**
 
@@ -2327,11 +2325,7 @@ Sidebar-Aufruf um
 ergänzen und die View einhängen:
 ```tsx
         {view === "create" && (
-          <CreateView
-            entwurf={entwurf}
-            setEntwurf={setEntwurf}
-            downloaded={downloaded}
-          />
+          <CreateView entwurf={entwurf} setEntwurf={setEntwurf} />
         )}
 ```
 
@@ -2831,10 +2825,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Create: `src/desktop/renderer/components/create/StepCover.tsx`
 - Create: `src/desktop/renderer/components/create/StepReview.tsx`
 - Modify: `src/desktop/renderer/views/CreateView.tsx`
+- Modify: `src/desktop/renderer/App.tsx`
 
 **Interfaces:**
 - Consumes: `createCoverCandidates`, `createChooseFile` (Task 9); `istDuplikat`, `zuJob`, `leererEntwurf` (Task 10); `createQueueAdd`.
-- Produces: `StepCover`-Props `{ entwurf, onChange }`; `StepReview`-Props `{ entwurf, downloaded, onAbgeschickt: () => void }`.
+- Produces: `StepCover`-Props `{ entwurf, onChange }`; `StepReview`-Props `{ entwurf, downloaded, onAbgeschickt: () => void }`; `CreateView` bekommt jetzt `downloaded: DownloadedEntry[]` dazu.
+
+**Hier** entsteht die `downloaded`-Prop (Entscheidung vom 2026-08-03, siehe Task 11): `CreateView` bekommt sie in dieser Task, weil `StepReview` sie für die Duplikat-Warnung braucht — und `App.tsx` gibt sie durch. Vorher gab es sie nicht.
 
 - [ ] **Step 1: `StepCover.tsx` schreiben**
 
@@ -3051,9 +3048,31 @@ export const StepReview: FC<{
 export default StepReview;
 ```
 
-- [ ] **Step 3: In `CreateView` einhängen und den Entwurf zurücksetzen**
+- [ ] **Step 3: `downloaded` einführen, Schritte einhängen, Entwurf zurücksetzen**
 
-Die Platzhalter-Zeile vollständig ersetzen:
+Zuerst die Prop anlegen — `CreateView` bekommt sie jetzt zum ersten Mal:
+
+```tsx
+import type { DownloadedEntry } from "../../shared/ipcContract.ts";
+
+export const CreateView: FC<{
+  entwurf: Entwurf;
+  setEntwurf: (e: Entwurf) => void;
+  downloaded: DownloadedEntry[];
+}> = ({ entwurf, setEntwurf, downloaded }) => {
+```
+und in `App.tsx` durchgeben:
+```tsx
+        {view === "create" && (
+          <CreateView
+            entwurf={entwurf}
+            setEntwurf={setEntwurf}
+            downloaded={downloaded}
+          />
+        )}
+```
+
+Dann die Platzhalter-Zeile vollständig ersetzen — nach dieser Task bleibt keine übrig:
 
 ```tsx
       {schritt === 4 && <StepCover entwurf={entwurf} onChange={patch} />}
