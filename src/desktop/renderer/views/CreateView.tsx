@@ -2,6 +2,7 @@ import { Wand2 } from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
+import StepLyrics from "../components/create/StepLyrics.tsx";
 import StepSong from "../components/create/StepSong.tsx";
 import StepSource from "../components/create/StepSource.tsx";
 import { type Entwurf, type Schritt, schrittFertig } from "./createDraft.ts";
@@ -83,7 +84,8 @@ export const CreateView: FC<{
 
       {schritt === 1 && <StepSong entwurf={entwurf} onChange={patch} />}
       {schritt === 2 && <StepSource entwurf={entwurf} onChange={patch} />}
-      {schritt > 2 && <p className="muted">Schritt {TITEL[schritt]} folgt.</p>}
+      {schritt === 3 && <StepLyrics entwurf={entwurf} onChange={patch} />}
+      {schritt > 3 && <p className="muted">Schritt {TITEL[schritt]} folgt.</p>}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button
