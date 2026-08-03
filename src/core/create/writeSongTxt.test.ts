@@ -72,6 +72,21 @@ describe("renderSongTxt", () => {
     expect(txt).toContain("#COVER:c.jpg");
   });
 
+  it("schreibt die Sprache als Namen, auch wenn der Job den Code traegt", () => {
+    // Der Job muss den ISO-Code fuehren, weil whisper nur den kennt. In der
+    // Kopfzeile hat er nichts zu suchen: die Songdatenbank schreibt Namen.
+    expect(renderSongTxt(daten, { ...headers, language: "de" })).toContain(
+      "#LANGUAGE:German",
+    );
+    expect(renderSongTxt(daten, { ...headers, language: "en" })).toContain(
+      "#LANGUAGE:English",
+    );
+    // Ein Name, den wir nicht kennen, bleibt unangetastet.
+    expect(
+      renderSongTxt(daten, { ...headers, language: "Schwyzerduetsch" }),
+    ).toContain("#LANGUAGE:Schwyzerduetsch");
+  });
+
   it("traegt zwischen zwei Woertern derselben Zeile ein Leerzeichen", () => {
     // notes.py haengt das Trennzeichen an die letzte Silbe eines Wortes an
     // ("lo "); writeSongTxt.ts schreibt die Silbe nur verbatim durch. Ohne

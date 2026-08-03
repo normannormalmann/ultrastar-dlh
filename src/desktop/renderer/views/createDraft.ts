@@ -3,6 +3,7 @@
 // the part worth testing, and the project has no component test setup. The
 // five step components only display and report changes.
 import type { CreateJob } from "../../../core/create/job.ts";
+import { istBekannteSprache } from "../../../core/create/languages.ts";
 import {
   type Antwort,
   normalizeLyrics,
@@ -12,64 +13,10 @@ import type { DownloadedEntry, MediaQuelle } from "../../shared/ipcContract.ts";
 
 export type Schritt = 1 | 2 | 3 | 4 | 5;
 
-/**
- * What travels in the job is the ISO 639-1 code, never the display name:
- * creations.ts hands it to the worker, the worker to whisper, and whisper
- * answers a name like "Deutsch" with LanguageUnsupported - after the models
- * are already loaded, so the user pays the wait before the failure.
- *
- * The codes are whisperx's own alignment-model table (DEFAULT_ALIGN_MODELS_HF
- * plus DEFAULT_ALIGN_MODELS_TORCH in whisperx/alignment.py), read off the
- * installed package rather than guessed. German first, English second, the
- * rest by German name.
- */
-export const SPRACHEN: ReadonlyArray<{ code: string; name: string }> = [
-  { code: "de", name: "Deutsch" },
-  { code: "en", name: "Englisch" },
-  { code: "ar", name: "Arabisch" },
-  { code: "eu", name: "Baskisch" },
-  { code: "zh", name: "Chinesisch" },
-  { code: "da", name: "Dänisch" },
-  { code: "fi", name: "Finnisch" },
-  { code: "fr", name: "Französisch" },
-  { code: "gl", name: "Galicisch" },
-  { code: "ka", name: "Georgisch" },
-  { code: "el", name: "Griechisch" },
-  { code: "he", name: "Hebräisch" },
-  { code: "hi", name: "Hindi" },
-  { code: "id", name: "Indonesisch" },
-  { code: "it", name: "Italienisch" },
-  { code: "ja", name: "Japanisch" },
-  { code: "ca", name: "Katalanisch" },
-  { code: "ko", name: "Koreanisch" },
-  { code: "hr", name: "Kroatisch" },
-  { code: "lv", name: "Lettisch" },
-  { code: "ml", name: "Malayalam" },
-  { code: "nl", name: "Niederländisch" },
-  { code: "no", name: "Norwegisch" },
-  { code: "nn", name: "Norwegisch (Nynorsk)" },
-  { code: "fa", name: "Persisch" },
-  { code: "pl", name: "Polnisch" },
-  { code: "pt", name: "Portugiesisch" },
-  { code: "ro", name: "Rumänisch" },
-  { code: "ru", name: "Russisch" },
-  { code: "sv", name: "Schwedisch" },
-  { code: "sk", name: "Slowakisch" },
-  { code: "sl", name: "Slowenisch" },
-  { code: "es", name: "Spanisch" },
-  { code: "tl", name: "Tagalog" },
-  { code: "te", name: "Telugu" },
-  { code: "cs", name: "Tschechisch" },
-  { code: "tr", name: "Türkisch" },
-  { code: "uk", name: "Ukrainisch" },
-  { code: "hu", name: "Ungarisch" },
-  { code: "ur", name: "Urdu" },
-  { code: "vi", name: "Vietnamesisch" },
-];
-
-/** For display only - the code is what the job carries. */
-export const spracheName = (code: string): string =>
-  SPRACHEN.find((s) => s.code === code)?.name ?? code;
+// Re-exported so the step components have one import for the wizard's rules.
+// The table itself lives in core: the same list feeds the #LANGUAGE tag in
+// writeSongTxt, and the renderer must not own what the core writes.
+export { SPRACHEN, spracheName } from "../../../core/create/languages.ts";
 
 export type Entwurf = {
   /** Created in step 1 already: step 4 keys its image cache by it. */
@@ -131,7 +78,7 @@ export const schrittFertig = (e: Entwurf, s: Schritt): Pruefung => {
     }
     // Blocked here rather than in the pipeline: there it costs the model
     // loading time first and only then says language_unsupported.
-    if (!SPRACHEN.some((s) => s.code === e.language.trim())) {
+    if (!istBekannteSprache(e.language)) {
       return { ok: false, grund: "Fuer diese Sprache fehlt das Modell." };
     }
     return { ok: true };

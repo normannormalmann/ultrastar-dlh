@@ -159,6 +159,12 @@ describe("SPRACHEN", () => {
     expect(spracheName("de")).toBe("Deutsch");
     expect(spracheName("xx")).toBe("xx");
   });
+
+  it("traegt fuer jeden Code einen englischen Namen fuer die Kopfzeile", () => {
+    // Die #LANGUAGE-Zeile will den Namen, nicht den Code - siehe
+    // writeSongTxt. Ohne tag stuende dort "de".
+    for (const s of SPRACHEN) expect(s.tag.length).toBeGreaterThan(1);
+  });
 });
 
 describe("istDuplikat", () => {

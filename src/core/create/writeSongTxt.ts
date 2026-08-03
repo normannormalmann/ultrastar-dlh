@@ -1,4 +1,5 @@
 // src/core/create/writeSongTxt.ts
+import { spracheTag } from "./languages.ts";
 import type { SongData } from "./songData.ts";
 
 export type TxtHeaderInput = {
@@ -26,8 +27,10 @@ export const renderSongTxt = (data: SongData, headers: TxtHeaderInput): string =
     `#MP3:${headers.mp3}`,
   ];
 
+  // Der Job traegt den ISO-Code, weil die Pipeline ihn braucht; die
+  // Kopfzeile will den Namen, wie ihn die Songdatenbank schreibt.
   const sprache = headers.language ?? data.language;
-  if (sprache) zeilen.push(`#LANGUAGE:${sprache}`);
+  if (sprache) zeilen.push(`#LANGUAGE:${spracheTag(sprache)}`);
   if (headers.genre) zeilen.push(`#GENRE:${headers.genre}`);
   if (headers.year !== undefined) zeilen.push(`#YEAR:${headers.year}`);
   if (headers.cover) zeilen.push(`#COVER:${headers.cover}`);
