@@ -530,6 +530,12 @@ import { fetchSyncedLyrics } from "./lrclib.ts";
 const antwort = (body: unknown, ok = true): Response =>
   ({ ok, json: async () => body }) as unknown as Response;
 
+// Bun's `typeof fetch` also carries `preconnect`; an attrappe only needs the
+// call signature. Same cast as in coverArtArchive.test.ts and media.test.ts.
+const fake = (
+  f: (url: string | URL | Request) => Promise<Response>,
+): typeof fetch => f as unknown as typeof fetch;
+
 const anfrage = {
   artist: "Falco",
   title: "Rock Me Amadeus",
@@ -540,8 +546,9 @@ describe("fetchSyncedLyrics", () => {
   it("liefert die synchronisierten Lyrics", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () =>
+      fetchFn: fake(async () =>
         antwort({ syncedLyrics: "[00:12.00]Er war ein Punker" }),
+      ),
     });
     expect(text).toBe("[00:12.00]Er war ein Punker");
   });
@@ -550,10 +557,10 @@ describe("fetchSyncedLyrics", () => {
     let gesehen = "";
     await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async (url) => {
+      fetchFn: fake(async (url) => {
         gesehen = String(url);
         return antwort({ syncedLyrics: "x" });
-      },
+      }),
     });
     expect(gesehen).toContain("duration=213");
     expect(gesehen).toContain("artist_name=Falco");
@@ -562,7 +569,7 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null ohne synchronisierte Lyrics", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => antwort({ plainLyrics: "ohne Zeitstempel" }),
+      fetchFn: fake(async () => antwort({ plainLyrics: "ohne Zeitstempel" })),
     });
     expect(text).toBeNull();
   });
@@ -570,7 +577,7 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null bei 404", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => antwort({}, false),
+      fetchFn: fake(async () => antwort({}, false)),
     });
     expect(text).toBeNull();
   });
@@ -578,9 +585,9 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null, wenn das Netz wegbricht", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => {
+      fetchFn: fake(async () => {
         throw new Error("ENOTFOUND");
-      },
+      }),
     });
     expect(text).toBeNull();
   });
@@ -644,20 +651,64 @@ export const fetchSyncedLyrics = async (
 };
 ```
 
-- [ ] **Step 4: Tests laufen lassen und prüfen, dass niemand die alte API nutzt**
+- [ ] **Step 4: Den einen Aufrufer der alten API umbauen**
+
+`scripts/evaluate-pipeline.ts` nutzt beide entfallenden Funktionen (Import in Zeile 13, Aufrufe in `main`). Es braucht weiterhin eine **Datei**, weil `runPipeline` einen `syncedLyricsPath` nimmt — das Cachen wandert also ins Skript. Dateiname bleibt `synced-lyrics.lrc`, damit .lrc aus früheren Korpusläufen weiter zählen.
+
+```ts
+// Import ersetzen:
+import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
+
+// Neben den Typen:
+const LRC_DATEI = "synced-lyrics.lrc";
+
+const gecachteLrc = async (songDir: string): Promise<string | null> => {
+  const pfad = join(songDir, LRC_DATEI);
+  try {
+    await access(pfad);
+    return pfad;
+  } catch {
+    return null;
+  }
+};
+
+// In main, der Cache-Block:
+let lrcPfad = await gecachteLrc(song.songDir);
+let ergebnis = await lauf(lrcPfad ?? undefined);
+process.stderr.write("\n");
+
+if (ergebnis._tag === "Right" && !lrcPfad) {
+  const lrcText = await fetchSyncedLyrics({
+    artist: song.artist,
+    title: song.title,
+    durationSec: ergebnis.right.meta.durationSec,
+  });
+  if (lrcText) {
+    lrcPfad = join(song.songDir, LRC_DATEI);
+    await writeFile(lrcPfad, lrcText, "utf8");
+  }
+  if (lrcPfad) { /* ... unveraendert: neu ausrichten ... */ }
+}
+```
+
+`access`, `writeFile` und `join` sind dort schon importiert.
+
+- [ ] **Step 5: Tests laufen lassen und prüfen, dass niemand mehr die alte API nutzt**
 
 ```bash
-bun test src/core/create/lrclib.test.ts
-grep -rn "holeSyncedLyrics\|cachedLyricsPfad" src/ python-sidecar/
+bun test src/core/create/lrclib.test.ts scripts/evaluate-pipeline.test.ts
+grep -rn "holeSyncedLyrics\|cachedLyricsPfad" src/ scripts/ python-sidecar/ e2e/
 ```
-Expected: Tests PASS; der `grep` findet **nichts** — die Funktionen hatten nie einen Aufrufer.
+Expected: Tests PASS; der `grep` findet **nichts** mehr.
 
-- [ ] **Step 5: Prüfen und committen**
+- [ ] **Step 6: Prüfen und committen**
+
+`scripts/evaluate-pipeline.ts` scheitert an `biome check` schon vor dieser Änderung (unsortierte Importe, nie formatierte Langzeilen) — **nicht** mit `--write` daraufgehen, das schreibt die ganze Datei um. Nur die beiden lrclib-Dateien prüfen.
 
 ```bash
 bunx biome check src/core/create/lrclib.ts src/core/create/lrclib.test.ts
 bunx tsc --noEmit
-git add src/core/create/lrclib.ts src/core/create/lrclib.test.ts
+git add src/core/create/lrclib.ts src/core/create/lrclib.test.ts scripts/evaluate-pipeline.ts
 git commit -m "refactor(create): lrclib returns the lyrics text instead of writing a file
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
