@@ -39,6 +39,11 @@ export type PackageOptions = {
   libraryDir: string;
   layout: FolderLayout;
   jobDir: string;
+  /**
+   * The UI's image choice. Absent means "decide automatically" (the findCover
+   * path below), NOT "no image" - that is what "keins" is for.
+   */
+  coverWahl?: { pfad: string } | "keins";
   deps?: PackageDeps;
 };
 
@@ -115,12 +120,30 @@ export const assemblePackage = (
     const rohbau = join(opts.jobDir, "paket");
 
     // The Cover Art Archive outranks the thumbnail: a real album cover is
-    // square and unlettered, a video thumbnail is neither.
-    const roh = yield* findCoverFn(opts.meta.artist, opts.meta.title);
+    // square and unlettered, a video thumbnail is neither. With an explicit
+    // choice from the UI that ranking is already settled - asking the network
+    // again would be a second, contradicting decision.
+    const wahl = opts.coverWahl;
+    const gewaehltFehlt = typeof wahl === "object" && !existsSync(wahl.pfad);
+    if (gewaehltFehlt) {
+      warnungen.push("Gewaehltes Bild nicht mehr vorhanden - Paket ohne Bild.");
+    }
+    const gewaehlterPfad =
+      typeof wahl === "object" && !gewaehltFehlt ? wahl.pfad : null;
+
+    const roh =
+      wahl === undefined
+        ? yield* findCoverFn(opts.meta.artist, opts.meta.title)
+        : null;
     // An empty body would write a 0-byte cover.jpg and still set #COVER.
     const gefunden = roh !== null && roh.length > 0 ? roh : null;
-    const hatCover = gefunden !== null || opts.medien.coverKandidat !== undefined;
-    if (!hatCover) warnungen.push("Kein Cover gefunden - Paket ohne Bild.");
+    const kandidat =
+      wahl === undefined ? (opts.medien.coverKandidat ?? null) : null;
+    const hatCover =
+      gewaehlterPfad !== null || gefunden !== null || kandidat !== null;
+    if (!hatCover && wahl === undefined) {
+      warnungen.push("Kein Cover gefunden - Paket ohne Bild.");
+    }
 
     const mediendatei = opts.medien.videoPath
       ? "video.mp4"
@@ -134,10 +157,12 @@ export const assemblePackage = (
           opts.medien.videoPath ?? opts.medien.audioPath,
           join(rohbau, mediendatei),
         );
-        if (gefunden) {
+        if (gewaehlterPfad) {
+          await copyFile(gewaehlterPfad, join(rohbau, "cover.jpg"));
+        } else if (gefunden) {
           await writeFile(join(rohbau, "cover.jpg"), gefunden);
-        } else if (opts.medien.coverKandidat) {
-          await copyFile(opts.medien.coverKandidat, join(rohbau, "cover.jpg"));
+        } else if (kandidat) {
+          await copyFile(kandidat, join(rohbau, "cover.jpg"));
         }
         const txt = renderSongTxt(opts.songData, {
           artist: opts.meta.artist,
