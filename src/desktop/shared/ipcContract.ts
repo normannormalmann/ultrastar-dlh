@@ -17,6 +17,7 @@ import type {
   EnvironmentState,
   InstallProgress,
 } from "../../core/create/environment.ts";
+import type { CreateJob } from "../../core/create/job.ts";
 
 export type {
   ArchiveImportResult,
@@ -32,6 +33,9 @@ export type {
   InstallProgress,
 };
 export type { GenreEnrichResult, GenreProviderId };
+export type { CreateJob };
+/** Wire name kept for the existing callers. */
+export type CreateJobRequest = CreateJob;
 
 export type SearchRequest = {
   artist: string;
@@ -81,20 +85,6 @@ export type BinariesProgress = {
 } | null;
 
 export type FetchAllProgress = { current: number; total: number } | null;
-
-/** One queued song creation. artist/title also drive the folder name. */
-export type CreateJobRequest = {
-  id: string;
-  quelle: { kind: "youtube"; url: string } | { kind: "datei"; pfad: string };
-  language: string;
-  artist: string;
-  title: string;
-  lyricsPath: string;
-  genre?: string;
-  year?: number;
-  bpm?: number;
-  syncedLyricsPath?: string;
-};
 
 export type CreationStatus =
   | "queued"
