@@ -8,13 +8,23 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
-import type { FailedDownload, Song } from "../../shared/ipcContract.ts";
+import type {
+  CreationEntry,
+  FailedDownload,
+  Song,
+} from "../../shared/ipcContract.ts";
+import CreationRow from "../components/CreationRow.tsx";
 import { useIpcEvent } from "../hooks.ts";
 
-export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
+export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
+  queue,
+  creations,
+}) => {
   const running = useIpcEvent("event:queueRunning", false);
   const [failed, setFailed] = useState<FailedDownload[]>([]);
   const [showFailed, setShowFailed] = useState(false);
+  const wartend = creations.filter((c) => c.status === "queued").length;
+  const laeuftErstellung = creations.some((c) => c.status === "running");
 
   const refreshFailed = useCallback((): void => {
     void window.ultrastar.failedList().then(setFailed);
@@ -149,6 +159,51 @@ export const QueueView: FC<{ queue: Song[] }> = ({ queue }) => {
                     </button>
                   </td>
                 </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{ marginTop: 32 }}>
+        <h3>Erstellungen</h3>
+        <div className="row" style={{ marginBottom: 12 }}>
+          <button
+            className="btn primary"
+            type="button"
+            disabled={wartend === 0 || laeuftErstellung}
+            onClick={() => void window.ultrastar.createStart()}
+          >
+            <Play size={14} aria-hidden />
+            {wartend} Songs erstellen
+          </button>
+          {laeuftErstellung && (
+            <button
+              className="btn"
+              type="button"
+              onClick={() => void window.ultrastar.createCancel()}
+            >
+              Laufenden Song abbrechen
+            </button>
+          )}
+          <button
+            className="btn danger"
+            type="button"
+            disabled={wartend === 0}
+            onClick={() => void window.ultrastar.createQueueClear()}
+          >
+            Wartende entfernen
+          </button>
+        </div>
+        {creations.length === 0 ? (
+          <p className="muted">
+            Noch keine Erstellungen. Der Assistent liegt unter „Erstellen".
+          </p>
+        ) : (
+          <table className="song-table">
+            <tbody>
+              {creations.map((c) => (
+                <CreationRow key={c.id} eintrag={c} />
               ))}
             </tbody>
           </table>

@@ -85,7 +85,9 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
             downloaded={downloaded}
           />
         )}
-        {view === "queue" && <QueueView queue={queue} />}
+        {view === "queue" && (
+          <QueueView queue={queue} creations={creations} />
+        )}
         {view === "downloaded" && <DownloadedView entries={downloaded} />}
         {view === "repair" && <RepairView status={status} />}
         {view === "settings" && (
