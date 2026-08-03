@@ -5,16 +5,24 @@ import {
   Mic,
   Search,
   Settings,
+  Wand2,
   Wrench,
 } from "lucide-react";
 import type { FC } from "react";
 import type { AppStatus } from "../../shared/ipcContract.ts";
 import StatusDots from "./StatusDots.tsx";
 
-export type ViewId = "search" | "queue" | "downloaded" | "repair" | "settings";
+export type ViewId =
+  | "search"
+  | "create"
+  | "queue"
+  | "downloaded"
+  | "repair"
+  | "settings";
 
 const ITEMS: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
   { id: "search", label: "Suche", icon: Search },
+  { id: "create", label: "Erstellen", icon: Wand2 },
   { id: "queue", label: "Queue", icon: ListMusic },
   { id: "downloaded", label: "Heruntergeladen", icon: Check },
   { id: "repair", label: "Reparatur", icon: Wrench },
@@ -25,8 +33,10 @@ export const Sidebar: FC<{
   active: ViewId;
   onSelect: (view: ViewId) => void;
   queueCount: number;
+  /** Waiting creations. The badge sits on the queue item - both live there. */
+  creationCount: number;
   status: AppStatus;
-}> = ({ active, onSelect, queueCount, status }) => (
+}> = ({ active, onSelect, queueCount, creationCount, status }) => (
   <nav className="sidebar">
     <div className="brand">
       <Mic size={18} aria-hidden />
@@ -44,8 +54,8 @@ export const Sidebar: FC<{
       >
         <item.icon size={16} aria-hidden />
         <span>{item.label}</span>
-        {item.id === "queue" && queueCount > 0 && (
-          <span className="badge">{queueCount}</span>
+        {item.id === "queue" && queueCount + creationCount > 0 && (
+          <span className="badge">{queueCount + creationCount}</span>
         )}
       </button>
     ))}
