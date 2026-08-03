@@ -79,7 +79,11 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
           <SearchView downloaded={downloaded} status={status} />
         )}
         {view === "create" && (
-          <CreateView entwurf={entwurf} setEntwurf={setEntwurf} />
+          <CreateView
+            entwurf={entwurf}
+            setEntwurf={setEntwurf}
+            downloaded={downloaded}
+          />
         )}
         {view === "queue" && <QueueView queue={queue} />}
         {view === "downloaded" && <DownloadedView entries={downloaded} />}

@@ -1,11 +1,21 @@
 import { Wand2 } from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
+import type {
+  DownloadedEntry,
+  EnvironmentStatus,
+} from "../../shared/ipcContract.ts";
+import StepCover from "../components/create/StepCover.tsx";
 import StepLyrics from "../components/create/StepLyrics.tsx";
+import StepReview from "../components/create/StepReview.tsx";
 import StepSong from "../components/create/StepSong.tsx";
 import StepSource from "../components/create/StepSource.tsx";
-import { type Entwurf, type Schritt, schrittFertig } from "./createDraft.ts";
+import {
+  type Entwurf,
+  leererEntwurf,
+  type Schritt,
+  schrittFertig,
+} from "./createDraft.ts";
 
 const TITEL: Record<Schritt, string> = {
   1: "Song",
@@ -24,7 +34,9 @@ const UMGEBUNG_TEXT: Record<string, string> = {
 export const CreateView: FC<{
   entwurf: Entwurf;
   setEntwurf: (e: Entwurf) => void;
-}> = ({ entwurf, setEntwurf }) => {
+  /** Only step 5 needs it, for the duplicate warning. */
+  downloaded: DownloadedEntry[];
+}> = ({ entwurf, setEntwurf, downloaded }) => {
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [env, setEnv] = useState<EnvironmentStatus | null>(null);
   const [installiert, setInstalliert] = useState(false);
@@ -85,7 +97,17 @@ export const CreateView: FC<{
       {schritt === 1 && <StepSong entwurf={entwurf} onChange={patch} />}
       {schritt === 2 && <StepSource entwurf={entwurf} onChange={patch} />}
       {schritt === 3 && <StepLyrics entwurf={entwurf} onChange={patch} />}
-      {schritt > 3 && <p className="muted">Schritt {TITEL[schritt]} folgt.</p>}
+      {schritt === 4 && <StepCover entwurf={entwurf} onChange={patch} />}
+      {schritt === 5 && (
+        <StepReview
+          entwurf={entwurf}
+          downloaded={downloaded}
+          onAbgeschickt={() => {
+            setEntwurf(leererEntwurf(crypto.randomUUID()));
+            setSchritt(1);
+          }}
+        />
+      )}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button
