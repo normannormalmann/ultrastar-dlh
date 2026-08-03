@@ -105,8 +105,12 @@ describe("resolveLyrics", () => {
   });
 
   it("lehnt einsetzen ohne Vorlage ab", () => {
+    // Nur der Verweis, sonst nichts: erst dann ist es ein alleinstehender
+    // Refrain-Verweis. Folgt eine gesungene Zeile ("[Chorus]\nStrophe"),
+    // ist die Klammerzeile eine Ueberschrift und wird schlicht entfernt --
+    // es entsteht gar keine Rueckfrage, und eine Antwort waere ein No-op.
     expect(() =>
-      resolveLyrics("[Chorus]\nStrophe", [
+      resolveLyrics("[Chorus]", [
         { kind: "chorus_reference", zeilenIndex: 0, wahl: "einsetzen" },
       ]),
     ).toThrow(/nichts einzusetzen/);
@@ -307,7 +311,8 @@ Schritt 3 braucht die Spieldauer für LRCLIB. Beim Suchtreffer kommt sie gratis 
 
 ```ts
 import { describe, expect, it } from "bun:test";
-import { dauerAusFfmpeg, dauerAusYtDlp } from "./probe.ts";
+import { Effect } from "effect";
+import { dauerAusFfmpeg, dauerAusYtDlp, dauerSekunden } from "./probe.ts";
 
 // Real tool output, not invented.
 const YTDLP = "213.0\n";
@@ -348,6 +353,17 @@ describe("dauerAusFfmpeg", () => {
 
   it("liefert null bei Duration N/A", () => {
     expect(dauerAusFfmpeg("  Duration: N/A, bitrate: N/A\n")).toBeNull();
+  });
+});
+
+describe("dauerSekunden", () => {
+  // Bails out before spawning, so this test starts no process.
+  it("weist alles ab, was keine http(s)-URL ist", async () => {
+    for (const url of ["--exec=echo pwned", "file:///etc/passwd", "keine url"]) {
+      expect(
+        await Effect.runPromise(dauerSekunden({ kind: "youtube", url })),
+      ).toBeNull();
+    }
   });
 });
 ```
@@ -428,6 +444,20 @@ const laufe = (
   });
 
 /**
+ * The URL reaches argv as a *positional* argument, so a value starting with
+ * "-" would be read as an option ("--exec=..." being the ugly case), and
+ * yt-dlp's extractors accept far more than http. Both holes close here.
+ */
+const istWebUrl = (roh: string): boolean => {
+  try {
+    const u = new URL(roh);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
  * yt-dlp and ffmpeg live on PATH: managedBinDir() is prepended by the desktop
  * main process, same as in media.ts.
  */
@@ -437,15 +467,21 @@ export const dauerSekunden = (
   Effect.catchAll(
     Effect.tryPromise(async () => {
       if (quelle.kind === "youtube") {
+        if (!istWebUrl(quelle.url)) return null;
         const { stdout } = await laufe("yt-dlp", [
           "--print",
           "duration",
           "--skip-download",
           "--no-warnings",
+          // Nothing after this is read as a flag.
+          "--",
           quelle.url,
         ]);
         return dauerAusYtDlp(stdout);
       }
+      // No "--" for ffmpeg: it has no argv terminator, and the path sits in
+      // the value position of -i, which ffmpeg consumes as a filename
+      // whatever it starts with. A "--" here would BE the filename.
       const { stderr } = await laufe("ffmpeg", ["-i", quelle.pfad]);
       return dauerAusFfmpeg(stderr);
     }),
@@ -494,6 +530,12 @@ import { fetchSyncedLyrics } from "./lrclib.ts";
 const antwort = (body: unknown, ok = true): Response =>
   ({ ok, json: async () => body }) as unknown as Response;
 
+// Bun's `typeof fetch` also carries `preconnect`; an attrappe only needs the
+// call signature. Same cast as in coverArtArchive.test.ts and media.test.ts.
+const fake = (
+  f: (url: string | URL | Request) => Promise<Response>,
+): typeof fetch => f as unknown as typeof fetch;
+
 const anfrage = {
   artist: "Falco",
   title: "Rock Me Amadeus",
@@ -504,8 +546,9 @@ describe("fetchSyncedLyrics", () => {
   it("liefert die synchronisierten Lyrics", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () =>
+      fetchFn: fake(async () =>
         antwort({ syncedLyrics: "[00:12.00]Er war ein Punker" }),
+      ),
     });
     expect(text).toBe("[00:12.00]Er war ein Punker");
   });
@@ -514,10 +557,10 @@ describe("fetchSyncedLyrics", () => {
     let gesehen = "";
     await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async (url) => {
+      fetchFn: fake(async (url) => {
         gesehen = String(url);
         return antwort({ syncedLyrics: "x" });
-      },
+      }),
     });
     expect(gesehen).toContain("duration=213");
     expect(gesehen).toContain("artist_name=Falco");
@@ -526,7 +569,7 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null ohne synchronisierte Lyrics", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => antwort({ plainLyrics: "ohne Zeitstempel" }),
+      fetchFn: fake(async () => antwort({ plainLyrics: "ohne Zeitstempel" })),
     });
     expect(text).toBeNull();
   });
@@ -534,7 +577,7 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null bei 404", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => antwort({}, false),
+      fetchFn: fake(async () => antwort({}, false)),
     });
     expect(text).toBeNull();
   });
@@ -542,9 +585,9 @@ describe("fetchSyncedLyrics", () => {
   it("liefert null, wenn das Netz wegbricht", async () => {
     const text = await fetchSyncedLyrics({
       ...anfrage,
-      fetchFn: async () => {
+      fetchFn: fake(async () => {
         throw new Error("ENOTFOUND");
-      },
+      }),
     });
     expect(text).toBeNull();
   });
@@ -608,20 +651,64 @@ export const fetchSyncedLyrics = async (
 };
 ```
 
-- [ ] **Step 4: Tests laufen lassen und prüfen, dass niemand die alte API nutzt**
+- [ ] **Step 4: Den einen Aufrufer der alten API umbauen**
+
+`scripts/evaluate-pipeline.ts` nutzt beide entfallenden Funktionen (Import in Zeile 13, Aufrufe in `main`). Es braucht weiterhin eine **Datei**, weil `runPipeline` einen `syncedLyricsPath` nimmt — das Cachen wandert also ins Skript. Dateiname bleibt `synced-lyrics.lrc`, damit .lrc aus früheren Korpusläufen weiter zählen.
+
+```ts
+// Import ersetzen:
+import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
+
+// Neben den Typen:
+const LRC_DATEI = "synced-lyrics.lrc";
+
+const gecachteLrc = async (songDir: string): Promise<string | null> => {
+  const pfad = join(songDir, LRC_DATEI);
+  try {
+    await access(pfad);
+    return pfad;
+  } catch {
+    return null;
+  }
+};
+
+// In main, der Cache-Block:
+let lrcPfad = await gecachteLrc(song.songDir);
+let ergebnis = await lauf(lrcPfad ?? undefined);
+process.stderr.write("\n");
+
+if (ergebnis._tag === "Right" && !lrcPfad) {
+  const lrcText = await fetchSyncedLyrics({
+    artist: song.artist,
+    title: song.title,
+    durationSec: ergebnis.right.meta.durationSec,
+  });
+  if (lrcText) {
+    lrcPfad = join(song.songDir, LRC_DATEI);
+    await writeFile(lrcPfad, lrcText, "utf8");
+  }
+  if (lrcPfad) { /* ... unveraendert: neu ausrichten ... */ }
+}
+```
+
+`access`, `writeFile` und `join` sind dort schon importiert.
+
+- [ ] **Step 5: Tests laufen lassen und prüfen, dass niemand mehr die alte API nutzt**
 
 ```bash
-bun test src/core/create/lrclib.test.ts
-grep -rn "holeSyncedLyrics\|cachedLyricsPfad" src/ python-sidecar/
+bun test src/core/create/lrclib.test.ts scripts/evaluate-pipeline.test.ts
+grep -rn "holeSyncedLyrics\|cachedLyricsPfad" src/ scripts/ python-sidecar/ e2e/
 ```
-Expected: Tests PASS; der `grep` findet **nichts** — die Funktionen hatten nie einen Aufrufer.
+Expected: Tests PASS; der `grep` findet **nichts** mehr.
 
-- [ ] **Step 5: Prüfen und committen**
+- [ ] **Step 6: Prüfen und committen**
+
+`scripts/evaluate-pipeline.ts` scheitert an `biome check` schon vor dieser Änderung (unsortierte Importe, nie formatierte Langzeilen) — **nicht** mit `--write` daraufgehen, das schreibt die ganze Datei um. Nur die beiden lrclib-Dateien prüfen.
 
 ```bash
 bunx biome check src/core/create/lrclib.ts src/core/create/lrclib.test.ts
 bunx tsc --noEmit
-git add src/core/create/lrclib.ts src/core/create/lrclib.test.ts
+git add src/core/create/lrclib.ts src/core/create/lrclib.test.ts scripts/evaluate-pipeline.ts
 git commit -m "refactor(create): lrclib returns the lyrics text instead of writing a file
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -872,10 +959,14 @@ it("warnt, wenn das gewaehlte Bild verschwunden ist", async () => {
       coverWahl: { pfad: join(jobDir, "gibtsnicht.jpg") },
     }),
   );
-  expect(ergebnis.warnungen.join(" ")).toContain("ohne Bild");
+  // Deliberately not just "ohne Bild": the old "Kein Cover gefunden"
+  // warning ends in those words too, so this test would pass unimplemented.
+  expect(ergebnis.warnungen.join(" ")).toContain("Gewaehltes Bild");
   expect(existsSync(join(ergebnis.songDir, "cover.jpg"))).toBe(false);
 });
 ```
+
+Der Helfer heißt in der Datei `basis(library, jobDir)` neben `aufbau()`; `existsSync` ist dort nicht importiert, `readdir` schon — beides aus der Datei übernehmen statt neu einzuführen.
 
 - [ ] **Step 2: Tests laufen lassen, Fehlschlag bestätigen**
 
@@ -1127,6 +1218,18 @@ In `start()` direkt nach `const jobDir = deps.jobDir(jobDef.id);`:
           // failed, not abandon the queue.
           const dateien = await deps.schreibeJobDateien(jobDef, jobDir);
 ```
+
+**Achtung, gemessen:** dieses zusätzliche `await` sitzt *vor*
+`laufenderAbbruch = new AbortController()`. Drei bestehende Tests
+(„Abbruch waehrend der Beschaffung", „behaelt den warmen Worker",
+„shutdown bricht eine laufende Beschaffung ab") synchronisieren über eine
+feste Zahl von `await Promise.resolve()`; mit dem neuen `await` läuft
+`cancel()` bevor der Controller existiert, und zwei der Tests **hängen**
+danach stumm (bun gibt gar nichts aus), statt zu scheitern. Die
+Tick-Zählung dort durch ein Tor ersetzen, das die `acquire`-Attrappe
+öffnet, statt die Reihenfolge im Produktionscode zu verbiegen — erst
+schreiben, dann beschaffen ist richtig, damit ein Plattenfehler vor dem
+langen Download auffällt.
 Den `submitJob`-Aufruf auf `toWorkerJob(jobDef, medien, dateien, deps.workDir(), jobDir)` umstellen. Nach `const paket = await deps.assemble(...)`:
 
 ```ts
@@ -1211,59 +1314,67 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `CreationsDeps.speichereQueue: (jobs: CreateJobRequest[]) => Promise<void>`
   - `creations.initialisiere(): Promise<void>` — lädt die Queue, setzt jeden Job auf `queued`, startet **nicht**.
   - `creations.wartendeIds(): string[]`
+  - `creations.alleEintraege(): CreationEntry[]` — das bisherige `entriesForTests()` wird umbenannt: ab jetzt liest es auch die Produktion (siehe Step 4).
+  - `InitialState.creations: CreationEntry[]` in `src/desktop/shared/ipcContract.ts`.
 
 - [ ] **Step 1: Die fehlschlagenden Tests schreiben**
+
+An `src/desktop/main/creations.test.ts` anhängen. Die Datei hat `fakeDeps()` (liefert `{ deps, events, bearbeitet }`) und `job(id)`; die neuen Deps brauchen Standardwerte in `fakeDeps()` **und** in den drei inline gebauten Dep-Objekten (`ladeQueue: async () => []`, `speichereQueue: async () => {}`) — sonst gibt es keinen `tsc`-Fehler, sondern einen Laufzeit-`TypeError`.
 
 ```ts
 it("laedt wartende Jobs beim Start und startet nichts", async () => {
   let gestartet = false;
   const c = createCreations({
-    ...basisDeps(),
-    ladeQueue: async () => [basisJob(), { ...basisJob(), id: "zwei" }],
+    ...fakeDeps().deps,
+    ladeQueue: async () => [job("a"), job("zwei")],
     newWorker: () => {
       gestartet = true;
-      return basisWorker();
+      return {
+        isAlive: () => true,
+        submitJob: async () => {},
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+      };
     },
   });
   await c.initialisiere();
-  expect(c.entriesForTests().map((e) => e.status)).toEqual([
-    "queued",
-    "queued",
-  ]);
-  expect(c.wartendeIds()).toHaveLength(2);
+  expect(c.alleEintraege().map((e) => e.status)).toEqual(["queued", "queued"]);
+  expect(c.wartendeIds()).toEqual(["a", "zwei"]);
   expect(gestartet).toBe(false);
 });
 
 it("speichert bei jeder Aenderung der Queue", async () => {
   const gespeichert: number[] = [];
   const c = createCreations({
-    ...basisDeps(),
+    ...fakeDeps().deps,
     speichereQueue: async (jobs) => {
       gespeichert.push(jobs.length);
     },
   });
-  c.queueAdd([basisJob(), { ...basisJob(), id: "zwei" }]);
+  c.queueAdd([job("a"), job("zwei")]);
   c.queueRemove("zwei");
   c.queueClear();
   await Bun.sleep(1);
   expect(gespeichert).toEqual([2, 1, 0]);
 });
+```
 
+Dazu zwei Tests, die die Absicht festnageln, statt sie nur zu beschreiben: `start()` speichert nach dem Griff in die Queue (`gespeichert` ist `[1, 0]`), und `shutdown()` speichert **nicht** (`[1]`) — das Leeren beim Beenden ist keine Nutzerentscheidung, die Datei muss den Programmschluss überleben. Und der Fehlerpfad, mit den `events` aus `fakeDeps()` statt einem eigenen `broadcast`:
+
+```ts
 it("bricht die Queue nicht ab, wenn das Speichern scheitert", async () => {
-  const fehler: string[] = [];
+  const { deps, events } = fakeDeps();
   const c = createCreations({
-    ...basisDeps(),
+    ...deps,
     speichereQueue: async () => {
       throw new Error("Platte voll");
     },
-    broadcast: (kanal, nutzlast) => {
-      if (kanal === "event:error") {
-        fehler.push((nutzlast as { message: string }).message);
-      }
-    },
   });
-  expect(c.queueAdd([basisJob()])).toBe(1);
+  expect(c.queueAdd([job("a")])).toBe(1);
   await Bun.sleep(1);
+  const fehler = events
+    .filter((e) => e.channel === "event:error")
+    .map((e) => (e.payload as { message: string }).message);
   expect(fehler.join(" ")).toContain("Platte voll");
 });
 ```
@@ -1320,7 +1431,7 @@ Im Körper von `createCreations`:
   const wartendeIds = (): string[] => queue.map((j) => j.id);
 ```
 
-`sichere()` aufrufen: in `queueAdd`, `queueRemove`, `queueClear` jeweils nach `melde()`, und in `start()` unmittelbar nach `const jobDef = queue.shift() as CreateJobRequest;` — ein begonnener Job ist aus der wartenden Queue heraus. `initialisiere` und `wartendeIds` ins Rückgabeobjekt aufnehmen.
+`sichere()` aufrufen: in `queueAdd`, `queueRemove`, `queueClear` jeweils nach `melde()`, und in `start()` unmittelbar nach `const jobDef = queue.shift() as CreateJobRequest;` — ein begonnener Job ist aus der wartenden Queue heraus. In `shutdown()` **nicht**, mit Kommentar: das Leeren beim Beenden ist keine Nutzerentscheidung. `initialisiere` und `wartendeIds` ins Rückgabeobjekt aufnehmen, `entriesForTests` zu `alleEintraege` umbenennen (18 Aufrufe in der Testdatei).
 
 - [ ] **Step 4: Verdrahten**
 
@@ -1332,20 +1443,27 @@ Im Körper von `createCreations`:
 ```
 mit `import { loadCreateQueue, saveCreateQueue } from "../../core/storage/createQueue.ts";`
 
-`src/desktop/main/index.ts`, dort wo der Zustand nach `app.whenReady()` geladen wird:
+**Eine wiederhergestellte Queue muss auch sichtbar sein.** `broadcast` in `state.ts` schickt an die offenen Fenster und hält nichts vor: das `melde()` aus `initialisiere()` fällt ins Leere, weil der Renderer erst Minuten später (in React-Zeit) `event:creations` abonniert. Es gibt keinen Nachschlag-Kanal — der Bestand löst das über `app:getInitialState`, das `queue` und `downloaded` genauso trägt. Also `InitialState` um `creations: CreationEntry[]` erweitern und im Handler `creations: creations.alleEintraege()` liefern. Task 11 liest es als Startwert (`useIpcEvent("event:creations", initial.creations)`).
+
+`src/desktop/main/index.ts`: der `app.whenReady()`-Callback wird `async` und lädt **vor** `createWindow()`, sonst rennt der Renderer mit seinem `getInitialState` gegen das Laden:
 
 ```ts
-  await creations.initialisiere();
+  await creations.initialisiere().catch((err: unknown) => {
+    broadcast("event:error", {
+      context: "erstellen",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
 ```
-`creations` wird aus `./ipc.ts` importiert — es ist dort bereits exportiert.
+`creations` und `broadcast` sind dort bereits importiert.
 
 - [ ] **Step 5: Tests, Typen, Commit**
 
 ```bash
 bun test src/desktop/main/creations.test.ts
 bunx tsc --noEmit
-bunx biome check src/desktop/main/creations.ts src/desktop/main/ipc.ts src/desktop/main/index.ts
-git add src/desktop/main/
+bunx biome check src/desktop/main/creations.ts src/desktop/main/creations.test.ts src/desktop/main/ipc.ts src/desktop/main/index.ts src/desktop/shared/ipcContract.ts
+git add src/desktop/main/creations.ts src/desktop/main/creations.test.ts src/desktop/main/ipc.ts src/desktop/main/index.ts src/desktop/shared/ipcContract.ts
 git commit -m "feat(create): the creation queue survives a restart
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -1365,11 +1483,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces:
   - `creationCoverDir(jobId: string): string` (in `environment.ts`)
   - `type CoverKandidat = { kind: "caa" | "thumbnail"; pfad: string; dataUrl: string }`
-  - `holeCoverKandidatenIn(dir: string, a: KandidatenAnfrage): Promise<CoverKandidat[]>`
-  - `holeCoverKandidaten(jobId: string, a: KandidatenAnfrage): Promise<CoverKandidat[]>`
-  - `raeumeWaisenIn(wurzel: string, bekannteIds: string[]): Promise<void>`
-  - `raeumeCoverJob(jobId: string): Promise<void>`, `raeumeCoverWaisen(bekannteIds: string[]): Promise<void>`
+  - in `coverCandidates.ts` (elektronfrei, nimmt Verzeichnisse): `holeCoverKandidatenIn(dir, a)`, `raeumeWaisenIn(wurzel, bekannteIds)`
+  - in `ipc.ts` (darf Electron fragen): `holeCoverKandidaten(jobId, a)`, `raeumeCoverJob(jobId)` (modul-lokal), `raeumeCoverWaisen(bekannteIds)`
   - `CreationsDeps.raeumeCover: (jobId: string) => Promise<void>`
+
+**Wichtig:** die jobId-Wrapper dürfen **nicht** in `coverCandidates.ts` stehen. `creationCoverDir` kommt aus `environment.ts`, das `electron` und `state.ts` importiert — der Test scheitert dann am Modulgraph („Export named 'BrowserWindow' not found"), bevor die erste Zusicherung läuft. Dieselbe Trennung wie `creations.ts` gegen `ipc.ts`.
 
 - [ ] **Step 1: `creationCoverDir` ergänzen**
 
@@ -1402,11 +1520,15 @@ import { Effect } from "effect";
 import { holeCoverKandidatenIn, raeumeWaisenIn } from "./coverCandidates.ts";
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
-const alsAntwort = (): Response =>
-  ({
-    ok: true,
-    arrayBuffer: async () => jpeg.buffer.slice(0),
-  }) as unknown as Response;
+
+// Der übliche Cast des Repos (coverArtArchive.test.ts): Buns `typeof fetch`
+// trägt zusätzlich `preconnect`, eine nackte async-Funktion ist nicht
+// zuweisbar. Derselbe Defekt wie in Task 3.
+const fakeFetch = (antwort: () => Response): typeof fetch =>
+  (async () => antwort()) as unknown as typeof fetch;
+
+const mitBytes = (): Response =>
+  new Response(jpeg as unknown as BodyInit, { status: 200 });
 
 describe("holeCoverKandidatenIn", () => {
   it("legt beide Kandidaten ab und liefert Data-URLs", async () => {
@@ -1415,7 +1537,10 @@ describe("holeCoverKandidatenIn", () => {
       artist: "Falco",
       title: "Rock Me Amadeus",
       thumbnailUrl: "https://example.invalid/t.jpg",
-      deps: { findCoverFn: () => Effect.succeed(jpeg), fetchFn: alsAntwort },
+      deps: {
+        findCoverFn: () => Effect.succeed(jpeg),
+        fetchFn: fakeFetch(mitBytes),
+      },
     });
     expect(kandidaten.map((k) => k.kind)).toEqual(["caa", "thumbnail"]);
     expect(kandidaten[0]?.dataUrl.startsWith("data:image/jpeg;base64,")).toBe(
@@ -1431,7 +1556,10 @@ describe("holeCoverKandidatenIn", () => {
       artist: "Nische",
       title: "Unbekannt",
       thumbnailUrl: "https://example.invalid/t.jpg",
-      deps: { findCoverFn: () => Effect.succeed(null), fetchFn: alsAntwort },
+      deps: {
+        findCoverFn: () => Effect.succeed(null),
+        fetchFn: fakeFetch(mitBytes),
+      },
     });
     expect(kandidaten.map((k) => k.kind)).toEqual(["thumbnail"]);
     await rm(dir, { recursive: true, force: true });
@@ -1600,15 +1728,16 @@ Aufrufen — jeweils feuernd und schluckend, denn ein hängender Windows-Handle 
     });
   };
 ```
-in `queueRemove(id)` (nach `melde()`), und in `start()` am Ende jedes Job-Durchlaufs — im Erfolgszweig nach `deps.aufraeumen(jobDir)` und im `catch` nach dem Setzen von `failed`/`cancelled`: `raeumeCoverStill(jobDef.id);`
+Aufrufen in `queueRemove(id)` (nach `sichere()`), in `queueClear()` für jede entfernte wartende Id — sonst bliebe deren Cache bis zum nächsten Programmstart liegen, anders als bei `queueRemove` —, und in `start()` **einmal** am Ende jedes Job-Durchlaufs, direkt vor dem abschließenden `melde()`: das deckt Erfolg, Fehlschlag und Abbruch in einer Zeile ab, statt drei Zweige einzeln zu bedienen.
 
-In `ipc.ts`: `raeumeCover: raeumeCoverJob,` (Import aus `./coverCandidates.ts`).
+In `ipc.ts`: `raeumeCover: raeumeCoverJob,` — die dortige modul-lokale Fassung.
 
-In `index.ts`, direkt nach `await creations.initialisiere();`:
+In `index.ts`, direkt nach `creations.initialisiere()` und **vor** `createWindow()`:
 
 ```ts
   // Orphans from a session that fetched candidates but never queued the job.
-  await raeumeCoverWaisen(creations.wartendeIds());
+  // Swallowed: a cache sweep must not keep the window from opening.
+  await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
 ```
 
 - [ ] **Step 6: Tests, Typen, Commit**
@@ -2111,7 +2240,9 @@ Ab hier ist der Assistent sichtbar — mit Schritt 1 und Platzhaltern für 2–5
 
 **Interfaces:**
 - Consumes: `Entwurf`, `leererEntwurf`, `schrittFertig` (Task 10); `environmentStatus`, `environmentInstall`.
-- Produces: `CreateView`-Props `{ entwurf: Entwurf; setEntwurf: (e: Entwurf) => void; downloaded: DownloadedEntry[] }`; `ViewId` bekommt `"create"`; `Sidebar` bekommt `creationCount: number`.
+- Produces: `CreateView`-Props `{ entwurf: Entwurf; setEntwurf: (e: Entwurf) => void }`; `ViewId` bekommt `"create"`; `Sidebar` bekommt `creationCount: number`.
+
+**Entscheidung vom 2026-08-03:** `downloaded` wird **nicht** vorab durchgereicht — die Prop entsteht erst in Task 14, wo sie benutzt wird. Ein ungenutzter Parameter ist ein Defekt, auch wenn er später gebraucht wird; dafür wird `App.tsx` zweimal angefasst.
 
 - [ ] **Step 1: `StepSong.tsx` schreiben**
 
@@ -2183,17 +2314,11 @@ export default StepSong;
 import { Wand2 } from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import type {
-  DownloadedEntry,
-  EnvironmentStatus,
-} from "../../shared/ipcContract.ts";
+import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
 import StepSong from "../components/create/StepSong.tsx";
-import {
-  type Entwurf,
-  type Schritt,
-  leererEntwurf,
-  schrittFertig,
-} from "./createDraft.ts";
+// Nicht leererEntwurf mitimportieren: CreateView benutzt es nicht, App.tsx
+// tut es. Biomes noUnusedImports schlaegt sonst zu.
+import { type Entwurf, type Schritt, schrittFertig } from "./createDraft.ts";
 
 const TITEL: Record<Schritt, string> = {
   1: "Song",
@@ -2212,8 +2337,7 @@ const UMGEBUNG_TEXT: Record<string, string> = {
 export const CreateView: FC<{
   entwurf: Entwurf;
   setEntwurf: (e: Entwurf) => void;
-  downloaded: DownloadedEntry[];
-}> = ({ entwurf, setEntwurf, downloaded }) => {
+}> = ({ entwurf, setEntwurf }) => {
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [env, setEnv] = useState<EnvironmentStatus | null>(null);
   const [installiert, setInstalliert] = useState(false);
@@ -2301,7 +2425,7 @@ export const CreateView: FC<{
 export default CreateView;
 ```
 
-`downloaded` wird erst in Task 14 gebraucht; es wird jetzt schon durchgereicht, damit `App.tsx` nur einmal angefasst wird. Biome könnte den ungenutzten Parameter anmerken — dann in Task 14 auflösen, nicht durch `_downloaded` verstecken.
+Die Platzhalterzeile „Schritt … folgt." ist ein **bewusster Zwischenstand**: nach dieser Task lässt sich die App starten und der Weg begehen. Tasks 12–14 ersetzen sie Schritt für Schritt; nach Task 14 ist keine Platzhalterzeile mehr übrig.
 
 - [ ] **Step 3: Sidebar und App verdrahten**
 
@@ -2315,7 +2439,7 @@ Props um `creationCount: number` erweitern und die Badge-Zeile auf `queueCount +
 `App.tsx` im `Shell`:
 
 ```tsx
-  const creations = useIpcEvent("event:creations", []);
+  const creations = useIpcEvent("event:creations", initial.creations);
   const [entwurf, setEntwurf] = useState<Entwurf>(() =>
     leererEntwurf(crypto.randomUUID()),
   );
@@ -2327,11 +2451,7 @@ Sidebar-Aufruf um
 ergänzen und die View einhängen:
 ```tsx
         {view === "create" && (
-          <CreateView
-            entwurf={entwurf}
-            setEntwurf={setEntwurf}
-            downloaded={downloaded}
-          />
+          <CreateView entwurf={entwurf} setEntwurf={setEntwurf} />
         )}
 ```
 
@@ -2376,6 +2496,15 @@ const mmss = (sek: number): string => {
   const s = Math.round(sek % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 };
+
+/**
+ * yt-dlp lists thumbnails smallest first, so the last one is the useful size
+ * for step 4's cover candidate. Not displayed here: the renderer's CSP is
+ * `img-src 'self' data:`, so a remote URL would only draw a broken image. The
+ * main process fetches it and hands back a data URL.
+ */
+const besterThumbnail = (v: YoutubeVideo): string | null =>
+  v.thumbnails.at(-1)?.url ?? null;
 
 /**
  * Step 2. The search hit is the normal way - it brings the duration along,
@@ -2490,15 +2619,6 @@ export const StepSource: FC<{
           <tbody>
             {treffer.map((v) => (
               <tr key={v.id}>
-                <td style={{ width: 120 }}>
-                  {v.thumbnails[0]?.url && (
-                    <img
-                      src={v.thumbnails[0].url}
-                      alt=""
-                      style={{ width: 110, borderRadius: 4 }}
-                    />
-                  )}
-                </td>
                 <td>
                   {v.title}
                   <br />
@@ -2514,7 +2634,7 @@ export const StepSource: FC<{
                       onChange({
                         quelle: { kind: "youtube", url: v.url },
                         durationSec: v.duration,
-                        thumbnailUrl: v.thumbnails[0]?.url ?? null,
+                        thumbnailUrl: besterThumbnail(v),
                       })
                     }
                   >
@@ -2831,10 +2951,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Create: `src/desktop/renderer/components/create/StepCover.tsx`
 - Create: `src/desktop/renderer/components/create/StepReview.tsx`
 - Modify: `src/desktop/renderer/views/CreateView.tsx`
+- Modify: `src/desktop/renderer/App.tsx`
 
 **Interfaces:**
 - Consumes: `createCoverCandidates`, `createChooseFile` (Task 9); `istDuplikat`, `zuJob`, `leererEntwurf` (Task 10); `createQueueAdd`.
-- Produces: `StepCover`-Props `{ entwurf, onChange }`; `StepReview`-Props `{ entwurf, downloaded, onAbgeschickt: () => void }`.
+- Produces: `StepCover`-Props `{ entwurf, onChange }`; `StepReview`-Props `{ entwurf, downloaded, onAbgeschickt: () => void }`; `CreateView` bekommt jetzt `downloaded: DownloadedEntry[]` dazu.
+
+**Hier** entsteht die `downloaded`-Prop (Entscheidung vom 2026-08-03, siehe Task 11): `CreateView` bekommt sie in dieser Task, weil `StepReview` sie für die Duplikat-Warnung braucht — und `App.tsx` gibt sie durch. Vorher gab es sie nicht.
 
 - [ ] **Step 1: `StepCover.tsx` schreiben**
 
@@ -3051,9 +3174,31 @@ export const StepReview: FC<{
 export default StepReview;
 ```
 
-- [ ] **Step 3: In `CreateView` einhängen und den Entwurf zurücksetzen**
+- [ ] **Step 3: `downloaded` einführen, Schritte einhängen, Entwurf zurücksetzen**
 
-Die Platzhalter-Zeile vollständig ersetzen:
+Zuerst die Prop anlegen — `CreateView` bekommt sie jetzt zum ersten Mal:
+
+```tsx
+import type { DownloadedEntry } from "../../shared/ipcContract.ts";
+
+export const CreateView: FC<{
+  entwurf: Entwurf;
+  setEntwurf: (e: Entwurf) => void;
+  downloaded: DownloadedEntry[];
+}> = ({ entwurf, setEntwurf, downloaded }) => {
+```
+und in `App.tsx` durchgeben:
+```tsx
+        {view === "create" && (
+          <CreateView
+            entwurf={entwurf}
+            setEntwurf={setEntwurf}
+            downloaded={downloaded}
+          />
+        )}
+```
+
+Dann die Platzhalter-Zeile vollständig ersetzen — nach dieser Task bleibt keine übrig:
 
 ```tsx
       {schritt === 4 && <StepCover entwurf={entwurf} onChange={patch} />}

@@ -10,9 +10,25 @@ import { Effect } from "effect";
 import { compareToReference, type Metrics, parseReferenceTxt } from "../src/core/create/evaluate.ts";
 import { runPipeline } from "../src/core/create/pipeline.ts";
 import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
-import { cachedLyricsPfad, holeSyncedLyrics } from "../src/core/create/lrclib.ts";
+import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
 
 type Eintrag = { artist: string; title: string; songDir: string };
+
+// lrclib.ts liefert nur noch Text -- die Erstellen-UI hat zur Abfragezeit
+// kein Songverzeichnis. Hier gibt es eines, und die Pipeline will einen
+// Pfad, also cached dieses Skript selbst. Gleicher Dateiname wie vorher,
+// damit .lrc aus frueheren Korpuslaeufen weiter zaehlen.
+const LRC_DATEI = "synced-lyrics.lrc";
+
+const gecachteLrc = async (songDir: string): Promise<string | null> => {
+  const pfad = join(songDir, LRC_DATEI);
+  try {
+    await access(pfad);
+    return pfad;
+  } catch {
+    return null;
+  }
+};
 
 // Rueckfall, falls der #MP3-Header fehlt.
 const AUDIO_KANDIDATEN = ["song.ogg", "song.mp3", "video.mp4", "audio.ogg", "audio.mp3"];
@@ -121,19 +137,22 @@ const main = async (): Promise<void> => {
 
     // Cache zuerst: bei wiederholten Bewertungslaeufen liegt die .lrc
     // schon im Songverzeichnis und es braucht nur einen Pipeline-Lauf.
-    let lrcPfad = await cachedLyricsPfad(song.songDir);
+    let lrcPfad = await gecachteLrc(song.songDir);
     let ergebnis = await lauf(lrcPfad ?? undefined);
     process.stderr.write("\n");
 
     if (ergebnis._tag === "Right" && !lrcPfad) {
       // Die Dauer ist erst jetzt bekannt -- holen und bei Treffer neu
       // ausrichten (nur align rechnet neu, der Rest kommt aus dem Cache).
-      lrcPfad = await holeSyncedLyrics({
+      const lrcText = await fetchSyncedLyrics({
         artist: song.artist,
         title: song.title,
         durationSec: ergebnis.right.meta.durationSec,
-        songDir: song.songDir,
       });
+      if (lrcText) {
+        lrcPfad = join(song.songDir, LRC_DATEI);
+        await writeFile(lrcPfad, lrcText, "utf8");
+      }
       if (lrcPfad) {
         ergebnis = await lauf(lrcPfad);
         process.stderr.write("\n");

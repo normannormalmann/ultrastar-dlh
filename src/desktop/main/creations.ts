@@ -37,29 +37,50 @@ export type CreationsDeps = {
     onProgress: (anteil: number) => void,
     signal: AbortSignal,
   ) => Promise<AcquiredMedia>;
+  /**
+   * Writes the job's text payload into the scratch dir. The job carries text
+   * because the renderer has text and the persisted queue must survive a
+   * restart; the worker wants paths.
+   */
+  schreibeJobDateien: (
+    job: CreateJobRequest,
+    jobDir: string,
+  ) => Promise<{ lyricsPath: string; syncedLyricsPath?: string }>;
   /** Only after success - a failed job keeps its scratch dir for diagnosis. */
   aufraeumen: (jobDir: string) => Promise<void>;
+  /** Called once a job can no longer need its image candidates. */
+  raeumeCover: (jobId: string) => Promise<void>;
   assemble: (
     job: CreateJobRequest,
     medien: AcquiredMedia,
     jobDir: string,
-  ) => Promise<{ songDir: string; dirName: string; warnungen: string[] }>;
+  ) => Promise<{
+    songDir: string;
+    dirName: string;
+    warnungen: string[];
+    lowConfidence: boolean;
+  }>;
+  /** The waiting jobs of the previous run - see initialisiere(). */
+  ladeQueue: () => Promise<CreateJobRequest[]>;
+  /** Failure is reported, never fatal: a full disk must not stop the queue. */
+  speichereQueue: (jobs: CreateJobRequest[]) => Promise<void>;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
 const toWorkerJob = (
   job: CreateJobRequest,
   medien: AcquiredMedia,
+  dateien: { lyricsPath: string; syncedLyricsPath?: string },
   workDir: string,
   jobDir: string,
 ): WorkerJob => ({
   id: job.id,
   audioPath: medien.audioPath,
-  lyricsPath: job.lyricsPath,
+  lyricsPath: dateien.lyricsPath,
   language: job.language,
   outPath: join(jobDir, "song_data.json"),
   bpm: job.bpm,
-  syncedLyricsPath: job.syncedLyricsPath,
+  syncedLyricsPath: dateien.syncedLyricsPath,
   workDir,
 });
 
@@ -92,6 +113,48 @@ export const createCreations = (deps: CreationsDeps) => {
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
 
+  /**
+   * Fire and swallow: a lingering Windows handle on the cover cache must not
+   * turn a finished song into a reported failure. What stays behind is picked
+   * up by the orphan sweep at the next app start.
+   */
+  const raeumeCoverStill = (id: string): void => {
+    void deps.raeumeCover(id).catch(() => {});
+  };
+
+  const sichere = (): void => {
+    void deps.speichereQueue([...queue]).catch((e: unknown) => {
+      deps.broadcast("event:error", {
+        context: "erstellen",
+        message: `Queue konnte nicht gespeichert werden: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      });
+    });
+  };
+
+  /**
+   * Loads the persisted queue. A stored job never ran to completion, so it
+   * comes back as "queued" - and nothing is started here: a program launch
+   * must not seize the GPU unasked.
+   */
+  const initialisiere = async (): Promise<void> => {
+    const jobs = await deps.ladeQueue();
+    for (const j of jobs) {
+      if (eintraege.has(j.id)) continue;
+      queue.push(j);
+      eintraege.set(j.id, {
+        id: j.id,
+        artist: j.artist,
+        title: j.title,
+        status: "queued",
+      });
+    }
+    melde();
+  };
+
+  const wartendeIds = (): string[] => queue.map((j) => j.id);
+
   const queueAdd = (jobs: CreateJobRequest[]): number => {
     for (const j of jobs) {
       if (eintraege.has(j.id)) continue;
@@ -104,6 +167,7 @@ export const createCreations = (deps: CreationsDeps) => {
       });
     }
     melde();
+    sichere();
     return queue.length;
   };
 
@@ -112,12 +176,21 @@ export const createCreations = (deps: CreationsDeps) => {
     queue = queue.filter((j) => j.id !== id);
     if (eintraege.get(id)?.status === "queued") eintraege.delete(id);
     melde();
+    sichere();
+    raeumeCoverStill(id);
   };
 
   const queueClear = (): void => {
     queue = [];
-    for (const [id, e] of eintraege) if (e.status === "queued") eintraege.delete(id);
+    const entfernt: string[] = [];
+    for (const [id, e] of eintraege) {
+      if (e.status !== "queued") continue;
+      eintraege.delete(id);
+      entfernt.push(id);
+    }
     melde();
+    sichere();
+    for (const id of entfernt) raeumeCoverStill(id);
   };
 
   const start = async (): Promise<void> => {
@@ -151,6 +224,9 @@ export const createCreations = (deps: CreationsDeps) => {
       crashStreak = 0;
       while (queue.length > 0) {
         const jobDef = queue.shift() as CreateJobRequest;
+        // Only waiting jobs are persisted, and this one has begun: a crash
+        // must not resurrect a job whose scratch dir is half written.
+        sichere();
         const eintrag = eintraege.get(jobDef.id);
         if (!eintrag) continue;
         eintrag.status = "running";
@@ -164,6 +240,9 @@ export const createCreations = (deps: CreationsDeps) => {
           // Inside the try: jobDir() validates the id and can throw, which
           // outside would abandon the entry on "running" and drop the queue.
           const jobDir = deps.jobDir(jobDef.id);
+          // Inside the try on purpose: a failed write must mark the job
+          // failed, not abandon the queue.
+          const dateien = await deps.schreibeJobDateien(jobDef, jobDir);
           eintrag.stage = "beschaffen";
           melde();
           laufenderAbbruch = new AbortController();
@@ -178,7 +257,7 @@ export const createCreations = (deps: CreationsDeps) => {
           );
           workerHatAuftrag = true;
           await aktiv.submitJob(
-            toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
+            toWorkerJob(jobDef, medien, dateien, deps.workDir(), jobDir),
             (stage, percent) => {
               eintrag.stage = stage;
               eintrag.progress = 0.25 + percent * 0.65;
@@ -196,6 +275,9 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             deps.broadcast("event:error", { context: "warnung", message: w });
           }
+          eintrag.songDir = paket.songDir;
+          eintrag.dirName = paket.dirName;
+          eintrag.lowConfidence = paket.lowConfidence;
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
@@ -240,6 +322,9 @@ export const createCreations = (deps: CreationsDeps) => {
             }
           }
         }
+        // One place for success, failure and cancel alike: whichever way the
+        // job left the worker, its image candidates are spent.
+        raeumeCoverStill(jobDef.id);
         melde();
       }
     } finally {
@@ -259,6 +344,8 @@ export const createCreations = (deps: CreationsDeps) => {
 
   /** App exit: no orphaned python process holding warm VRAM. */
   const shutdown = async (): Promise<void> => {
+    // No sichere() here on purpose: emptying the in-memory queue is how this
+    // process stops, not a user decision - the file has to survive the exit.
     queue = [];
     // Closing the app mid-download must not orphan yt-dlp - the same reason
     // cancel() carries an AbortController.
@@ -272,12 +359,15 @@ export const createCreations = (deps: CreationsDeps) => {
   };
 
   return {
+    initialisiere,
     queueAdd,
     queueRemove,
     queueClear,
     start,
     cancel,
     shutdown,
-    entriesForTests: (): CreationEntry[] => [...eintraege.values()],
+    wartendeIds,
+    /** A snapshot, for the initial state the renderer asks for at mount. */
+    alleEintraege: (): CreationEntry[] => [...eintraege.values()],
   };
 };

@@ -1,0 +1,146 @@
+// src/desktop/renderer/views/createDraft.test.ts
+import { describe, expect, it } from "bun:test";
+import type { DownloadedEntry } from "../../shared/ipcContract.ts";
+import {
+  type Entwurf,
+  istDuplikat,
+  leererEntwurf,
+  schrittFertig,
+  zuJob,
+} from "./createDraft.ts";
+
+const voll = (): Entwurf => ({
+  ...leererEntwurf("abc-123"),
+  artist: "Falco",
+  title: "Rock Me Amadeus",
+  language: "Deutsch",
+  quelle: { kind: "youtube", url: "https://youtu.be/x" },
+  durationSec: 213,
+  rohtext: "Er war ein Punker\nUnd er lebte in der grossen Stadt",
+  coverWahl: "keins",
+});
+
+describe("schrittFertig", () => {
+  it("verlangt Interpret und Titel in Schritt 1", () => {
+    const e = leererEntwurf("abc-123");
+    expect(schrittFertig(e, 1)).toEqual({
+      ok: false,
+      grund: "Interpret und Titel fehlen.",
+    });
+    expect(schrittFertig({ ...e, artist: "Falco" }, 1)).toEqual({
+      ok: false,
+      grund: "Titel fehlt.",
+    });
+    expect(schrittFertig({ ...e, title: "Der Kommissar" }, 1)).toEqual({
+      ok: false,
+      grund: "Interpret fehlt.",
+    });
+    expect(schrittFertig(voll(), 1)).toEqual({ ok: true });
+  });
+
+  it("verlangt eine Quelle in Schritt 2", () => {
+    expect(schrittFertig({ ...voll(), quelle: null }, 2)).toEqual({
+      ok: false,
+      grund: "Keine Quelle gewaehlt.",
+    });
+    expect(schrittFertig(voll(), 2)).toEqual({ ok: true });
+  });
+
+  it("sperrt Schritt 3 bei leerem Text", () => {
+    expect(schrittFertig({ ...voll(), rohtext: "   " }, 3)).toEqual({
+      ok: false,
+      grund: "Kein Liedtext eingefuegt.",
+    });
+  });
+
+  it("sperrt Schritt 3, solange eine Frage offen ist", () => {
+    const e = { ...voll(), rohtext: "Zeile A\nZeile B 2x" };
+    expect(schrittFertig(e, 3)).toEqual({
+      ok: false,
+      grund: "Noch 1 offene Rueckfrage zum Text.",
+    });
+    expect(
+      schrittFertig(
+        {
+          ...e,
+          antworten: [{ kind: "repeat_scope", zeilenIndex: 1, wahl: "zeile" }],
+        },
+        3,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("zaehlt mehrere offene Fragen in der Mehrzahl", () => {
+    const e = { ...voll(), rohtext: "Zeile A 2x\nZeile B\nZeile C 2x" };
+    expect(schrittFertig(e, 3)).toEqual({
+      ok: false,
+      grund: "Noch 2 offene Rueckfragen zum Text.",
+    });
+  });
+
+  it("sperrt Schritt 3, wenn nach dem Aufbereiten keine Zeile bleibt", () => {
+    // Nur eine Kopfzeile: die wird verworfen, uebrig bleibt nichts.
+    expect(schrittFertig({ ...voll(), rohtext: "[Strophe]" }, 3)).toEqual({
+      ok: false,
+      grund: "Nach dem Aufbereiten bleibt keine Zeile uebrig.",
+    });
+  });
+
+  it("verlangt eine Bildentscheidung in Schritt 4", () => {
+    expect(schrittFertig({ ...voll(), coverWahl: null }, 4)).toEqual({
+      ok: false,
+      grund: "Noch keine Bildentscheidung.",
+    });
+    expect(schrittFertig(voll(), 4)).toEqual({ ok: true });
+  });
+});
+
+describe("zuJob", () => {
+  it("baut einen Job mit aufgeloesten Zeilen", () => {
+    const job = zuJob({
+      ...voll(),
+      rohtext: "Zeile A\nZeile B 2x",
+      antworten: [{ kind: "repeat_scope", zeilenIndex: 1, wahl: "block" }],
+      syncedText: "[00:01.00]Zeile A",
+      coverWahl: { pfad: "C:/tmp/caa.jpg" },
+      genre: "Pop",
+      year: "1985",
+      bpm: "",
+    });
+    expect(job.id).toBe("abc-123");
+    expect(job.lyricsText).toBe("Zeile A\nZeile B\nZeile A\nZeile B");
+    expect(job.syncedLyricsText).toBe("[00:01.00]Zeile A");
+    expect(job.coverWahl).toEqual({ pfad: "C:/tmp/caa.jpg" });
+    expect(job.genre).toBe("Pop");
+    expect(job.year).toBe(1985);
+    expect(job.bpm).toBeUndefined();
+  });
+
+  it("schickt die Thumbnail-URL nicht in den Job", () => {
+    const job = zuJob({
+      ...voll(),
+      thumbnailUrl: "https://example.invalid/t.jpg",
+    });
+    expect(JSON.stringify(job)).not.toContain("example.invalid");
+  });
+
+  it("wirft bei unfertigem Entwurf", () => {
+    expect(() => zuJob({ ...voll(), quelle: null })).toThrow(/Quelle/);
+  });
+});
+
+describe("istDuplikat", () => {
+  const bibliothek = [
+    { artist: "Falco", title: "Rock me Amadeus" },
+  ] as DownloadedEntry[];
+
+  it("erkennt den Song unabhaengig von Gross- und Kleinschreibung", () => {
+    expect(istDuplikat(voll(), bibliothek)).toBe(true);
+  });
+
+  it("meldet nichts bei anderem Titel", () => {
+    expect(istDuplikat({ ...voll(), title: "Der Kommissar" }, bibliothek)).toBe(
+      false,
+    );
+  });
+});

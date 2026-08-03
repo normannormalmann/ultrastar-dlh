@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import { app, dialog, type IpcMain, shell } from "electron";
 import { searchSongs } from "../../core/api/usdb/search.ts";
+import { searchYoutubeVideos } from "../../core/api/youtube/search.ts";
+import { dauerSekunden } from "../../core/create/probe.ts";
+import { fetchSyncedLyrics } from "../../core/create/lrclib.ts";
 import type { AppConfig } from "../../core/storage/config.ts";
 import type {
   BulkQueueRequest,
@@ -17,11 +20,16 @@ import { musicbrainzProvider } from "../../core/api/genres/musicbrainz.ts";
 import type { GenreProvider } from "../../core/api/genres/provider.ts";
 import type { GenreProviderId } from "../../core/api/genres/provider.ts";
 import { loadFailedDownloads } from "../../core/storage/failedDownloads.ts";
+import {
+  loadCreateQueue,
+  saveCreateQueue,
+} from "../../core/storage/createQueue.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
-import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   cancelEnvironmentInstall,
+  creationCoverDir,
   creationJobDir,
   creationWorkDir,
   environmentStatusForApp,
@@ -33,7 +41,19 @@ import { acquireMedia } from "../../core/create/media.ts";
 import { assemblePackage } from "../../core/create/packageSong.ts";
 import { parseSongData } from "../../core/create/songData.ts";
 import { createCreations } from "./creations.ts";
-import type { CreateJobRequest } from "../shared/ipcContract.ts";
+import {
+  type CoverKandidat,
+  holeCoverKandidatenIn,
+  type KandidatenAnfrage,
+  raeumeWaisenIn,
+} from "./coverCandidates.ts";
+import type {
+  CoverSuche,
+  CreateJobRequest,
+  LyricsSuche,
+  MediaQuelle,
+  YoutubeVideo,
+} from "../shared/ipcContract.ts";
 import {
   clearCoverCaches,
   getCoverDataUrl,
@@ -61,6 +81,25 @@ let genreEnrichCancel = false;
  * tsc error). Handler signature: (payload) => Promise<result>.
  */
 /**
+ * The jobId-keyed cover-cache wrappers. They live here for the same reason
+ * the creation queue does: only this module may ask electron where userData
+ * is, so coverCandidates.ts stays testable without an app mock.
+ */
+export const holeCoverKandidaten = (
+  jobId: string,
+  a: KandidatenAnfrage,
+): Promise<CoverKandidat[]> =>
+  holeCoverKandidatenIn(creationCoverDir(jobId), a);
+
+const raeumeCoverJob = (jobId: string): Promise<void> =>
+  rm(creationCoverDir(jobId), { recursive: true, force: true });
+
+/** Candidates fetched for a draft that was never queued. */
+export const raeumeCoverWaisen = (bekannteIds: string[]): Promise<void> =>
+  // creationCoverDir validates the id; its parent is the cache root.
+  raeumeWaisenIn(dirname(creationCoverDir("waise")), bekannteIds);
+
+/**
  * The wired creation queue. It lives here rather than in creations.ts so
  * that module stays electron-free (and therefore testable without mocks).
  * The managed environment is handed to the worker on purpose - otherwise
@@ -77,12 +116,25 @@ export const creations = createCreations({
     Effect.runPromise(
       acquireMedia({ quelle: job.quelle, jobDir, onProgress, signal }),
     ),
+  schreibeJobDateien: async (job, jobDir) => {
+    await mkdir(jobDir, { recursive: true });
+    const lyricsPath = join(jobDir, "lyrics.txt");
+    await writeFile(lyricsPath, `${job.lyricsText.trimEnd()}\n`, "utf8");
+    if (job.syncedLyricsText === undefined) return { lyricsPath };
+    const syncedLyricsPath = join(jobDir, "synced.lrc");
+    await writeFile(syncedLyricsPath, job.syncedLyricsText, "utf8");
+    return { lyricsPath, syncedLyricsPath };
+  },
   aufraeumen: (jobDir) => rm(jobDir, { recursive: true, force: true }),
+  raeumeCover: raeumeCoverJob,
+  ladeQueue: () => Effect.runPromise(loadCreateQueue),
+  speichereQueue: (jobs) => Effect.runPromise(saveCreateQueue(jobs)),
   assemble: async (job, medien, jobDir) => {
     const roh = await readFile(join(jobDir, "song_data.json"), "utf8");
-    return Effect.runPromise(
+    const songData = parseSongData(JSON.parse(roh));
+    const paket = await Effect.runPromise(
       assemblePackage({
-        songData: parseSongData(JSON.parse(roh)),
+        songData,
         medien,
         meta: {
           artist: job.artist,
@@ -93,8 +145,10 @@ export const creations = createCreations({
         libraryDir: state.downloadDir,
         layout: state.folderLayout,
         jobDir,
+        coverWahl: job.coverWahl,
       }),
     );
+    return { ...paket, lowConfidence: songData.meta.lowConfidence };
   },
   broadcast,
 });
@@ -107,6 +161,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       status: state.status,
       queue: state.queue,
       downloaded: state.downloaded,
+      creations: creations.alleEintraege(),
       version: app.getVersion(),
     }),
 
@@ -309,6 +364,39 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     },
     "create:cancel": async () => {
       creations.cancel();
+    },
+    "create:youtubeSearch": async (query: string) =>
+      Effect.runPromise(
+        Effect.catchAll(searchYoutubeVideos(query), () =>
+          Effect.succeed([] as YoutubeVideo[]),
+        ),
+      ),
+    "create:sourceInfo": async (quelle: MediaQuelle) => {
+      const dauer = await Effect.runPromise(dauerSekunden(quelle));
+      return dauer === null ? null : { durationSec: dauer };
+    },
+    "create:lyricsSearch": async (a: LyricsSuche) => fetchSyncedLyrics(a),
+    "create:coverCandidates": async (a: CoverSuche) =>
+      holeCoverKandidaten(a.jobId, {
+        artist: a.artist,
+        title: a.title,
+        thumbnailUrl: a.thumbnailUrl,
+      }),
+    "create:chooseFile": async (art: "audio" | "bild") => {
+      const filters =
+        art === "audio"
+          ? [
+              {
+                name: "Audio",
+                extensions: ["mp3", "m4a", "wav", "flac", "ogg", "opus"],
+              },
+            ]
+          : [{ name: "Bilder", extensions: ["jpg", "jpeg", "png", "webp"] }];
+      const ergebnis = await dialog.showOpenDialog({
+        properties: ["openFile"],
+        filters,
+      });
+      return ergebnis.canceled ? null : (ergebnis.filePaths[0] ?? null);
     },
     "covers:get": async (apiId: number) => getCoverDataUrl(apiId),
     "covers:getLocal": async (songDir: string) => getLocalCoverDataUrl(songDir),

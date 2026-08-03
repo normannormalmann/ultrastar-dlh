@@ -1,6 +1,6 @@
 // src/core/create/lyrics.test.ts
 import { describe, expect, it } from "bun:test";
-import { normalizeLyrics } from "./lyrics.ts";
+import { normalizeLyrics, resolveLyrics } from "./lyrics.ts";
 
 describe("normalizeLyrics", () => {
   it("entfernt lrc-Zeitstempel", () => {
@@ -55,5 +55,66 @@ describe("normalizeLyrics", () => {
     const r = normalizeLyrics("Eine Zeile\nZwei Zeile\n\nDrei Zeile");
     expect(r.lines).toEqual(["Eine Zeile", "Zwei Zeile", "Drei Zeile"]);
     expect(r.offeneFragen).toEqual([]);
+  });
+});
+
+describe("resolveLyrics", () => {
+  it("doppelt nur die Zeile", () => {
+    expect(
+      resolveLyrics("Zeile A\nZeile B 2x", [
+        { kind: "repeat_scope", zeilenIndex: 1, wahl: "zeile" },
+      ]),
+    ).toEqual(["Zeile A", "Zeile B", "Zeile B"]);
+  });
+
+  it("doppelt den ganzen Block", () => {
+    expect(
+      resolveLyrics("Zeile A\nZeile B (2x)", [
+        { kind: "repeat_scope", zeilenIndex: 1, wahl: "block" },
+      ]),
+    ).toEqual(["Zeile A", "Zeile B", "Zeile A", "Zeile B"]);
+  });
+
+  it("setzt den Refrain ein", () => {
+    const raw = "Ref 1\nRef 2\n\nStrophe\n\n[Chorus]";
+    expect(
+      resolveLyrics(raw, [
+        { kind: "chorus_reference", zeilenIndex: 5, wahl: "einsetzen" },
+      ]),
+    ).toEqual(["Ref 1", "Ref 2", "Strophe", "Ref 1", "Ref 2"]);
+  });
+
+  it("verwirft den Verweis auf Wunsch", () => {
+    const raw = "Ref 1\nRef 2\n\nStrophe\n\n[Chorus]";
+    expect(
+      resolveLyrics(raw, [
+        { kind: "chorus_reference", zeilenIndex: 5, wahl: "verwerfen" },
+      ]),
+    ).toEqual(["Ref 1", "Ref 2", "Strophe"]);
+  });
+
+  it("lehnt einsetzen ohne Vorlage ab", () => {
+    expect(() =>
+      resolveLyrics("[Chorus]", [
+        { kind: "chorus_reference", zeilenIndex: 0, wahl: "einsetzen" },
+      ]),
+    ).toThrow(/nichts einzusetzen/);
+  });
+
+  it("lehnt eine unbeantwortete Frage ab", () => {
+    expect(() => resolveLyrics("Zeile A\nZeile B 2x", [])).toThrow(
+      /Unbeantwortete/,
+    );
+  });
+
+  it("beantwortet mehrere Fragen in einem Text", () => {
+    const raw = "A\nB 2x\n\nC\n\n[Chorus]";
+    expect(normalizeLyrics(raw).offeneFragen).toHaveLength(2);
+    expect(
+      resolveLyrics(raw, [
+        { kind: "repeat_scope", zeilenIndex: 1, wahl: "zeile" },
+        { kind: "chorus_reference", zeilenIndex: 5, wahl: "einsetzen" },
+      ]),
+    ).toEqual(["A", "B", "B", "C", "A", "B", "B"]);
   });
 });

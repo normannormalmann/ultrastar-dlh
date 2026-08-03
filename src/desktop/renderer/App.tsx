@@ -4,6 +4,8 @@ import type { AppError, InitialState } from "../shared/ipcContract.ts";
 import DownloadBar from "./components/DownloadBar.tsx";
 import Sidebar, { type ViewId } from "./components/Sidebar.tsx";
 import { useIpcEvent } from "./hooks.ts";
+import CreateView from "./views/CreateView.tsx";
+import { type Entwurf, leererEntwurf } from "./views/createDraft.ts";
 import DownloadedView from "./views/DownloadedView.tsx";
 import QueueView from "./views/QueueView.tsx";
 import RepairView from "./views/RepairView.tsx";
@@ -51,6 +53,12 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
   const queue = useIpcEvent("event:queueChanged", initial.queue);
   const downloads = useIpcEvent("event:activeDownloads", []);
   const downloaded = useIpcEvent("event:downloadedChanged", initial.downloaded);
+  // Startwert aus dem Initialzustand: eine wiederhergestellte Queue meldet
+  // sich, bevor dieser Hook zuhoert.
+  const creations = useIpcEvent("event:creations", initial.creations);
+  const [entwurf, setEntwurf] = useState<Entwurf>(() =>
+    leererEntwurf(crypto.randomUUID()),
+  );
 
   return (
     <div className="app-shell">
@@ -58,6 +66,7 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
         active={view}
         onSelect={setView}
         queueCount={queue.length}
+        creationCount={creations.filter((c) => c.status === "queued").length}
         status={status}
       />
       <main className="main-view">
@@ -69,7 +78,16 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
         {view === "search" && (
           <SearchView downloaded={downloaded} status={status} />
         )}
-        {view === "queue" && <QueueView queue={queue} />}
+        {view === "create" && (
+          <CreateView
+            entwurf={entwurf}
+            setEntwurf={setEntwurf}
+            downloaded={downloaded}
+          />
+        )}
+        {view === "queue" && (
+          <QueueView queue={queue} creations={creations} />
+        )}
         {view === "downloaded" && <DownloadedView entries={downloaded} />}
         {view === "repair" && <RepairView status={status} />}
         {view === "settings" && (

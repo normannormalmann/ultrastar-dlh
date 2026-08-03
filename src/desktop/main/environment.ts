@@ -41,6 +41,18 @@ export const creationJobDir = (jobId: string): string => {
   return join(app.getPath("userData"), "jobs", jobId);
 };
 
+/**
+ * Where step 4's image candidates live. Outside the job dir on purpose: they
+ * are fetched before the job exists. Hence the orphan sweep in
+ * coverCandidates.ts.
+ */
+export const creationCoverDir = (jobId: string): string => {
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) {
+    throw new Error(`Ungueltige Job-Id: ${jobId}`);
+  }
+  return join(app.getPath("userData"), "create-cover", jobId);
+};
+
 /** Packaged builds carry the sidecar as an extraResource; dev uses the repo. */
 export const sidecarDir = (): string =>
   app.isPackaged

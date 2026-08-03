@@ -249,6 +249,65 @@ describe("assemblePackage", () => {
     expect(txt).not.toContain("#COVER");
   });
 
+  it("fragt bei gesetzter coverWahl nicht das Cover Art Archive", async () => {
+    const { library, jobDir } = await aufbau();
+    let gefragt = false;
+    const bild = join(jobDir, "eigenes.jpg");
+    await writeFile(bild, "JPEGDATEN");
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({
+        ...basis(library, jobDir),
+        coverWahl: { pfad: bild },
+        deps: {
+          findCoverFn: () => {
+            gefragt = true;
+            return Effect.succeed(null);
+          },
+        },
+      }),
+    );
+    expect(gefragt).toBe(false);
+    expect(await readFile(join(ergebnis.songDir, "cover.jpg"), "utf8")).toBe(
+      "JPEGDATEN",
+    );
+    expect(
+      await readFile(join(ergebnis.songDir, "song.txt"), "utf8"),
+    ).toContain("#COVER:cover.jpg");
+  });
+
+  it("schreibt bei coverWahl keins kein Bild und kein #COVER", async () => {
+    const { library, jobDir } = await aufbau();
+    const daumen = join(jobDir, "thumb.jpg");
+    await writeFile(daumen, "DAUMEN");
+    const grund = basis(library, jobDir);
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({
+        ...grund,
+        // "keins" has to beat an available thumbnail too, not just the archive.
+        medien: { ...grund.medien, coverKandidat: daumen },
+        coverWahl: "keins",
+      }),
+    );
+    expect(await readdir(ergebnis.songDir)).not.toContain("cover.jpg");
+    expect(
+      await readFile(join(ergebnis.songDir, "song.txt"), "utf8"),
+    ).not.toContain("#COVER");
+  });
+
+  it("warnt, wenn das gewaehlte Bild verschwunden ist", async () => {
+    const { library, jobDir } = await aufbau();
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({
+        ...basis(library, jobDir),
+        coverWahl: { pfad: join(jobDir, "gibtsnicht.jpg") },
+      }),
+    );
+    // Deliberately not just "ohne Bild": the old "Kein Cover gefunden"
+    // warning ends in those words too, so this test would pass unimplemented.
+    expect(ergebnis.warnungen.join(" ")).toContain("Gewaehltes Bild");
+    expect(await readdir(ergebnis.songDir)).not.toContain("cover.jpg");
+  });
+
   it("legt im Datei-Eingang die Tonspur ins Paket und laesst #VIDEO weg", async () => {
     const { library, jobDir } = await aufbau();
     const eigene = join(jobDir, "eigene.mp3");

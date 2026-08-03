@@ -17,6 +17,10 @@ import type {
   EnvironmentState,
   InstallProgress,
 } from "../../core/create/environment.ts";
+import type { CreateJob } from "../../core/create/job.ts";
+import type { YoutubeVideo } from "../../core/api/youtube/search.ts";
+import type { MediaQuelle } from "../../core/create/media.ts";
+import type { CoverKandidat } from "../main/coverCandidates.ts";
 
 export type {
   ArchiveImportResult,
@@ -32,6 +36,23 @@ export type {
   InstallProgress,
 };
 export type { GenreEnrichResult, GenreProviderId };
+export type { CreateJob };
+/** Wire name kept for the existing callers. */
+export type CreateJobRequest = CreateJob;
+export type { YoutubeVideo, MediaQuelle, CoverKandidat };
+
+export type LyricsSuche = {
+  artist: string;
+  title: string;
+  durationSec: number;
+};
+
+export type CoverSuche = {
+  jobId: string;
+  artist: string;
+  title: string;
+  thumbnailUrl?: string;
+};
 
 export type SearchRequest = {
   artist: string;
@@ -70,6 +91,11 @@ export type InitialState = {
   status: AppStatus;
   queue: Song[];
   downloaded: DownloadedEntry[];
+  /**
+   * The restored creation queue. Without it a persisted job would stay
+   * invisible: event:creations fires long before the renderer subscribes.
+   */
+  creations: CreationEntry[];
   version: string;
 };
 
@@ -81,20 +107,6 @@ export type BinariesProgress = {
 } | null;
 
 export type FetchAllProgress = { current: number; total: number } | null;
-
-/** One queued song creation. artist/title also drive the folder name. */
-export type CreateJobRequest = {
-  id: string;
-  quelle: { kind: "youtube"; url: string } | { kind: "datei"; pfad: string };
-  language: string;
-  artist: string;
-  title: string;
-  lyricsPath: string;
-  genre?: string;
-  year?: number;
-  bpm?: number;
-  syncedLyricsPath?: string;
-};
 
 export type CreationStatus =
   | "queued"
@@ -113,6 +125,12 @@ export type CreationEntry = {
   stage?: string;
   progress?: number; // 0..1
   error?: string;
+  /** Finished job only: the folder in the library, for "open folder". */
+  songDir?: string;
+  /** The leaf name actually used - it can carry a "(2)" suffix. */
+  dirName?: string;
+  /** From song_data.json meta: the sync is shaky and wants the editor. */
+  lowConfidence?: boolean;
 };
 
 /** RepairResult with an IPC-friendly errors field (Map → Array). */
@@ -161,6 +179,11 @@ export const INVOKE_CHANNELS = [
   "create:queueClear",
   "create:start",
   "create:cancel",
+  "create:youtubeSearch",
+  "create:sourceInfo",
+  "create:lyricsSearch",
+  "create:coverCandidates",
+  "create:chooseFile",
   "covers:get",
   "covers:getLocal",
   "covers:clearCache",
@@ -248,6 +271,15 @@ export type UltrastarApi = {
   createStart: () => Promise<void>;
   /** Aborts the running creation; the queue continues with the next job. */
   createCancel: () => Promise<void>;
+  /** Five hits with duration and thumbnails; [] if yt-dlp is missing. */
+  createYoutubeSearch: (query: string) => Promise<YoutubeVideo[]>;
+  /** Playing time of a pasted link or a local file; null if unknown. */
+  createSourceInfo: (
+    quelle: MediaQuelle,
+  ) => Promise<{ durationSec: number } | null>;
+  createLyricsSearch: (a: LyricsSuche) => Promise<string | null>;
+  createCoverCandidates: (a: CoverSuche) => Promise<CoverKandidat[]>;
+  createChooseFile: (art: "audio" | "bild") => Promise<string | null>;
   coverGet: (apiId: number) => Promise<string | null>; // data URL or null
   coverGetLocal: (songDir: string) => Promise<string | null>;
   coversClearCache: () => Promise<{ deletedFiles: number }>;

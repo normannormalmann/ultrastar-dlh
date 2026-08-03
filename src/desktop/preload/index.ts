@@ -50,6 +50,12 @@ const api: UltrastarApi = {
   createQueueClear: () => ipcRenderer.invoke("create:queueClear"),
   createStart: () => ipcRenderer.invoke("create:start"),
   createCancel: () => ipcRenderer.invoke("create:cancel"),
+  createYoutubeSearch: (query) =>
+    ipcRenderer.invoke("create:youtubeSearch", query),
+  createSourceInfo: (quelle) => ipcRenderer.invoke("create:sourceInfo", quelle),
+  createLyricsSearch: (a) => ipcRenderer.invoke("create:lyricsSearch", a),
+  createCoverCandidates: (a) => ipcRenderer.invoke("create:coverCandidates", a),
+  createChooseFile: (art) => ipcRenderer.invoke("create:chooseFile", art),
   coverGet: (apiId) => ipcRenderer.invoke("covers:get", apiId),
   coverGetLocal: (songDir) => ipcRenderer.invoke("covers:getLocal", songDir),
   coversClearCache: () => ipcRenderer.invoke("covers:clearCache"),
