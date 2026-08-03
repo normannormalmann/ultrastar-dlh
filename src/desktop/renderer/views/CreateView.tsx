@@ -3,6 +3,7 @@ import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { EnvironmentStatus } from "../../shared/ipcContract.ts";
 import StepSong from "../components/create/StepSong.tsx";
+import StepSource from "../components/create/StepSource.tsx";
 import { type Entwurf, type Schritt, schrittFertig } from "./createDraft.ts";
 
 const TITEL: Record<Schritt, string> = {
@@ -81,7 +82,8 @@ export const CreateView: FC<{
       </div>
 
       {schritt === 1 && <StepSong entwurf={entwurf} onChange={patch} />}
-      {schritt > 1 && <p className="muted">Schritt {TITEL[schritt]} folgt.</p>}
+      {schritt === 2 && <StepSource entwurf={entwurf} onChange={patch} />}
+      {schritt > 2 && <p className="muted">Schritt {TITEL[schritt]} folgt.</p>}
 
       <div className="row" style={{ marginTop: 16 }}>
         <button
