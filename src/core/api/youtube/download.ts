@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join, normalize, resolve } from "node:path";
 import { Effect } from "effect";
+import { killProcessTree } from "../../create/processTree.ts";
 
 // Constants for download behavior
 const DOWNLOAD_TIMEOUT_MS = 300_000; // 5 minutes - timeout for yt-dlp process
@@ -187,11 +188,18 @@ type YtDlpProgressData = {
 const runYtDlpDownload = (
   args: string[],
   onProgress: (p: YoutubeDownloadProgress) => void,
+  signal?: AbortSignal,
 ): Promise<void> =>
   new Promise<void>((resolve, reject) => {
     const child = spawn("yt-dlp", args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    // yt-dlp spawns ffmpeg for the merge; killing only the parent would
+    // leave that child holding the partial file. Same mechanics as
+    // pipeline.ts.
+    const abbrechen = (): void => killProcessTree(child);
+    signal?.addEventListener("abort", abbrechen, { once: true });
 
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
@@ -302,11 +310,17 @@ const runYtDlpDownload = (
     child.on("error", (err) => {
       clearTimeout(timeout);
       clearInterval(flushInterval);
+      signal?.removeEventListener("abort", abbrechen);
       reject(err);
     });
     child.on("close", (code) => {
       clearTimeout(timeout);
       clearInterval(flushInterval);
+      signal?.removeEventListener("abort", abbrechen);
+      if (signal?.aborted) {
+        reject(new Error("Download abgebrochen."));
+        return;
+      }
       if (code === 0) {
         onProgress({ percent: 1 });
         resolve();
@@ -356,6 +370,7 @@ export const downloadYoutubeVideoWithProgress = (
   onProgress: (p: YoutubeDownloadProgress) => void,
   cookiesBrowser?: string,
   quality?: VideoQuality,
+  signal?: AbortSignal,
 ): Effect.Effect<void, Error, never> =>
   Effect.tryPromise({
     try: async () => {
@@ -379,8 +394,10 @@ export const downloadYoutubeVideoWithProgress = (
       const fullArgs = [...baseArgs, ...cookieArgs, "--", link];
 
       try {
-        await runYtDlpDownload(fullArgs, onProgress);
+        await runYtDlpDownload(fullArgs, onProgress, signal);
       } catch (err) {
+        // The user cancelled - no retry chain, no second process.
+        if (signal?.aborted) throw err;
         const message = err instanceof Error ? err.message : String(err);
 
         const isDpapi = message.includes("DPAPI");
@@ -390,10 +407,11 @@ export const downloadYoutubeVideoWithProgress = (
           message.includes("confirm your age");
 
         const tryFallbackWithoutCookies = async () => {
+          if (signal?.aborted) throw err;
           onProgress({ percent: 0 });
           const noCookiesArgs = [...baseArgs, "--", link];
           try {
-            await runYtDlpDownload(noCookiesArgs, onProgress);
+            await runYtDlpDownload(noCookiesArgs, onProgress, signal);
           } catch (fallbackErr) {
             const fallbackMsg =
               fallbackErr instanceof Error
@@ -433,9 +451,12 @@ export const downloadYoutubeVideoWithProgress = (
               link,
             ];
             try {
-              await runYtDlpDownload(fallbackArgs, onProgress);
+              await runYtDlpDownload(fallbackArgs, onProgress, signal);
               return;
-            } catch {
+            } catch (fallbackErr) {
+              // A cancel killed this attempt: retrying would spawn a yt-dlp
+              // that the already-fired signal can no longer reach.
+              if (signal?.aborted) throw fallbackErr;
               await tryFallbackWithoutCookies();
               return;
             }
@@ -449,9 +470,12 @@ export const downloadYoutubeVideoWithProgress = (
               link,
             ];
             try {
-              await runYtDlpDownload(fallbackArgs, onProgress);
+              await runYtDlpDownload(fallbackArgs, onProgress, signal);
               return;
-            } catch {
+            } catch (fallbackErr) {
+              // A cancel killed this attempt: retrying would spawn a yt-dlp
+              // that the already-fired signal can no longer reach.
+              if (signal?.aborted) throw fallbackErr;
               await tryFallbackWithoutCookies();
               return;
             }

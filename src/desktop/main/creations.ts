@@ -3,8 +3,11 @@
 // with warm models, and a crash brake. Deliberately electron-free so the
 // queue logic is testable without electron mocks - the wired instance
 // lives in ipc.ts, where electron imports belong.
+import { join } from "node:path";
 import type { SidecarWorker, WorkerJob } from "../../core/create/worker.ts";
 import type { EnvironmentStatus } from "../../core/create/environment.ts";
+import type { AcquiredMedia } from "../../core/create/media.ts";
+import type { FolderLayout } from "../../core/download/naming.ts";
 import type {
   CreateJobRequest,
   CreationEntry,
@@ -23,17 +26,38 @@ export type WorkerLike = Pick<
 export type CreationsDeps = {
   newWorker: () => WorkerLike;
   environmentStatus: () => Promise<EnvironmentStatus>;
-  /** Lazy: electron can only answer this once the app is ready. */
+  /** Lazy: electron can only answer these once the app is ready. */
   workDir: () => string;
+  jobDir: (jobId: string) => string;
+  libraryDir: () => string;
+  layout: () => FolderLayout;
+  acquire: (
+    job: CreateJobRequest,
+    jobDir: string,
+    onProgress: (anteil: number) => void,
+    signal: AbortSignal,
+  ) => Promise<AcquiredMedia>;
+  /** Only after success - a failed job keeps its scratch dir for diagnosis. */
+  aufraeumen: (jobDir: string) => Promise<void>;
+  assemble: (
+    job: CreateJobRequest,
+    medien: AcquiredMedia,
+    jobDir: string,
+  ) => Promise<{ songDir: string; dirName: string; warnungen: string[] }>;
   broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
 };
 
-const toWorkerJob = (job: CreateJobRequest, workDir: string): WorkerJob => ({
+const toWorkerJob = (
+  job: CreateJobRequest,
+  medien: AcquiredMedia,
+  workDir: string,
+  jobDir: string,
+): WorkerJob => ({
   id: job.id,
-  audioPath: job.audioPath,
+  audioPath: medien.audioPath,
   lyricsPath: job.lyricsPath,
   language: job.language,
-  outPath: job.outPath,
+  outPath: join(jobDir, "song_data.json"),
   bpm: job.bpm,
   syncedLyricsPath: job.syncedLyricsPath,
   workDir,
@@ -59,6 +83,11 @@ export const createCreations = (deps: CreationsDeps) => {
   let running = false;
   let crashStreak = 0;
   let worker: WorkerLike | null = null;
+  // During acquisition no worker job is pending, so cancelCurrentJob() alone
+  // would be a no-op and yt-dlp would keep running.
+  let laufenderAbbruch: AbortController | null = null;
+  /** True only while the worker actually holds a job - see cancel(). */
+  let workerHatAuftrag = false;
 
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
@@ -132,19 +161,63 @@ export const createCreations = (deps: CreationsDeps) => {
         // ask *this* worker whether it survived.
         const aktiv = worker;
         try {
-          await aktiv.submitJob(toWorkerJob(jobDef, deps.workDir()), (stage, percent) => {
-            eintrag.stage = stage;
-            eintrag.progress = percent;
-            melde();
-          });
+          // Inside the try: jobDir() validates the id and can throw, which
+          // outside would abandon the entry on "running" and drop the queue.
+          const jobDir = deps.jobDir(jobDef.id);
+          eintrag.stage = "beschaffen";
+          melde();
+          laufenderAbbruch = new AbortController();
+          const medien = await deps.acquire(
+            jobDef,
+            jobDir,
+            (anteil) => {
+              eintrag.progress = anteil * 0.25;
+              melde();
+            },
+            laufenderAbbruch.signal,
+          );
+          workerHatAuftrag = true;
+          await aktiv.submitJob(
+            toWorkerJob(jobDef, medien, deps.workDir(), jobDir),
+            (stage, percent) => {
+              eintrag.stage = stage;
+              eintrag.progress = 0.25 + percent * 0.65;
+              melde();
+            },
+          );
+          // Cleared here, not after assemble: from now on the worker is
+          // idle again, so a cancel during packaging must not cost the next
+          // job a cold start.
+          workerHatAuftrag = false;
+          eintrag.stage = "paket";
+          eintrag.progress = 0.9;
+          melde();
+          const paket = await deps.assemble(jobDef, medien, jobDir);
+          for (const w of paket.warnungen) {
+            deps.broadcast("event:error", { context: "warnung", message: w });
+          }
           eintrag.status = "completed";
           eintrag.progress = 1;
           crashStreak = 0;
+          // After the status, and swallowing: the song is in the library. A
+          // scratch dir that will not go away (Windows keeps a handle on it
+          // more often than one would like) must not turn a finished job
+          // into a reported failure. try/catch, not .catch(): a dep that
+          // throws synchronously would never reach a rejection handler.
+          try {
+            await deps.aufraeumen(jobDir);
+          } catch {
+            // Scratch dir stays behind; the job succeeded regardless.
+          }
         } catch (fehler) {
+          const hatteAuftrag = workerHatAuftrag;
+          workerHatAuftrag = false;
           if (istAbbruch(fehler)) {
-            // cancel() killed the process; the next job gets a fresh worker.
             eintrag.status = "cancelled";
-            worker = null;
+            // Only a worker that actually held the job was killed. One that
+            // was cancelled during acquisition is idle and warm - throwing
+            // it away would cost the next job a full model reload.
+            if (hatteAuftrag) worker = null;
             crashStreak = 0;
           } else {
             eintrag.status = "failed";
@@ -176,13 +249,22 @@ export const createCreations = (deps: CreationsDeps) => {
 
   /** Cancels the running job; the queue continues with the next one. */
   const cancel = (): void => {
-    worker?.cancelCurrentJob();
-    worker = null;
+    laufenderAbbruch?.abort();
+    laufenderAbbruch = null;
+    if (workerHatAuftrag) {
+      worker?.cancelCurrentJob();
+      worker = null;
+    }
   };
 
   /** App exit: no orphaned python process holding warm VRAM. */
   const shutdown = async (): Promise<void> => {
     queue = [];
+    // Closing the app mid-download must not orphan yt-dlp - the same reason
+    // cancel() carries an AbortController.
+    laufenderAbbruch?.abort();
+    laufenderAbbruch = null;
+    workerHatAuftrag = false;
     const alt = worker;
     worker = null;
     alt?.cancelCurrentJob();

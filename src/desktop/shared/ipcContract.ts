@@ -82,17 +82,18 @@ export type BinariesProgress = {
 
 export type FetchAllProgress = { current: number; total: number } | null;
 
-/** One queued song creation. artist/title are display-only. */
+/** One queued song creation. artist/title also drive the folder name. */
 export type CreateJobRequest = {
   id: string;
-  audioPath: string;
-  lyricsPath: string;
+  quelle: { kind: "youtube"; url: string } | { kind: "datei"; pfad: string };
   language: string;
-  outPath: string;
+  artist: string;
+  title: string;
+  lyricsPath: string;
+  genre?: string;
+  year?: number;
   bpm?: number;
   syncedLyricsPath?: string;
-  artist?: string;
-  title?: string;
 };
 
 export type CreationStatus =
