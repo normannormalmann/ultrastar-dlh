@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { dauerAusFfmpeg, dauerAusYtDlp } from "./probe.ts";
+import { Effect } from "effect";
+import { dauerAusFfmpeg, dauerAusYtDlp, dauerSekunden } from "./probe.ts";
 
 // Real tool output, not invented.
 const YTDLP = "213.0\n";
@@ -42,5 +43,20 @@ describe("dauerAusFfmpeg", () => {
 
   it("liefert null bei Duration N/A", () => {
     expect(dauerAusFfmpeg("  Duration: N/A, bitrate: N/A\n")).toBeNull();
+  });
+});
+
+describe("dauerSekunden", () => {
+  // Bails out before spawning, so this test starts no process.
+  it("weist alles ab, was keine http(s)-URL ist", async () => {
+    for (const url of [
+      "--exec=echo pwned",
+      "file:///etc/passwd",
+      "keine url",
+    ]) {
+      expect(
+        await Effect.runPromise(dauerSekunden({ kind: "youtube", url })),
+      ).toBeNull();
+    }
   });
 });

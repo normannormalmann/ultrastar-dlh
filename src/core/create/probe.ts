@@ -35,6 +35,20 @@ export const dauerAusFfmpeg = (stderr: string): number | null => {
 };
 
 /**
+ * The URL reaches argv as a *positional* argument, so a value starting with
+ * "-" would be read as an option ("--exec=..." being the ugly case), and
+ * yt-dlp's extractors accept far more than http. Both holes close here.
+ */
+const istWebUrl = (roh: string): boolean => {
+  try {
+    const u = new URL(roh);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Resolves with both streams regardless of the exit code: `ffmpeg -i <file>`
  * without an output file always exits non-zero ("At least one output file must
  * be specified") - and prints the duration before it does.
@@ -77,15 +91,21 @@ export const dauerSekunden = (
   Effect.catchAll(
     Effect.tryPromise(async () => {
       if (quelle.kind === "youtube") {
+        if (!istWebUrl(quelle.url)) return null;
         const { stdout } = await laufe("yt-dlp", [
           "--print",
           "duration",
           "--skip-download",
           "--no-warnings",
+          "--",
+          // Nothing after this is read as a flag.
           quelle.url,
         ]);
         return dauerAusYtDlp(stdout);
       }
+      // No "--" for ffmpeg: it has no argv terminator, and the path sits in
+      // the value position of -i, which ffmpeg consumes as a filename
+      // whatever it starts with. A "--" here would BE the filename.
       const { stderr } = await laufe("ffmpeg", ["-i", quelle.pfad]);
       return dauerAusFfmpeg(stderr);
     }),
