@@ -18,6 +18,9 @@ import type {
   InstallProgress,
 } from "../../core/create/environment.ts";
 import type { CreateJob } from "../../core/create/job.ts";
+import type { YoutubeVideo } from "../../core/api/youtube/search.ts";
+import type { MediaQuelle } from "../../core/create/media.ts";
+import type { CoverKandidat } from "../main/coverCandidates.ts";
 
 export type {
   ArchiveImportResult,
@@ -36,6 +39,20 @@ export type { GenreEnrichResult, GenreProviderId };
 export type { CreateJob };
 /** Wire name kept for the existing callers. */
 export type CreateJobRequest = CreateJob;
+export type { YoutubeVideo, MediaQuelle, CoverKandidat };
+
+export type LyricsSuche = {
+  artist: string;
+  title: string;
+  durationSec: number;
+};
+
+export type CoverSuche = {
+  jobId: string;
+  artist: string;
+  title: string;
+  thumbnailUrl?: string;
+};
 
 export type SearchRequest = {
   artist: string;
@@ -162,6 +179,11 @@ export const INVOKE_CHANNELS = [
   "create:queueClear",
   "create:start",
   "create:cancel",
+  "create:youtubeSearch",
+  "create:sourceInfo",
+  "create:lyricsSearch",
+  "create:coverCandidates",
+  "create:chooseFile",
   "covers:get",
   "covers:getLocal",
   "covers:clearCache",
@@ -249,6 +271,15 @@ export type UltrastarApi = {
   createStart: () => Promise<void>;
   /** Aborts the running creation; the queue continues with the next job. */
   createCancel: () => Promise<void>;
+  /** Five hits with duration and thumbnails; [] if yt-dlp is missing. */
+  createYoutubeSearch: (query: string) => Promise<YoutubeVideo[]>;
+  /** Playing time of a pasted link or a local file; null if unknown. */
+  createSourceInfo: (
+    quelle: MediaQuelle,
+  ) => Promise<{ durationSec: number } | null>;
+  createLyricsSearch: (a: LyricsSuche) => Promise<string | null>;
+  createCoverCandidates: (a: CoverSuche) => Promise<CoverKandidat[]>;
+  createChooseFile: (art: "audio" | "bild") => Promise<string | null>;
   coverGet: (apiId: number) => Promise<string | null>; // data URL or null
   coverGetLocal: (songDir: string) => Promise<string | null>;
   coversClearCache: () => Promise<{ deletedFiles: number }>;
