@@ -5,7 +5,11 @@ import {
   prependManagedBinToPath,
   resolvePlatformBinaries,
 } from "./binaries.ts";
-import { creations, registerIpcHandlers } from "./ipc.ts";
+import {
+  creations,
+  raeumeCoverWaisen,
+  registerIpcHandlers,
+} from "./ipc.ts";
 import { broadcast, initializeState, state } from "./state.ts";
 
 const createWindow = (): BrowserWindow => {
@@ -60,6 +64,9 @@ void app.whenReady().then(async () => {
       message: err instanceof Error ? err.message : String(err),
     });
   });
+  // Orphans from a session that fetched candidates but never queued the job.
+  // Swallowed: a cache sweep must not keep the window from opening.
+  await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
   createWindow();
   void initializeState().then(() => {
     // Spec: missing tools are installed automatically on first launch

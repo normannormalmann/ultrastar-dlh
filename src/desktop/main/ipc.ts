@@ -23,9 +23,10 @@ import {
 } from "../../core/storage/createQueue.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   cancelEnvironmentInstall,
+  creationCoverDir,
   creationJobDir,
   creationWorkDir,
   environmentStatusForApp,
@@ -37,6 +38,12 @@ import { acquireMedia } from "../../core/create/media.ts";
 import { assemblePackage } from "../../core/create/packageSong.ts";
 import { parseSongData } from "../../core/create/songData.ts";
 import { createCreations } from "./creations.ts";
+import {
+  type CoverKandidat,
+  holeCoverKandidatenIn,
+  type KandidatenAnfrage,
+  raeumeWaisenIn,
+} from "./coverCandidates.ts";
 import type { CreateJobRequest } from "../shared/ipcContract.ts";
 import {
   clearCoverCaches,
@@ -65,6 +72,25 @@ let genreEnrichCancel = false;
  * tsc error). Handler signature: (payload) => Promise<result>.
  */
 /**
+ * The jobId-keyed cover-cache wrappers. They live here for the same reason
+ * the creation queue does: only this module may ask electron where userData
+ * is, so coverCandidates.ts stays testable without an app mock.
+ */
+export const holeCoverKandidaten = (
+  jobId: string,
+  a: KandidatenAnfrage,
+): Promise<CoverKandidat[]> =>
+  holeCoverKandidatenIn(creationCoverDir(jobId), a);
+
+const raeumeCoverJob = (jobId: string): Promise<void> =>
+  rm(creationCoverDir(jobId), { recursive: true, force: true });
+
+/** Candidates fetched for a draft that was never queued. */
+export const raeumeCoverWaisen = (bekannteIds: string[]): Promise<void> =>
+  // creationCoverDir validates the id; its parent is the cache root.
+  raeumeWaisenIn(dirname(creationCoverDir("waise")), bekannteIds);
+
+/**
  * The wired creation queue. It lives here rather than in creations.ts so
  * that module stays electron-free (and therefore testable without mocks).
  * The managed environment is handed to the worker on purpose - otherwise
@@ -91,6 +117,7 @@ export const creations = createCreations({
     return { lyricsPath, syncedLyricsPath };
   },
   aufraeumen: (jobDir) => rm(jobDir, { recursive: true, force: true }),
+  raeumeCover: raeumeCoverJob,
   ladeQueue: () => Effect.runPromise(loadCreateQueue),
   speichereQueue: (jobs) => Effect.runPromise(saveCreateQueue(jobs)),
   assemble: async (job, medien, jobDir) => {

@@ -52,6 +52,7 @@ const fakeDeps = (opts?: {
     aufraeumen: async () => {},
     ladeQueue: async () => [],
     speichereQueue: async () => {},
+    raeumeCover: async () => {},
     broadcast: (channel: string, payload: unknown) =>
       events.push({ channel, payload }),
   } as unknown as CreationsDeps;
@@ -181,6 +182,7 @@ describe("creation queue", () => {
       aufraeumen: async () => {},
       ladeQueue: async () => [],
       speichereQueue: async () => {},
+      raeumeCover: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
     const c = createCreations(deps);
@@ -249,6 +251,7 @@ describe("creation queue", () => {
       aufraeumen: async () => {},
       ladeQueue: async () => [],
       speichereQueue: async () => {},
+      raeumeCover: async () => {},
       broadcast: () => {},
     } as unknown as CreationsDeps;
 
@@ -480,6 +483,7 @@ describe("creation queue", () => {
       aufraeumen: async () => {},
       ladeQueue: async () => [],
       speichereQueue: async () => {},
+      raeumeCover: async () => {},
       // Snapshot: melde() broadcasts the live entry objects, so the later
       // "paket" stage would overwrite the "separate" we want to observe.
       broadcast: (channel: string, payload: unknown) =>
@@ -637,6 +641,36 @@ describe("creation queue", () => {
     // Das Leeren beim Beenden ist keine Nutzerentscheidung - die Datei muss
     // den Programmschluss ueberleben.
     expect(gespeichert).toEqual([1]);
+  });
+
+  it("raeumt die Cover-Kandidaten weg, sobald ein Job die Queue verlaesst", async () => {
+    const geraeumt: string[] = [];
+    const c = createCreations({
+      ...fakeDeps().deps,
+      raeumeCover: async (id) => {
+        geraeumt.push(id);
+      },
+    });
+    c.queueAdd([job("a"), job("b"), job("c")]);
+    c.queueRemove("b");
+    await c.start();
+    // "b" von Hand entfernt, "a" und "c" nach ihrem Durchlauf.
+    expect(geraeumt.sort()).toEqual(["a", "b", "c"]);
+    c.queueAdd([job("x"), job("y")]);
+    c.queueClear();
+    expect(geraeumt.slice(3).sort()).toEqual(["x", "y"]);
+  });
+
+  it("ein fehlgeschlagenes Cover-Aufraeumen macht keinen Fehler aus dem Job", async () => {
+    const c = createCreations({
+      ...fakeDeps().deps,
+      raeumeCover: async () => {
+        throw new Error("EBUSY");
+      },
+    });
+    c.queueAdd([job("a")]);
+    await c.start();
+    expect(c.alleEintraege()[0]?.status).toBe("completed");
   });
 
   it("bricht die Queue nicht ab, wenn das Speichern scheitert", async () => {

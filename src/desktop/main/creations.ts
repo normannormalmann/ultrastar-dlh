@@ -48,6 +48,8 @@ export type CreationsDeps = {
   ) => Promise<{ lyricsPath: string; syncedLyricsPath?: string }>;
   /** Only after success - a failed job keeps its scratch dir for diagnosis. */
   aufraeumen: (jobDir: string) => Promise<void>;
+  /** Called once a job can no longer need its image candidates. */
+  raeumeCover: (jobId: string) => Promise<void>;
   assemble: (
     job: CreateJobRequest,
     medien: AcquiredMedia,
@@ -111,6 +113,15 @@ export const createCreations = (deps: CreationsDeps) => {
   const melde = (): void =>
     deps.broadcast("event:creations", [...eintraege.values()]);
 
+  /**
+   * Fire and swallow: a lingering Windows handle on the cover cache must not
+   * turn a finished song into a reported failure. What stays behind is picked
+   * up by the orphan sweep at the next app start.
+   */
+  const raeumeCoverStill = (id: string): void => {
+    void deps.raeumeCover(id).catch(() => {});
+  };
+
   const sichere = (): void => {
     void deps.speichereQueue([...queue]).catch((e: unknown) => {
       deps.broadcast("event:error", {
@@ -166,13 +177,20 @@ export const createCreations = (deps: CreationsDeps) => {
     if (eintraege.get(id)?.status === "queued") eintraege.delete(id);
     melde();
     sichere();
+    raeumeCoverStill(id);
   };
 
   const queueClear = (): void => {
     queue = [];
-    for (const [id, e] of eintraege) if (e.status === "queued") eintraege.delete(id);
+    const entfernt: string[] = [];
+    for (const [id, e] of eintraege) {
+      if (e.status !== "queued") continue;
+      eintraege.delete(id);
+      entfernt.push(id);
+    }
     melde();
     sichere();
+    for (const id of entfernt) raeumeCoverStill(id);
   };
 
   const start = async (): Promise<void> => {
@@ -304,6 +322,9 @@ export const createCreations = (deps: CreationsDeps) => {
             }
           }
         }
+        // One place for success, failure and cancel alike: whichever way the
+        // job left the worker, its image candidates are spent.
+        raeumeCoverStill(jobDef.id);
         melde();
       }
     } finally {
