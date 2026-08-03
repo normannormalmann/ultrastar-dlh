@@ -1,81 +1,68 @@
-// src/core/create/lrclib.test.ts
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
-import { cachedLyricsPfad, holeSyncedLyrics } from "./lrclib.ts";
+import { fetchSyncedLyrics } from "./lrclib.ts";
 
-const tempDir = () => mkdtemp(join(tmpdir(), "lrclib-test-"));
+const antwort = (body: unknown, ok = true): Response =>
+  ({ ok, json: async () => body }) as unknown as Response;
 
-const fakeFetch = (
-  aufrufe: string[],
-  antwort: () => Response,
-): typeof fetch =>
-  (async (eingabe: RequestInfo | URL) => {
-    aufrufe.push(String(eingabe));
-    return antwort();
-  }) as typeof fetch;
+// Bun's `typeof fetch` also carries `preconnect`; an attrappe only needs the
+// call signature. Same cast as in coverArtArchive.test.ts and media.test.ts.
+const fake = (
+  f: (url: string | URL | Request) => Promise<Response>,
+): typeof fetch => f as unknown as typeof fetch;
 
-describe("holeSyncedLyrics", () => {
-  it("cached einen Treffer im Songverzeichnis und liefert den Pfad", async () => {
-    const dir = await tempDir();
-    const aufrufe: string[] = [];
-    const pfad = await holeSyncedLyrics({
-      artist: "Kuenstler",
-      title: "Titel",
-      durationSec: 180.4,
-      songDir: dir,
-      fetchFn: fakeFetch(aufrufe, () =>
-        Response.json({ syncedLyrics: "[00:12.00]erste zeile" }),
+const anfrage = {
+  artist: "Falco",
+  title: "Rock Me Amadeus",
+  durationSec: 213.4,
+};
+
+describe("fetchSyncedLyrics", () => {
+  it("liefert die synchronisierten Lyrics", async () => {
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () =>
+        antwort({ syncedLyrics: "[00:12.00]Er war ein Punker" }),
       ),
     });
-    expect(pfad).toBe(join(dir, "synced-lyrics.lrc"));
-    expect(await readFile(pfad as string, "utf8")).toBe("[00:12.00]erste zeile");
-    // Der Get-Endpunkt bekommt die exakte Signatur, Dauer gerundet.
-    expect(aufrufe[0]).toContain("artist_name=K");
-    expect(aufrufe[0]).toContain("duration=180");
+    expect(text).toBe("[00:12.00]Er war ein Punker");
   });
 
-  it("liefert null bei 404 und cached nichts", async () => {
-    const dir = await tempDir();
-    const pfad = await holeSyncedLyrics({
-      artist: "a", title: "b", durationSec: 100, songDir: dir,
-      fetchFn: fakeFetch([], () => new Response("not found", { status: 404 })),
+  it("rundet die Dauer auf ganze Sekunden", async () => {
+    let gesehen = "";
+    await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async (url) => {
+        gesehen = String(url);
+        return antwort({ syncedLyrics: "x" });
+      }),
     });
-    expect(pfad).toBeNull();
-    expect(await cachedLyricsPfad(dir)).toBeNull();
+    expect(gesehen).toContain("duration=213");
+    expect(gesehen).toContain("artist_name=Falco");
   });
 
-  it("liefert null, wenn nur unsynchronisierte Lyrics existieren", async () => {
-    const dir = await tempDir();
-    const pfad = await holeSyncedLyrics({
-      artist: "a", title: "b", durationSec: 100, songDir: dir,
-      fetchFn: fakeFetch([], () => Response.json({ syncedLyrics: null, plainLyrics: "text" })),
+  it("liefert null ohne synchronisierte Lyrics", async () => {
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => antwort({ plainLyrics: "ohne Zeitstempel" })),
     });
-    expect(pfad).toBeNull();
+    expect(text).toBeNull();
   });
 
-  it("liefert null bei Netzfehler statt zu werfen", async () => {
-    const dir = await tempDir();
-    const pfad = await holeSyncedLyrics({
-      artist: "a", title: "b", durationSec: 100, songDir: dir,
-      fetchFn: (async () => {
-        throw new Error("offline");
-      }) as unknown as typeof fetch,
+  it("liefert null bei 404", async () => {
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => antwort({}, false)),
     });
-    expect(pfad).toBeNull();
+    expect(text).toBeNull();
   });
 
-  it("nutzt den Cache ohne weiteren Netzzugriff", async () => {
-    const dir = await tempDir();
-    await writeFile(join(dir, "synced-lyrics.lrc"), "[00:01.00]zeile", "utf8");
-    const aufrufe: string[] = [];
-    const pfad = await holeSyncedLyrics({
-      artist: "a", title: "b", durationSec: 100, songDir: dir,
-      fetchFn: fakeFetch(aufrufe, () => Response.json({})),
+  it("liefert null, wenn das Netz wegbricht", async () => {
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => {
+        throw new Error("ENOTFOUND");
+      }),
     });
-    expect(pfad).toBe(join(dir, "synced-lyrics.lrc"));
-    expect(aufrufe).toEqual([]);
-    expect(await cachedLyricsPfad(dir)).toBe(pfad);
+    expect(text).toBeNull();
   });
 });
