@@ -1,7 +1,6 @@
 // Developer entry for the managed sidecar environment - replaces the manual
 // venv how-to from the subproject-1 plan. Usage:
 //   bun run scripts/setupEnvironment.ts [--dir <envDir>] [--force] [--language de]
-import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
 import {
