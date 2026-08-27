@@ -92,7 +92,7 @@ describe("runPipeline", () => {
   });
 
   it("meldet Cancelled bei Abbruch", async () => {
-    const { bin, dir } = await fakeSidecar(`await new Promise((r) => setTimeout(r, 5000));`);
+    const { bin, dir } = await fakeSidecar("await new Promise((r) => setTimeout(r, 5000));");
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 50);
     const e = await Effect.runPromise(
@@ -113,7 +113,7 @@ describe("runPipeline", () => {
 
   it("meldet Cancelled sofort, wenn das Signal schon beim Aufruf abgebrochen ist", async () => {
     const { bin, dir } = await fakeSidecar(
-      `await new Promise((r) => setTimeout(r, 5000));`,
+      "await new Promise((r) => setTimeout(r, 5000));",
     );
     const controller = new AbortController();
     controller.abort();
@@ -240,13 +240,26 @@ describe("runPipeline", () => {
   });
 
   it("killt den Kindprozessbaum bei Abbruch — ein Enkelprozess schreibt nie", async () => {
+    // POSIX toetet die Prozessgruppe mit einem sofortigen process.kill(-pid).
+    // Windows hat kein Gegenstueck dazu: processTree.ts muss taskkill /t
+    // starten, und allein dieser Prozessstart kostet je nach Maschine (und
+    // Virenscanner) mehrere hundert Millisekunden. Der Baum stirbt also
+    // vollstaendig, nur spaeter — deshalb bekommt der Enkel hier so viel
+    // Zeit, dass die Messung die Kill-Latenz nicht faelschlich als
+    // ueberlebenden Prozess liest.
+    const istWindows = process.platform === "win32";
+    const enkelWartetMs = istWindows ? 3000 : 300;
+    // Muss ueber enkelWartetMs liegen: sonst waere die Datei auch bei einem
+    // ueberlebenden Enkel noch nicht da und der Test gruen ohne Aussage.
+    const pruefeNachMs = istWindows ? 3500 : 800;
+
     const dir = await mkdtemp(join(tmpdir(), "pipeline-test-"));
     const markerPath = join(dir, "enkel.txt");
     const enkelSkript = join(dir, "enkel.ts");
     await writeFile(
       enkelSkript,
       `
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, ${enkelWartetMs}));
         await Bun.write(${JSON.stringify(markerPath)}, "da");
       `,
       "utf8",
@@ -257,7 +270,7 @@ describe("runPipeline", () => {
       `
         import { spawn } from "node:child_process";
         spawn("bun", [${JSON.stringify(enkelSkript)}], { stdio: "ignore" });
-        await new Promise((r) => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, 8000));
       `,
       "utf8",
     );
@@ -268,11 +281,12 @@ describe("runPipeline", () => {
         runPipeline({ ...basis(dir), pythonBin: hauptSkript, signal: controller.signal }),
       ),
     );
-    // Grosszuegige Wartezeit ueber die 300ms des Enkels hinaus: wenn der
-    // Baum nicht getoetet wurde, haette die Datei laengst existieren muessen.
-    await new Promise((r) => setTimeout(r, 800));
+    // Grosszuegige Wartezeit ueber das Schreibfenster des Enkels hinaus:
+    // wenn der Baum nicht getoetet wurde, haette die Datei laengst da sein
+    // muessen.
+    await new Promise((r) => setTimeout(r, pruefeNachMs));
     expect(existsSync(markerPath)).toBe(false);
-  });
+  }, 15000);
 
   it("nutzt die verwaltete Umgebung und meldet EnvMissing mit Settings-Hinweis", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pipeline-env-"));
