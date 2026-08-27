@@ -22,6 +22,7 @@ import type {
 } from "../../shared/ipcContract.ts";
 import CoverThumb from "../components/CoverThumb.tsx";
 import { useIpcEvent } from "../hooks.ts";
+import { useT } from "../i18n/index.tsx";
 
 const USDB_LANGUAGES = [
   "English",
@@ -77,19 +78,21 @@ const USDB_GENRES = [
   "Other",
 ] as const;
 
-const ORDER_OPTIONS = [
-  { value: "lastchange", label: "Zuletzt geändert" },
-  { value: "interpret", label: "Interpret" },
-  { value: "title", label: "Titel" },
-  { value: "year", label: "Jahr" },
-  { value: "rating", label: "Bewertung" },
-  { value: "views", label: "Views" },
+/** Doubles as the key into t.search.order, so no label lives here. */
+const ORDER_VALUES = [
+  "lastchange",
+  "interpret",
+  "title",
+  "year",
+  "rating",
+  "views",
 ] as const;
 
 export const SearchView: FC<{
   downloaded: DownloadedEntry[];
   status: AppStatus;
 }> = ({ downloaded, status }) => {
+  const t = useT();
   const [artist, setArtist] = useState("");
   const [title, setTitle] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
@@ -208,9 +211,7 @@ export const SearchView: FC<{
 
   const queueEntireDatabase = (): void => {
     if (
-      window.confirm(
-        "Wirklich die GESAMTE USDB-Datenbank in die Queue laden? Das sind zehntausende Songs und dauert eine Weile.",
-      )
+      window.confirm(t.search.confirmEntireDatabase)
     ) {
       void window.ultrastar.queueEntireDatabase();
     }
@@ -230,24 +231,24 @@ export const SearchView: FC<{
 
   return (
     <div>
-      <h2>Suche</h2>
+      <h2>{t.search.title}</h2>
       <form className="row" style={{ marginBottom: 16 }} onSubmit={onSubmit}>
         <input
           className="input"
           style={{ flex: 1 }}
-          placeholder="Interpret…"
+          placeholder={t.search.artistPlaceholder}
           value={artist}
           onChange={(e) => setArtist(e.target.value)}
         />
         <input
           className="input"
           style={{ flex: 1 }}
-          placeholder="Titel…"
+          placeholder={t.search.titlePlaceholder}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
         <button className="btn primary" type="submit" disabled={loading}>
-          {loading ? "Suche…" : "Suchen"}
+          {loading ? t.search.searching : t.search.searchButton}
         </button>
       </form>
 
@@ -258,7 +259,7 @@ export const SearchView: FC<{
           onClick={() => setShowFilters((v) => !v)}
         >
           <SlidersHorizontal size={14} aria-hidden />
-          Filter
+          {t.search.filters}
           {activeFilterCount > 0 && (
             <span className="badge" style={{ marginLeft: 6 }}>
               {activeFilterCount}
@@ -277,7 +278,7 @@ export const SearchView: FC<{
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
-              <option value="">Sprache: Alle</option>
+              <option value="">{t.search.languageAll}</option>
               {USDB_LANGUAGES.map((l) => (
                 <option key={l} value={l}>
                   {l}
@@ -289,7 +290,7 @@ export const SearchView: FC<{
               value={genre}
               onChange={(e) => setGenre(e.target.value)}
             >
-              <option value="">Genre: Alle</option>
+              <option value="">{t.search.genreAll}</option>
               {USDB_GENRES.map((g) => (
                 <option key={g} value={g}>
                   {g}
@@ -300,7 +301,7 @@ export const SearchView: FC<{
               className="input"
               style={{ width: 110 }}
               type="number"
-              placeholder="Jahr"
+              placeholder={t.search.yearPlaceholder}
               value={year}
               onChange={(e) => setYear(e.target.value)}
             />
@@ -309,9 +310,9 @@ export const SearchView: FC<{
               value={order}
               onChange={(e) => setOrder(e.target.value)}
             >
-              {ORDER_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  Sortierung: {o.label}
+              {ORDER_VALUES.map((o) => (
+                <option key={o} value={o}>
+                  {t.search.sortBy(t.search.order[o])}
                 </option>
               ))}
             </select>
@@ -319,15 +320,15 @@ export const SearchView: FC<{
               className="btn small"
               type="button"
               onClick={() => setUd((d) => (d === "desc" ? "asc" : "desc"))}
-              title={ud === "desc" ? "absteigend" : "aufsteigend"}
+              title={ud === "desc" ? t.search.descending : t.search.ascending}
             >
               {ud === "desc" ? (
                 <>
-                  <ArrowDown size={14} aria-hidden /> absteigend
+                  <ArrowDown size={14} aria-hidden /> {t.search.descending}
                 </>
               ) : (
                 <>
-                  <ArrowUp size={14} aria-hidden /> aufsteigend
+                  <ArrowUp size={14} aria-hidden /> {t.search.ascending}
                 </>
               )}
             </button>
@@ -336,9 +337,9 @@ export const SearchView: FC<{
               value={stock}
               onChange={(e) => setStock(e.target.value as typeof stock)}
             >
-              <option value="all">Bestand: Alle</option>
-              <option value="missing">Nur fehlende</option>
-              <option value="owned">Nur vorhandene</option>
+              <option value="all">{t.search.stockAll}</option>
+              <option value="missing">{t.search.stockMissing}</option>
+              <option value="owned">{t.search.stockOwned}</option>
             </select>
             <label className="row-inline muted" style={{ gap: 6 }}>
               <input
@@ -346,7 +347,7 @@ export const SearchView: FC<{
                 checked={golden}
                 onChange={(e) => setGolden(e.target.checked)}
               />
-              Nur Golden Notes
+              {t.search.onlyGolden}
             </label>
             <label className="row-inline muted" style={{ gap: 6 }}>
               <input
@@ -354,7 +355,7 @@ export const SearchView: FC<{
                 checked={songcheck}
                 onChange={(e) => setSongcheck(e.target.checked)}
               />
-              Nur Songcheck
+              {t.search.onlySongcheck}
             </label>
           </div>
         )}
@@ -363,29 +364,27 @@ export const SearchView: FC<{
       {error && <div className="error-banner">{error}</div>}
 
       {searched && !loading && songs.length === 0 && (
-        <p className="muted">Keine Treffer.</p>
+        <p className="muted">{t.search.noHits}</p>
       )}
 
       {songs.length > 0 && (
         <>
           {visibleSongs.length === 0 ? (
             <p className="muted">
-              Alle Treffer dieser Seite sind{" "}
               {stock === "missing"
-                ? "bereits vorhanden"
-                : "noch nicht vorhanden"}
-              .
+                ? t.search.allOnPageOwned
+                : t.search.allOnPageMissing}
             </p>
           ) : (
             <table className="song-table">
               <thead>
                 <tr>
                   <th style={{ width: 36 }} />
-                  <th>Interpret</th>
-                  <th>Titel</th>
-                  <th>Sprachen</th>
-                  <th style={{ width: 70 }}>Bewertung</th>
-                  <th style={{ width: 70 }}>Views</th>
+                  <th>{t.search.colArtist}</th>
+                  <th>{t.search.colTitle}</th>
+                  <th>{t.search.colLanguages}</th>
+                  <th style={{ width: 70 }}>{t.search.colRating}</th>
+                  <th style={{ width: 70 }}>{t.search.colViews}</th>
                   <th style={{ width: 170 }} />
                 </tr>
               </thead>
@@ -403,7 +402,7 @@ export const SearchView: FC<{
                         {isDownloaded && (
                           <span
                             className="check"
-                            title="bereits heruntergeladen"
+                            title={t.search.alreadyDownloaded}
                           >
                             <Check size={14} aria-hidden />
                           </span>
@@ -418,12 +417,12 @@ export const SearchView: FC<{
                       </td>
                       <td className="muted">
                         {s.rating !== undefined
-                          ? `★ ${s.rating.toLocaleString("de-DE")}`
+                          ? `★ ${s.rating.toLocaleString(t.locale)}`
                           : ""}
                       </td>
                       <td className="muted">
                         {s.views !== undefined
-                          ? s.views.toLocaleString("de-DE")
+                          ? s.views.toLocaleString(t.locale)
                           : ""}
                       </td>
                       <td>
@@ -432,8 +431,8 @@ export const SearchView: FC<{
                             <button
                               className="btn small primary"
                               type="button"
-                              aria-label="Herunterladen"
-                              title="Herunterladen"
+                              aria-label={t.search.download}
+                              title={t.search.download}
                               disabled={!canDownload}
                               onClick={() =>
                                 void window.ultrastar.downloadSingle(s)
@@ -449,7 +448,7 @@ export const SearchView: FC<{
                               }
                             >
                               <Plus size={14} aria-hidden />
-                              Queue
+                              {t.search.queue}
                             </button>
                           </span>
                         )}
@@ -472,7 +471,7 @@ export const SearchView: FC<{
                 onClick={() => void window.ultrastar.queueAdd(visibleSongs)}
               >
                 <Plus size={14} aria-hidden />
-                Seite in Queue
+                {t.search.pageToQueue}
               </button>
               <button
                 className="btn small"
@@ -483,28 +482,28 @@ export const SearchView: FC<{
                 }
               >
                 <Plus size={14} aria-hidden />
-                Alle {totalPages} Seiten
+                {t.search.allPages(totalPages)}
               </button>
             </span>
             <span className="row">
               <button
                 className="btn small"
                 type="button"
-                aria-label="Vorherige Seite"
-                title="Vorherige Seite"
+                aria-label={t.search.prevPage}
+                title={t.search.prevPage}
                 disabled={page <= 1 || loading}
                 onClick={() => void fetchPage(page - 1)}
               >
                 <ChevronLeft size={14} aria-hidden />
               </button>
               <span className="muted">
-                Seite {totalPages === 0 ? 0 : page} / {totalPages}
+                {t.search.pageOf(totalPages === 0 ? 0 : page, totalPages)}
               </span>
               <button
                 className="btn small"
                 type="button"
-                aria-label="Nächste Seite"
-                title="Nächste Seite"
+                aria-label={t.search.nextPage}
+                title={t.search.nextPage}
                 disabled={page >= totalPages || loading}
                 onClick={() => void fetchPage(page + 1)}
               >
@@ -523,11 +522,14 @@ export const SearchView: FC<{
           onClick={queueEntireDatabase}
         >
           <Database size={16} aria-hidden />
-          Ganze Datenbank in Queue
+          {t.search.entireDatabase}
         </button>
         {fetchAllProgress && (
           <p className="muted">
-            Lade Seiten… ({fetchAllProgress.current}/{fetchAllProgress.total})
+            {t.search.loadingPages(
+              fetchAllProgress.current,
+              fetchAllProgress.total,
+            )}
           </p>
         )}
       </div>

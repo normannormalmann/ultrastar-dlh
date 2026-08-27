@@ -15,11 +15,13 @@ import type {
 } from "../../shared/ipcContract.ts";
 import CreationRow from "../components/CreationRow.tsx";
 import { useIpcEvent } from "../hooks.ts";
+import { useT } from "../i18n/index.tsx";
 
 export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
   queue,
   creations,
 }) => {
+  const t = useT();
   const running = useIpcEvent("event:queueRunning", false);
   const [failed, setFailed] = useState<FailedDownload[]>([]);
   const [showFailed, setShowFailed] = useState(false);
@@ -45,7 +47,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
 
   return (
     <div>
-      <h2>Queue</h2>
+      <h2>{t.queue.title}</h2>
       <div className="row" style={{ marginBottom: 16 }}>
         <button
           className="btn primary"
@@ -54,11 +56,11 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
           onClick={() => void window.ultrastar.queueStart()}
         >
           {running ? (
-            `Läuft… (${queue.length} verbleibend)`
+            t.queue.runningWithRest(queue.length)
           ) : (
             <>
               <Play size={14} aria-hidden />
-              {queue.length} Songs herunterladen
+              {t.queue.downloadN(queue.length)}
             </>
           )}
         </button>
@@ -69,7 +71,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
             onClick={() => void window.ultrastar.queueCancel()}
           >
             <Pause size={14} aria-hidden />
-            Abbrechen (nach aktuellem Batch)
+            {t.queue.cancelAfterBatch}
           </button>
         )}
         <button
@@ -78,18 +80,18 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
           disabled={running || queue.length === 0}
           onClick={() => void window.ultrastar.queueClear()}
         >
-          Queue leeren
+          {t.queue.clear}
         </button>
       </div>
 
       {queue.length === 0 ? (
-        <p className="muted">Die Queue ist leer.</p>
+        <p className="muted">{t.queue.empty}</p>
       ) : (
         <table className="song-table">
           <thead>
             <tr>
-              <th>Interpret</th>
-              <th>Titel</th>
+              <th>{t.queue.colArtist}</th>
+              <th>{t.queue.colTitle}</th>
               <th style={{ width: 90 }} />
             </tr>
           </thead>
@@ -102,8 +104,8 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
                   <button
                     className="btn small"
                     type="button"
-                    aria-label="Entfernen"
-                    title="Entfernen"
+                    aria-label={t.queue.remove}
+                    title={t.queue.remove}
                     disabled={running}
                     onClick={() => void window.ultrastar.queueRemove(s.apiId)}
                   >
@@ -116,7 +118,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
         </table>
       )}
       {queue.length > 200 && (
-        <p className="muted">… und {queue.length - 200} weitere.</p>
+        <p className="muted">{t.queue.andMore(queue.length - 200)}</p>
       )}
 
       <div style={{ marginTop: 24 }}>
@@ -130,14 +132,14 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
           ) : (
             <ChevronRight size={14} aria-hidden />
           )}
-          Fehlgeschlagen ({failed.length})
+          {t.queue.failed(failed.length)}
         </button>
         {showFailed && failed.length > 0 && (
           <table className="song-table" style={{ marginTop: 8 }}>
             <thead>
               <tr>
-                <th>Song</th>
-                <th>Fehler</th>
+                <th>{t.queue.colSong}</th>
+                <th>{t.queue.colError}</th>
                 <th style={{ width: 130 }} />
               </tr>
             </thead>
@@ -157,7 +159,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
                       onClick={() => retry(f)}
                     >
                       <RotateCcw size={14} aria-hidden />
-                      Erneut
+                      {t.queue.retry}
                     </button>
                   </td>
                 </tr>
@@ -168,7 +170,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
       </div>
 
       <div style={{ marginTop: 32 }}>
-        <h3>Erstellungen</h3>
+        <h3>{t.queue.creations}</h3>
         <div className="row" style={{ marginBottom: 12 }}>
           <button
             className="btn primary"
@@ -177,7 +179,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
             onClick={() => void window.ultrastar.createStart()}
           >
             <Play size={14} aria-hidden />
-            {wartend} Songs erstellen
+            {t.queue.createN(wartend)}
           </button>
           {laeuftErstellung && (
             <button
@@ -185,7 +187,7 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
               type="button"
               onClick={() => void window.ultrastar.createCancel()}
             >
-              Laufenden Song abbrechen
+              {t.queue.cancelCurrent}
             </button>
           )}
           <button
@@ -194,13 +196,11 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
             disabled={wartend === 0}
             onClick={() => void window.ultrastar.createQueueClear()}
           >
-            Wartende entfernen
+            {t.queue.removeWaiting}
           </button>
         </div>
         {creations.length === 0 ? (
-          <p className="muted">
-            Noch keine Erstellungen. Der Assistent liegt unter „Erstellen".
-          </p>
+          <p className="muted">{t.queue.noCreations}</p>
         ) : (
           <table className="song-table">
             <tbody>

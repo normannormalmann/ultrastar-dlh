@@ -10,27 +10,26 @@ import type {
 } from "../../shared/ipcContract.ts";
 import CoverThumb from "../components/CoverThumb.tsx";
 import { useIpcEvent } from "../hooks.ts";
+import { type Katalog, useT } from "../i18n/index.tsx";
 
 /** Split multi-value fields ("Japanese, German") into individual values. */
-const splitValues = (raw: string | undefined): string[] => {
-  if (!raw) return ["Unbekannt"];
+const splitValues = (t: Katalog, raw: string | undefined): string[] => {
+  if (!raw) return [t.downloaded.unknown];
   const parts = raw
     .split(/[,;/]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  return parts.length > 0 ? parts : ["Unbekannt"];
+  return parts.length > 0 ? parts : [t.downloaded.unknown];
 };
 
-const importMessage = (r: ArchiveImportResult): string => {
-  const parts = [`${r.imported} Songs importiert`];
+const importMessage = (t: Katalog, r: ArchiveImportResult): string => {
+  const parts = [t.downloaded.imported(r.imported)];
   if (r.importedWithoutVideo > 0) {
-    parts.push(
-      `davon ${r.importedWithoutVideo} ohne Video — Reparatur ausführen, damit sie hier erscheinen`,
-    );
+    parts.push(t.downloaded.importedWithoutVideo(r.importedWithoutVideo));
   }
-  if (r.skipped > 0) parts.push(`${r.skipped} bereits vorhanden`);
+  if (r.skipped > 0) parts.push(t.downloaded.importSkipped(r.skipped));
   if (r.refreshed > 0) {
-    parts.push(`${r.refreshed} Einträge um Metadaten ergänzt`);
+    parts.push(t.downloaded.importRefreshed(r.refreshed));
   }
   return parts.join(" · ");
 };
@@ -38,6 +37,8 @@ const importMessage = (r: ArchiveImportResult): string => {
 export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   entries,
 }) => {
+  const t = useT();
+  const zahl = (n: number): string => n.toLocaleString(t.locale);
   const importProgress = useIpcEvent("event:archiveImportProgress", null);
   const refreshProgress = useIpcEvent("event:libraryRefreshProgress", null);
   const genreEnrichProgress = useIpcEvent("event:genreEnrichProgress", null);
@@ -114,7 +115,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
       onClick={() => void runImport()}
     >
       <FolderSearch size={14} aria-hidden />
-      {importing ? "Importiere…" : "Archiv importieren"}
+      {importing ? t.downloaded.importing : t.downloaded.importArchive}
     </button>
   );
 
@@ -127,9 +128,9 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
     e.artist.toLowerCase().includes(q) ||
     e.title.toLowerCase().includes(q);
   const matchesLang = (e: DownloadedEntry): boolean =>
-    !langFilter || splitValues(e.language).includes(langFilter);
+    !langFilter || splitValues(t, e.language).includes(langFilter);
   const matchesGenre = (e: DownloadedEntry): boolean =>
-    !genreFilter || splitValues(e.genre).includes(genreFilter);
+    !genreFilter || splitValues(t, e.genre).includes(genreFilter);
   const matchesYear = (e: DownloadedEntry): boolean => {
     if (from !== null && (e.year === undefined || e.year < from)) return false;
     if (to !== null && (e.year === undefined || e.year > to)) return false;
@@ -142,14 +143,14 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   ): Array<[string, number]> => {
     const counts = new Map<string, number>();
     for (const e of pool) {
-      for (const v of splitValues(e[field])) {
+      for (const v of splitValues(t, e[field])) {
         counts.set(v, (counts.get(v) ?? 0) + 1);
       }
     }
     return [...counts.entries()].sort((a, b) => {
-      if (a[0] === "Unbekannt") return 1;
-      if (b[0] === "Unbekannt") return -1;
-      return a[0].localeCompare(b[0], "de");
+      if (a[0] === t.downloaded.unknown) return 1;
+      if (b[0] === t.downloaded.unknown) return -1;
+      return a[0].localeCompare(b[0], t.locale);
     });
   };
 
@@ -168,10 +169,10 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   );
   switch (sortBy) {
     case "artist":
-      filteredBase.sort((a, b) => a.artist.localeCompare(b.artist, "de"));
+      filteredBase.sort((a, b) => a.artist.localeCompare(b.artist, t.locale));
       break;
     case "title":
-      filteredBase.sort((a, b) => a.title.localeCompare(b.title, "de"));
+      filteredBase.sort((a, b) => a.title.localeCompare(b.title, t.locale));
       break;
     case "year":
       filteredBase.sort(
@@ -192,7 +193,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
         <input
           className="input"
           style={{ width: 320 }}
-          placeholder="Filtern…"
+          placeholder={t.downloaded.filterPlaceholder}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -201,13 +202,13 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           value={langFilter}
           onChange={(e) => setLangFilter(e.target.value)}
         >
-          <option value="">Sprache: Alle</option>
+          <option value="">{t.search.languageAll}</option>
           {langFilter && !languageOptions.some(([l]) => l === langFilter) && (
             <option value={langFilter}>{langFilter} (0)</option>
           )}
           {languageOptions.map(([lang, count]) => (
             <option key={lang} value={lang}>
-              {lang} ({count.toLocaleString("de-DE")})
+              {lang} ({zahl(count)})
             </option>
           ))}
         </select>
@@ -216,13 +217,13 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           value={genreFilter}
           onChange={(e) => setGenreFilter(e.target.value)}
         >
-          <option value="">Genre: Alle</option>
+          <option value="">{t.search.genreAll}</option>
           {genreFilter && !genreOptions.some(([g]) => g === genreFilter) && (
             <option value={genreFilter}>{genreFilter} (0)</option>
           )}
           {genreOptions.map(([g, count]) => (
             <option key={g} value={g}>
-              {g} ({count.toLocaleString("de-DE")})
+              {g} ({zahl(count)})
             </option>
           ))}
         </select>
@@ -230,7 +231,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           className="input"
           style={{ width: 90 }}
           type="number"
-          placeholder="Jahr von"
+          placeholder={t.downloaded.yearFrom}
           value={yearFrom}
           onChange={(e) => setYearFrom(e.target.value)}
         />
@@ -238,7 +239,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           className="input"
           style={{ width: 90 }}
           type="number"
-          placeholder="bis"
+          placeholder={t.downloaded.yearTo}
           value={yearTo}
           onChange={(e) => setYearTo(e.target.value)}
         />
@@ -247,18 +248,18 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
         >
-          <option value="newest">Neueste zuerst</option>
-          <option value="artist">Interpret A–Z</option>
-          <option value="title">Titel A–Z</option>
-          <option value="year">Jahr aufsteigend</option>
+          <option value="newest">{t.downloaded.sortNewest}</option>
+          <option value="artist">{t.downloaded.sortArtist}</option>
+          <option value="title">{t.downloaded.sortTitle}</option>
+          <option value="year">{t.downloaded.sortYear}</option>
         </select>
         {importButton}
         <button
           className="btn"
           type="button"
           disabled={refreshing}
-          aria-label="Liste aktualisieren"
-          title="Liste aktualisieren (prüft den Ordner-Bestand neu)"
+          aria-label={t.downloaded.refreshLabel}
+          title={t.downloaded.refreshTitle}
           onClick={() => {
             setRefreshing(true);
             void window.ultrastar
@@ -267,7 +268,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           }}
         >
           <RefreshCw size={14} aria-hidden />
-          {refreshing ? "Aktualisiere…" : "Aktualisieren"}
+          {refreshing ? t.downloaded.refreshing : t.downloaded.refresh}
         </button>
         <button
           className="btn"
@@ -276,47 +277,54 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           onClick={() => void runEnrich()}
         >
           <Tags size={14} aria-hidden />
-          {enriching ? "Suche Genres…" : "Genres nachtragen"}
+          {enriching ? t.downloaded.enriching : t.downloaded.enrichGenres}
         </button>
       </div>
       {(langFilter || genreFilter || yearFrom || yearTo || filter) && (
         <p className="muted">
-          {filtered.length.toLocaleString("de-DE")} Treffer
+          {t.downloaded.hits(zahl(filtered.length))}
         </p>
       )}
       {importError && <div className="error-banner">{importError}</div>}
-      {importResult && <p className="muted">{importMessage(importResult)}</p>}
+      {importResult && <p className="muted">{importMessage(t, importResult)}</p>}
       {genreEnrichProgress && (
         <div className="row" style={{ marginBottom: 10 }}>
           <span className="muted">
-            Suche Genres… ({genreEnrichProgress.current}/
-            {genreEnrichProgress.total} · {genreEnrichProgress.enriched}{" "}
-            gefunden)
+            {t.downloaded.enrichProgress(
+              genreEnrichProgress.current,
+              genreEnrichProgress.total,
+              genreEnrichProgress.enriched,
+            )}
           </span>
           <button
             className="btn small"
             type="button"
             onClick={() => void window.ultrastar.genresCancel()}
           >
-            Abbrechen
+            {t.downloaded.cancel}
           </button>
         </div>
       )}
       {enrichResult && (
         <p className="muted">
-          {enrichResult.enriched} Genres nachgetragen · {enrichResult.notFound}{" "}
-          nicht gefunden · {enrichResult.txtPatched} song.txt aktualisiert
+          {t.downloaded.enrichResult(
+            enrichResult.enriched,
+            enrichResult.notFound,
+            enrichResult.txtPatched,
+          )}
           {enrichResult.txtFailed > 0
-            ? ` · ${enrichResult.txtFailed} Dateien fehlgeschlagen`
+            ? t.downloaded.enrichFilesFailed(enrichResult.txtFailed)
             : ""}
-          {enrichResult.cancelled ? " · abgebrochen" : ""}
+          {enrichResult.cancelled ? t.downloaded.enrichCancelled : ""}
         </p>
       )}
       {importProgress && (
         <div className="row" style={{ marginBottom: 10 }}>
           <span className="muted">
-            Scanne Archiv… ({importProgress.current.toLocaleString("de-DE")}/
-            {importProgress.total.toLocaleString("de-DE")})
+            {t.downloaded.scanningArchive(
+              zahl(importProgress.current),
+              zahl(importProgress.total),
+            )}
           </span>
           <div className="progress-track">
             <div
@@ -331,8 +339,10 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
       {refreshProgress && (
         <div className="row" style={{ marginBottom: 10 }}>
           <span className="muted">
-            Prüfe Bestand… ({refreshProgress.current.toLocaleString("de-DE")}/
-            {refreshProgress.total.toLocaleString("de-DE")})
+            {t.downloaded.checkingLibrary(
+              zahl(refreshProgress.current),
+              zahl(refreshProgress.total),
+            )}
           </span>
           <div className="progress-track">
             <div
@@ -348,23 +358,21 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
       {entries.length === 0 ? (
         <div style={{ marginTop: 8 }}>
           <p className="muted" style={{ maxWidth: 520 }}>
-            Noch keine Einträge. Du hast bereits Songs auf der Platte?
-            Importiere dein bestehendes Archiv aus dem Download-Ordner — ganz
-            ohne erneute Downloads.
+            {t.downloaded.empty}
           </p>
           {importButton}
         </div>
       ) : filtered.length === 0 ? (
-        <p className="muted">Keine Treffer für den Filter.</p>
+        <p className="muted">{t.downloaded.noFilterHits}</p>
       ) : (
         <>
           <table className="song-table">
             <thead>
               <tr>
                 <th style={{ width: 36 }} />
-                <th>Interpret</th>
-                <th>Titel</th>
-                <th>Datum</th>
+                <th>{t.downloaded.colArtist}</th>
+                <th>{t.downloaded.colTitle}</th>
+                <th>{t.downloaded.colDate}</th>
                 <th style={{ width: 120 }} />
               </tr>
             </thead>
@@ -386,7 +394,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
                       }
                     >
                       <FolderOpen size={14} aria-hidden />
-                      Ordner
+                      {t.downloaded.folder}
                     </button>
                   </td>
                 </tr>
@@ -395,9 +403,10 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
           </table>
           {filtered.length > visibleCount && (
             <p className="muted">
-              {Math.min(visibleCount, filtered.length).toLocaleString("de-DE")}{" "}
-              von {filtered.length.toLocaleString("de-DE")} angezeigt —
-              weiterscrollen lädt mehr.
+              {t.downloaded.showingOf(
+                zahl(Math.min(visibleCount, filtered.length)),
+                zahl(filtered.length),
+              )}
             </p>
           )}
         </>
