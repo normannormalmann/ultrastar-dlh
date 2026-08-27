@@ -6,7 +6,7 @@
 
 Search the largest UltraStar database (USDB), download complete, ready-to-sing song folders — lyrics, cover, and video in one go — and manage tens of thousands of songs with real filters. No manual assembling, no broken folders. Search, download, sing.
 
-➡️ **New here? [Go to the step-by-step tutorial](docs/TUTORIAL.md)**
+➡️ **New here? [Go to the step-by-step tutorial](docs/TUTORIAL.en.md)**
 
 ---
 
@@ -49,7 +49,7 @@ From then on the app tells you itself when a new version is out: **Settings → 
 
 For Linux there is an `UltraStar-DLH-*.AppImage` — make it executable and run it.
 
-Detailed setup including archive import: **[Tutorial](docs/TUTORIAL.md)**
+Detailed setup including archive import: **[Tutorial](docs/TUTORIAL.en.md)**
 
 ---
 
@@ -116,7 +116,7 @@ Architecture: `src/core/` (shared core: USDB API, downloads, storage, genre prov
 - **Songs don't show up in the library:** First run "Import archive" (picks up existing collections); click "Refresh" if folders were externally deleted/changed.
 - **Genre run stops:** Just start it again — already-enriched songs are skipped. For persistent issues, switch the source (Settings → Genre source).
 
-More in the **[Tutorial → Troubleshooting](docs/TUTORIAL.md#9-problemlösung)**.
+More in the **[Tutorial → Troubleshooting](docs/TUTORIAL.en.md#9-troubleshooting)**.
 
 ## 🔗 Links & Credits
 

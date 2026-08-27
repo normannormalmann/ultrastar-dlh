@@ -1,3 +1,5 @@
+🇩🇪 Deutsch | 🇬🇧 [English](TUTORIAL.en.md) | 🇪🇸 [Español](TUTORIAL.es.md)
+
 # Tutorial: UltraStar - Dirty Little Helper
 
 Dieses Tutorial führt dich von der Installation bis zur fertig gepflegten Karaoke-Bibliothek — Schritt für Schritt. Du brauchst keine Vorkenntnisse.
@@ -17,7 +19,7 @@ Dieses Tutorial führt dich von der Installation bis zur fertig gepflegten Karao
 
 ## 1. Installation & erster Start
 
-1. Lade die neueste `UltraStar - Dirty Little Helper Setup *.exe` von den [Releases](https://github.com/normannormalmann/ultrastar-dlh/releases) herunter.
+1. Lade die neueste `UltraStar-DLH-Setup-*.exe` von den [Releases](https://github.com/normannormalmann/ultrastar-dlh/releases) herunter.
 2. Führe die Datei aus. Windows SmartScreen zeigt eine Warnung (die App ist nicht signiert): klicke **„Weitere Informationen" → „Trotzdem ausführen"**. Die Installation läuft ohne weitere Fragen durch und startet die App.
 3. Beim ersten Start passiert automatisch:
    - Die App legt ein anonymes **USDB-Konto** an und meldet sich an (Status-Punkt „USDB" unten links wird grün).
@@ -25,7 +27,7 @@ Dieses Tutorial führt dich von der Installation bis zur fertig gepflegten Karao
 
 Die drei Status-Punkte unten links in der Seitenleiste zeigen jederzeit: USDB-Anmeldung, yt-dlp, ffmpeg. Alles grün = startklar.
 
-> **Update statt Neuinstallation:** Eine neue Version installierst du einfach über die alte — Einstellungen, Bibliothek und Queue bleiben erhalten. Nichts muss vorher deinstalliert werden.
+> **Updates:** Ab Version 1.4.0 meldet sich die App selbst, wenn eine neue Version vorliegt: **Einstellungen → App → „Auf Updates prüfen"**, herunterladen, neu starten. Weil der Installer nicht signiert ist, fragt SmartScreen auch beim Update noch einmal. Von Hand geht es weiterhin: Eine neue Version installierst du einfach über die alte — Einstellungen, Bibliothek und Queue bleiben erhalten.
 
 ## 2. Grundeinstellungen
 
@@ -42,6 +44,7 @@ Die drei Status-Punkte unten links in der Seitenleiste zeigen jederzeit: USDB-An
   - *Parallele Downloads* (1–5): Wie viele Songs gleichzeitig laden. 2–3 ist ein guter Standard.
   - *Video-Qualität*: max. 720p spart Platz, max. 1080p ist Standard, „Beste verfügbare" nimmt was YouTube hergibt.
 - **Genre-Quelle:** siehe [Kapitel 7](#7-genres-automatisch-nachtragen).
+- **Sprache:** Deutsch, Englisch oder Spanisch. Ohne eigene Wahl folgt die App der Sprache deines Systems.
 
 **Speichern** nicht vergessen (Häkchen bestätigt).
 

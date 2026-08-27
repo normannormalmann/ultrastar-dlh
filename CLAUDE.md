@@ -2,7 +2,11 @@
 
 ## Language
 - Code comments (including JSDoc) are written in **English**.
-- User-facing strings in `src/desktop/renderer/` and end-user docs (`docs/TUTORIAL.md`) stay **German** — the app is intentionally localized for German-speaking users (`lang="de"`). Don't translate these.
+- The desktop UI ships in **German, English and Spanish**. No user-facing string belongs in a component: they all live in `src/desktop/renderer/i18n/`, where the German catalog is the source of truth and its inferred shape types the other two — a missing translation is a compile error, not a blank label. Values that take arguments are functions, so counts and plurals stay correct per language.
+- Number, date and sort-order formatting goes through `t.locale`, never a hardcoded `de-DE`.
+- End-user docs exist per language: `README.md` / `README.en.md` / `README.es.md` and `docs/TUTORIAL.md` / `.en.md` / `.es.md`. Keep them in step.
+- The terminal version (`src/tui/`) stays **German** by deliberate choice.
+- Values that travel to a server or into a file format are not UI text and stay as they are: the USDB filter values in `SearchView.tsx` and the English `tag` in `core/create/languages.ts` (the `#LANGUAGE` header).
 
 ## File naming
 - Plain TypeScript modules: `camelCase.ts` (e.g. `failedDownloads.ts`, `ipcContract.ts`).
