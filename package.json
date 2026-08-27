@@ -2,7 +2,7 @@
   "name": "ultrastar",
   "description": "Download songs from UltraStar biggest database",
   "author": "Norman Schönherr",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "type": "module",
   "private": true,
   "main": "out/main/index.js",
