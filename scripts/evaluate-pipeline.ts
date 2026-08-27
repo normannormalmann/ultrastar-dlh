@@ -8,7 +8,9 @@
 // dieser Streuung den Grossteil der Aussagekraft.
 // Interpreter ueber PIPELINE_PYTHON steuern (z.B. die venv aus
 // python-sidecar/.venv), sonst wird 'python' aus dem PATH genutzt.
+import { execFile } from "node:child_process";
 import { access, readFile, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { compareToReference, type Metrics, parseReferenceTxt } from "../src/core/create/evaluate.ts";
@@ -74,7 +76,7 @@ const AUDIO_KANDIDATEN = ["song.ogg", "song.mp3", "video.mp4", "audio.ogg", "aud
  * legt die Tonspur ueberwiegend als video.mp4 ab, nicht als song.ogg —
  * geratene Dateinamen finden dort nichts.
  */
-const findeAudio = async (dir: string, referenzTxt: string): Promise<string | null> => {
+export const findeAudio = async (dir: string, referenzTxt: string): Promise<string | null> => {
   const ausHeader = /^#MP3:(.*)$/m.exec(referenzTxt)?.[1]?.trim();
   if (ausHeader) {
     try {
@@ -124,6 +126,58 @@ export const lyricsAusReferenz = (referenzTxt: string): string[] => {
   return zeilen;
 };
 
+const execFileAsync = promisify(execFile);
+
+/** Container, aus denen erst eine Tonspur geloest werden muss. */
+const CONTAINER = [".mp4", ".webm", ".mkv", ".avi", ".mov"];
+/** Neben der Referenz abgelegt, damit Wiederholungslaeufe sie finden. */
+const AUDIO_DATEI = ".eval-audio.wav";
+
+/**
+ * Der Sidecar liest die Tonspur ueber libsndfile, und das kennt kein mp4.
+ * Heruntergeladene Songs bestehen aber genau daraus: song.txt, cover.jpg,
+ * video.mp4 - eine separate Audiodatei gibt es nicht. Ohne diesen Schritt
+ * ist der Harness gegen eine echte Bibliothek nicht lauffaehig.
+ *
+ * ffmpeg kommt aus dem PATH; die App bringt es ohnehin mit. Das Ergebnis
+ * liegt im Songordner, damit ein zweiter Lauf es wiederverwendet.
+ */
+const stelleAudioBereit = async (
+  songDir: string,
+  referenzTxt: string,
+): Promise<string | null> => {
+  const gefunden = await findeAudio(songDir, referenzTxt);
+  if (!gefunden) return null;
+  const istContainer = CONTAINER.some((e) => gefunden.toLowerCase().endsWith(e));
+  if (!istContainer) return gefunden;
+
+  const ziel = join(songDir, AUDIO_DATEI);
+  try {
+    await access(ziel);
+    return ziel;
+  } catch {
+    // noch nicht extrahiert
+  }
+  try {
+    // -vn: Bildspur weg. Mono/16 kHz waere verlockend, waere aber eine
+    // stille Vorverarbeitung, die die Messung beeinflusst - der Sidecar
+    // soll dasselbe Audio sehen wie im echten Lauf.
+    await execFileAsync(
+      "ffmpeg",
+      ["-y", "-loglevel", "error", "-i", gefunden, "-vn", ziel],
+      { maxBuffer: 1024 * 1024 },
+    );
+    return ziel;
+  } catch (e) {
+    console.error(
+      `${songDir}: ffmpeg konnte keine Tonspur loesen: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+    return null;
+  }
+};
+
 const main = async (): Promise<void> => {
   const manifestPfad = process.argv[2];
   if (!manifestPfad) {
@@ -153,7 +207,7 @@ const main = async (): Promise<void> => {
   for (const song of manifest.songs) {
     const referenzTxt = await readFile(join(song.songDir, "song.txt"), "utf8");
     const referenz = parseReferenceTxt(referenzTxt);
-    const audio = await findeAudio(song.songDir, referenzTxt);
+    const audio = await stelleAudioBereit(song.songDir, referenzTxt);
     if (!audio) {
       console.error(`${song.artist} - ${song.title}: kein Audio gefunden, uebersprungen`);
       fehlschlaege.push({

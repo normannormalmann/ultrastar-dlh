@@ -50,7 +50,11 @@ test-results/
 playwright-report/
 
 # Bewertungs-Harness (Urheberrecht: kein Audio, keine Referenz-.txt im Repo)
+# Korpus-Manifeste und Messergebnisse: verweisen auf urheberrechtlich
+# geschuetzte Songs bzw. sind Laufartefakte.
 scripts/reference-corpus.json
+scripts/*-corpus.json
+scripts/*-ergebnis.json
 .pipeline-cache/
 .eval-lyrics.txt
 .eval-song-data.json
