@@ -1,4 +1,5 @@
 <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <title>UltraStar - Dirty Little Helper</title>
   <rect x="8" y="8" width="240" height="240" rx="56" fill="#1f1f30"/>
   <path d="M128 42 l22 48 52 8 -38 36 9 52 -45 -25 -45 25 9 -52 -38 -36 52 -8 z" fill="#d98cf9"/>
   <path d="M52 170 a96 60 0 0 0 152 0" fill="none" stroke="#89dceb" stroke-width="12" stroke-linecap="round"/>
