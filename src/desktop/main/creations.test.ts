@@ -451,6 +451,63 @@ describe("creation queue", () => {
     expect(abgebrochen).toBe(true);
   });
 
+  it("meldet Vorbereitung und Pipeline-Start, bevor eine Stufe kommt", async () => {
+    // Ohne diese beiden Stufen stand die Zeile von "running" bis zur ersten
+    // Sidecar-Meldung ohne jede Angabe da - bei kaltem Worker minutenlang.
+    const events: Array<{ channel: string; payload: unknown }> = [];
+    const deps = {
+      newWorker: () => ({
+        isAlive: () => true,
+        submitJob: async (
+          _job: { id: string },
+          onProgress?: (stage: string, percent: number) => void,
+        ) => {
+          onProgress?.("separate", 0.5);
+        },
+        cancelCurrentJob: () => {},
+        shutdown: async () => {},
+      }),
+      environmentStatus: async () => ({ state: "ready" }),
+      workDir: () => "C:/userData/pipeline-cache",
+      jobDir: (id: string) => `C:/userData/jobs/${id}`,
+      libraryDir: () => "C:/library",
+      layout: () => "flat",
+      acquire: async () => ({ audioPath: "a.m4a", videoPath: "v.mp4" }),
+      schreibeJobDateien: async (_job: unknown, jobDir: string) => ({
+        lyricsPath: `${jobDir}/lyrics.txt`,
+      }),
+      assemble: async () => ({
+        songDir: "C:/library/x",
+        dirName: "x",
+        warnungen: [],
+        lowConfidence: false,
+      }),
+      aufraeumen: async () => {},
+      ladeQueue: async () => [],
+      speichereQueue: async () => {},
+      raeumeCover: async () => {},
+      broadcast: (channel: string, payload: unknown) =>
+        events.push({ channel, payload: structuredClone(payload) }),
+    } as unknown as CreationsDeps;
+    const c = createCreations(deps);
+    c.queueAdd([job("a")]);
+    await c.start();
+
+    const stufen = events
+      .filter((e) => e.channel === "event:creations")
+      .flatMap((e) => e.payload as Array<{ stage?: string }>)
+      .map((e) => e.stage)
+      .filter((v): v is string => typeof v === "string");
+
+    expect(stufen).toContain("vorbereiten");
+    expect(stufen).toContain("starte");
+    // Reihenfolge zaehlt: beide muessen VOR der ersten Sidecar-Stufe stehen.
+    expect(stufen.indexOf("vorbereiten")).toBeLessThan(
+      stufen.indexOf("separate"),
+    );
+    expect(stufen.indexOf("starte")).toBeLessThan(stufen.indexOf("separate"));
+  });
+
   it("meldet Fortschritt des laufenden Jobs", async () => {
     const events: Array<{ channel: string; payload: unknown }> = [];
     const deps = {

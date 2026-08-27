@@ -13,6 +13,14 @@ export const en: Katalog = {
     repair: "Repair",
     settings: "Settings",
     usdbLogin: "USDB login",
+    aiEnv: "AI",
+    aiState: {
+      ready: "ready",
+      outdated: "out of date",
+      broken: "damaged",
+      missing: "not set up",
+      unknown: "checking",
+    },
   },
   downloads: {
     done: "done",
@@ -24,6 +32,8 @@ export const en: Katalog = {
     lowConfidence:
       "The sync is uncertain — the detection was inconclusive in several places. The correction editor will straighten this out later.",
     stage: {
+      vorbereiten: "preparing",
+      starte: "pipeline starting",
       loadModels: "loading models",
       beschaffen: "fetching",
       separate: "separating",

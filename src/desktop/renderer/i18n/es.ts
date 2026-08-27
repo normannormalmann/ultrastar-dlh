@@ -13,6 +13,14 @@ export const es: Katalog = {
     repair: "Reparación",
     settings: "Ajustes",
     usdbLogin: "Sesión en USDB",
+    aiEnv: "IA",
+    aiState: {
+      ready: "listo",
+      outdated: "desactualizado",
+      broken: "dañado",
+      missing: "sin configurar",
+      unknown: "comprobando",
+    },
   },
   downloads: {
     done: "listo",
@@ -24,6 +32,8 @@ export const es: Katalog = {
     lowConfidence:
       "La sincronización no es fiable — el reconocimiento fue dudoso en varios puntos. El editor de corrección lo arreglará más adelante.",
     stage: {
+      vorbereiten: "preparando",
+      starte: "iniciando la canalización",
       loadModels: "cargando modelos",
       beschaffen: "obteniendo",
       separate: "separando",

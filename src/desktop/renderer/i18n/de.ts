@@ -13,6 +13,14 @@ export const de = {
     repair: "Reparatur",
     settings: "Einstellungen",
     usdbLogin: "USDB-Login",
+    aiEnv: "KI",
+    aiState: {
+      ready: "bereit",
+      outdated: "veraltet",
+      broken: "defekt",
+      missing: "nicht eingerichtet",
+      unknown: "wird geprüft",
+    },
   },
   downloads: {
     done: "fertig",
@@ -24,6 +32,8 @@ export const de = {
     lowConfidence:
       "Der Sync ist unsicher — die Erkennung war an mehreren Stellen unschlüssig. Der Korrektur-Editor zieht das später gerade.",
     stage: {
+      vorbereiten: "vorbereiten",
+      starte: "Pipeline startet",
       loadModels: "Modelle laden",
       beschaffen: "beschaffen",
       separate: "trennen",

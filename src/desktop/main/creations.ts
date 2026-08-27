@@ -230,6 +230,11 @@ export const createCreations = (deps: CreationsDeps) => {
         const eintrag = eintraege.get(jobDef.id);
         if (!eintrag) continue;
         eintrag.status = "running";
+        // Everything up to the first pipeline stage - job dir, job files,
+        // and a cold worker - used to report nothing at all, so the row sat
+        // on "running" with an empty bar for as long as that took.
+        eintrag.stage = "vorbereiten";
+        eintrag.progress = 0;
         melde();
         worker ??= deps.newWorker();
         // Hold the worker in a local: cancel() clears the shared field
@@ -256,6 +261,11 @@ export const createCreations = (deps: CreationsDeps) => {
             laufenderAbbruch.signal,
           );
           workerHatAuftrag = true;
+          // The sidecar needs a while to boot and load its models before it
+          // reports its first stage. Without this the row kept showing
+          // "beschaffen" at 25% throughout, which reads like a hang.
+          eintrag.stage = "starte";
+          melde();
           await aktiv.submitJob(
             toWorkerJob(jobDef, medien, dateien, deps.workDir(), jobDir),
             (stage, percent) => {
