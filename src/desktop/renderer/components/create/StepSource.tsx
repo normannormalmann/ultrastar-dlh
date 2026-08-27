@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { useState } from "react";
 import type { YoutubeVideo } from "../../../shared/ipcContract.ts";
+import { useT } from "../../i18n/index.tsx";
 import type { Entwurf } from "../../views/createDraft.ts";
 
 const mmss = (sek: number): string => {
@@ -26,6 +27,7 @@ export const StepSource: FC<{
   entwurf: Entwurf;
   onChange: (patch: Partial<Entwurf>) => void;
 }> = ({ entwurf, onChange }) => {
+  const t = useT();
   const [treffer, setTreffer] = useState<YoutubeVideo[] | null>(null);
   const [sucht, setSucht] = useState(false);
   const [link, setLink] = useState("");
@@ -43,9 +45,7 @@ export const StepSource: FC<{
       );
       setTreffer(gefunden);
       if (gefunden.length === 0) {
-        setMeldung(
-          "Keine Treffer. Prüfe Interpret und Titel — oder füge einen Link ein.",
-        );
+        setMeldung(t.create.source.noHits);
       }
     } finally {
       setSucht(false);
@@ -66,9 +66,7 @@ export const StepSource: FC<{
       thumbnailUrl: null,
     });
     if (info === null) {
-      setMeldung(
-        "Die Spieldauer war nicht zu ermitteln — Schritt 3 macht dann keinen Textvorschlag.",
-      );
+      setMeldung(t.create.source.noDuration);
     }
   };
 
@@ -86,9 +84,7 @@ export const StepSource: FC<{
       thumbnailUrl: null,
     });
     if (info === null) {
-      setMeldung(
-        "Die Datei war nicht lesbar oder ohne erkennbare Dauer. Bitte prüfen.",
-      );
+      setMeldung(t.create.source.fileUnreadable);
     }
   };
 
@@ -101,10 +97,10 @@ export const StepSource: FC<{
           disabled={sucht}
           onClick={() => void suche()}
         >
-          {sucht ? "Sucht…" : "Bei YouTube suchen"}
+          {sucht ? t.create.source.searching : t.create.source.searchYoutube}
         </button>
         <button className="btn" type="button" onClick={() => void waehleDatei()}>
-          Lokale Audiodatei…
+          {t.create.source.localFile}
         </button>
       </div>
 
@@ -112,7 +108,7 @@ export const StepSource: FC<{
         <input
           className="input"
           style={{ flex: 1 }}
-          placeholder="…oder YouTube-Link einfügen"
+          placeholder={t.create.source.linkPlaceholder}
           value={link}
           onChange={(ev) => setLink(ev.target.value)}
         />
@@ -121,7 +117,7 @@ export const StepSource: FC<{
           type="button"
           onClick={() => void uebernehmeLink()}
         >
-          Übernehmen
+          {t.create.source.apply}
         </button>
       </div>
 
@@ -153,7 +149,9 @@ export const StepSource: FC<{
                       })
                     }
                   >
-                    {istGewaehlt(v.url) ? "Gewählt" : "Wählen"}
+                    {istGewaehlt(v.url)
+                      ? t.create.source.chosen
+                      : t.create.source.choose}
                   </button>
                 </td>
               </tr>
@@ -164,7 +162,7 @@ export const StepSource: FC<{
 
       {entwurf.quelle && (
         <p className="muted" style={{ marginTop: 12 }}>
-          Gewählt:{" "}
+          {t.create.source.chosenLabel}{" "}
           {entwurf.quelle.kind === "youtube"
             ? entwurf.quelle.url
             : entwurf.quelle.pfad}

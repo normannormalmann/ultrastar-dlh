@@ -10,26 +10,33 @@ import StepLyrics from "../components/create/StepLyrics.tsx";
 import StepReview from "../components/create/StepReview.tsx";
 import StepSong from "../components/create/StepSong.tsx";
 import StepSource from "../components/create/StepSource.tsx";
+import { type Katalog, useT } from "../i18n/index.tsx";
 import {
   type Entwurf,
   leererEntwurf,
+  type Pruefung,
   type Schritt,
   schrittFertig,
 } from "./createDraft.ts";
 
-const TITEL: Record<Schritt, string> = {
-  1: "Song",
-  2: "Quelle",
-  3: "Liedtext",
-  4: "Bild",
-  5: "Prüfen",
+/** schrittFertig returns a code; only the UI knows the wording. */
+const grundText = (t: Katalog, p: Pruefung): string | undefined => {
+  if (p.ok) return undefined;
+  if (p.grund === "openQuestions") {
+    return t.create.reason.openQuestions(p.anzahl ?? 0);
+  }
+  return t.create.reason[p.grund];
 };
 
-const UMGEBUNG_TEXT: Record<string, string> = {
-  missing: "Die KI-Umgebung ist noch nicht eingerichtet.",
-  broken: "Die KI-Umgebung ist beschädigt.",
-  outdated: "Die KI-Umgebung ist veraltet.",
-};
+const umgebungText = (
+  t: Katalog,
+  state: string,
+): string | undefined =>
+  ({
+    missing: t.create.envMissing,
+    broken: t.create.envBroken,
+    outdated: t.create.envOutdated,
+  })[state];
 
 export const CreateView: FC<{
   entwurf: Entwurf;
@@ -37,6 +44,7 @@ export const CreateView: FC<{
   /** Only step 5 needs it, for the duplicate warning. */
   downloaded: DownloadedEntry[];
 }> = ({ entwurf, setEntwurf, downloaded }) => {
+  const t = useT();
   const [schritt, setSchritt] = useState<Schritt>(1);
   const [env, setEnv] = useState<EnvironmentStatus | null>(null);
   const [installiert, setInstalliert] = useState(false);
@@ -48,7 +56,8 @@ export const CreateView: FC<{
 
   const patch = (p: Partial<Entwurf>): void => setEntwurf({ ...entwurf, ...p });
   const pruefung = schrittFertig(entwurf, schritt);
-  const warnung = env === null ? undefined : UMGEBUNG_TEXT[env.state];
+  const grund = grundText(t, pruefung);
+  const warnung = env === null ? undefined : umgebungText(t, env.state);
 
   const installiere = async (): Promise<void> => {
     setInstalliert(true);
@@ -62,20 +71,19 @@ export const CreateView: FC<{
   return (
     <div>
       <h2>
-        <Wand2 size={18} aria-hidden /> Song erstellen
+        <Wand2 size={18} aria-hidden /> {t.create.title}
       </h2>
 
       {warnung && (
         <div className="error-banner">
-          {warnung} Songs lassen sich trotzdem vorbereiten — gestartet werden
-          sie erst, wenn die Umgebung steht.{" "}
+          {warnung} {t.create.envHint}{" "}
           <button
             className="btn small"
             type="button"
             disabled={installiert}
             onClick={() => void installiere()}
           >
-            {installiert ? "Wird eingerichtet…" : "Jetzt einrichten"}
+            {installiert ? t.create.envInstalling : t.create.envInstallNow}
           </button>
         </div>
       )}
@@ -89,7 +97,7 @@ export const CreateView: FC<{
               color: s === schritt ? "var(--yellow)" : undefined,
             }}
           >
-            {s} {TITEL[s]}
+            {s} {t.create.steps[s]}
           </span>
         ))}
       </div>
@@ -116,18 +124,18 @@ export const CreateView: FC<{
           disabled={schritt === 1}
           onClick={() => setSchritt((s) => (s > 1 ? ((s - 1) as Schritt) : s))}
         >
-          Zurück
+          {t.create.back}
         </button>
         <button
           className="btn primary"
           type="button"
           disabled={!pruefung.ok || schritt === 5}
-          title={pruefung.ok ? undefined : pruefung.grund}
+          title={grund}
           onClick={() => setSchritt((s) => (s < 5 ? ((s + 1) as Schritt) : s))}
         >
-          Weiter
+          {t.create.next}
         </button>
-        {!pruefung.ok && <span className="muted">{pruefung.grund}</span>}
+        {grund && <span className="muted">{grund}</span>}
       </div>
     </div>
   );

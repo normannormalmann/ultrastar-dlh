@@ -2,12 +2,8 @@ import type { FC } from "react";
 import { useState } from "react";
 import { resolveLyrics } from "../../../../core/create/lyrics.ts";
 import type { DownloadedEntry } from "../../../shared/ipcContract.ts";
-import {
-  type Entwurf,
-  istDuplikat,
-  spracheName,
-  zuJob,
-} from "../../views/createDraft.ts";
+import { spracheAnzeige, useT } from "../../i18n/index.tsx";
+import { type Entwurf, istDuplikat, zuJob } from "../../views/createDraft.ts";
 
 /** Step 5: what will be built, before ten minutes of GPU time are spent. */
 export const StepReview: FC<{
@@ -15,6 +11,7 @@ export const StepReview: FC<{
   downloaded: DownloadedEntry[];
   onAbgeschickt: () => void;
 }> = ({ entwurf, downloaded, onAbgeschickt }) => {
+  const t = useT();
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const zeilen = resolveLyrics(entwurf.rohtext, entwurf.antworten);
@@ -38,17 +35,17 @@ export const StepReview: FC<{
       <table className="song-table">
         <tbody>
           <tr>
-            <td>Song</td>
+            <td>{t.create.review.song}</td>
             <td>
               {entwurf.artist} – {entwurf.title}
             </td>
           </tr>
           <tr>
-            <td>Sprache</td>
-            <td>{spracheName(entwurf.language)}</td>
+            <td>{t.create.review.language}</td>
+            <td>{spracheAnzeige(t.locale, entwurf.language)}</td>
           </tr>
           <tr>
-            <td>Quelle</td>
+            <td>{t.create.review.source}</td>
             <td>
               {entwurf.quelle?.kind === "youtube"
                 ? entwurf.quelle.url
@@ -56,24 +53,33 @@ export const StepReview: FC<{
             </td>
           </tr>
           <tr>
-            <td>Textzeilen</td>
+            <td>{t.create.review.lyricLines}</td>
             <td>{zeilen.length}</td>
           </tr>
           <tr>
-            <td>Synchronisierte Lyrics</td>
-            <td>{entwurf.syncedText ? "liegen vor" : "keine"}</td>
+            <td>{t.create.review.syncedLyrics}</td>
+            <td>
+              {entwurf.syncedText
+                ? t.create.review.syncedPresent
+                : t.create.review.syncedNone}
+            </td>
           </tr>
           <tr>
-            <td>Bild</td>
-            <td>{entwurf.coverWahl === "keins" ? "keines" : "gewählt"}</td>
+            <td>{t.create.review.image}</td>
+            <td>
+              {entwurf.coverWahl === "keins"
+                ? t.create.review.imageNone
+                : t.create.review.imageChosen}
+            </td>
           </tr>
         </tbody>
       </table>
 
       {doppelt && (
         <div className="error-banner" style={{ marginTop: 12 }}>
-          „{entwurf.artist} – {entwurf.title}" liegt schon in der Bibliothek.
-          Der neue Ordner wird danebengelegt, der alte bleibt unberührt.
+          {t.create.review.duplicate(
+            `${entwurf.artist} – ${entwurf.title}`,
+          )}
         </div>
       )}
       {fehler && (
@@ -89,12 +95,9 @@ export const StepReview: FC<{
           disabled={laeuft}
           onClick={() => void abschicken()}
         >
-          {laeuft ? "Wird eingereiht…" : "Zur Queue"}
+          {laeuft ? t.create.review.submitting : t.create.review.toQueue}
         </button>
-        <span className="muted">
-          Gestartet wird in der Queue — dort läuft immer nur ein Song, weil es
-          nur eine GPU gibt.
-        </span>
+        <span className="muted">{t.create.review.hint}</span>
       </div>
     </div>
   );

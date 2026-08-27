@@ -4,6 +4,7 @@ import {
   type Antwort,
   normalizeLyrics,
 } from "../../../../core/create/lyrics.ts";
+import { useT } from "../../i18n/index.tsx";
 import type { Entwurf } from "../../views/createDraft.ts";
 
 /**
@@ -15,6 +16,7 @@ export const StepLyrics: FC<{
   entwurf: Entwurf;
   onChange: (patch: Partial<Entwurf>) => void;
 }> = ({ entwurf, onChange }) => {
+  const t = useT();
   const [sucht, setSucht] = useState(false);
   const [meldung, setMeldung] = useState<string | null>(null);
   // One automatic lookup per song/duration - retyping must not hammer the API.
@@ -22,7 +24,7 @@ export const StepLyrics: FC<{
 
   const holeText = async (): Promise<void> => {
     if (entwurf.durationSec === null) {
-      setMeldung("Ohne Spieldauer ist keine LRCLIB-Abfrage möglich.");
+      setMeldung(t.create.lyrics.noDuration);
       return;
     }
     setSucht(true);
@@ -33,12 +35,10 @@ export const StepLyrics: FC<{
         durationSec: entwurf.durationSec,
       });
       if (text === null) {
-        setMeldung(
-          "Bei LRCLIB nichts gefunden — bitte den Text von Hand einfügen.",
-        );
+        setMeldung(t.create.lyrics.notFound);
         return;
       }
-      setMeldung("Synchronisierte Lyrics gefunden — sie verbessern das Timing.");
+      setMeldung(t.create.lyrics.found);
       onChange({ rohtext: text, syncedText: text, antworten: [] });
     } finally {
       setSucht(false);
@@ -76,10 +76,10 @@ export const StepLyrics: FC<{
           disabled={sucht}
           onClick={() => void holeText()}
         >
-          {sucht ? "Sucht…" : "Bei LRCLIB nachsehen"}
+          {sucht ? t.create.lyrics.searching : t.create.lyrics.lookUp}
         </button>
         {entwurf.syncedText && (
-          <span className="muted">Synchronisierte Lyrics liegen vor ✓</span>
+          <span className="muted">{t.create.lyrics.syncedPresent}</span>
         )}
       </div>
 
@@ -88,7 +88,7 @@ export const StepLyrics: FC<{
       <textarea
         className="input"
         style={{ width: "100%", minHeight: 220, fontFamily: "monospace" }}
-        placeholder="Eine Zeile pro gesungener Phrase. Leerzeilen trennen Blöcke."
+        placeholder={t.create.lyrics.placeholder}
         value={entwurf.rohtext}
         onChange={(ev) =>
           onChange({
@@ -106,8 +106,7 @@ export const StepLyrics: FC<{
 
       {entfernt.length > 0 && (
         <p className="muted">
-          Diese Zeilen fliegen raus, weil sie nie gesungen werden:{" "}
-          {entfernt.join(", ")}
+          {t.create.lyrics.dropped(entfernt.join(", "))}
         </p>
       )}
 
@@ -119,8 +118,7 @@ export const StepLyrics: FC<{
         >
           {f.kind === "repeat_scope" ? (
             <>
-              Zeile {f.zeilenIndex + 1} endet auf „{f.marker}". Was soll doppelt
-              gesungen werden?
+              {t.create.lyrics.repeatQuestion(f.zeilenIndex + 1, f.marker)}
               <div className="row" style={{ marginTop: 6 }}>
                 <button
                   className={
@@ -137,7 +135,7 @@ export const StepLyrics: FC<{
                     })
                   }
                 >
-                  Nur diese Zeile
+                  {t.create.lyrics.repeatLineOnly}
                 </button>
                 <button
                   className={
@@ -154,16 +152,16 @@ export const StepLyrics: FC<{
                     })
                   }
                 >
-                  Den ganzen Block ({f.blockZeilen.length} Zeilen)
+                  {t.create.lyrics.repeatWholeBlock(f.blockZeilen.length)}
                 </button>
               </div>
             </>
           ) : (
             <>
-              In Zeile {f.zeilenIndex + 1} steht nur ein Refrain-Verweis.
+              {t.create.lyrics.chorusQuestion(f.zeilenIndex + 1)}
               {f.refrainZeilen.length > 0
-                ? ` Diesen Refrain einsetzen? („${f.refrainZeilen[0]}" …)`
-                : " Es gibt keinen früheren Refrain, den man einsetzen könnte."}
+                ? t.create.lyrics.chorusInsertAsk(f.refrainZeilen[0] ?? "")
+                : t.create.lyrics.chorusNone}
               <div className="row" style={{ marginTop: 6 }}>
                 {f.refrainZeilen.length > 0 && (
                   <button
@@ -181,7 +179,7 @@ export const StepLyrics: FC<{
                       })
                     }
                   >
-                    Refrain einsetzen
+                    {t.create.lyrics.chorusInsert}
                   </button>
                 )}
                 <button
@@ -199,7 +197,7 @@ export const StepLyrics: FC<{
                     })
                   }
                 >
-                  Zeile verwerfen
+                  {t.create.lyrics.chorusDrop}
                 </button>
               </div>
             </>

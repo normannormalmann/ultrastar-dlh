@@ -26,15 +26,15 @@ describe("schrittFertig", () => {
     const e = leererEntwurf("abc-123");
     expect(schrittFertig(e, 1)).toEqual({
       ok: false,
-      grund: "Interpret und Titel fehlen.",
+      grund: "artistAndTitleMissing",
     });
     expect(schrittFertig({ ...e, artist: "Falco" }, 1)).toEqual({
       ok: false,
-      grund: "Titel fehlt.",
+      grund: "titleMissing",
     });
     expect(schrittFertig({ ...e, title: "Der Kommissar" }, 1)).toEqual({
       ok: false,
-      grund: "Interpret fehlt.",
+      grund: "artistMissing",
     });
     expect(schrittFertig(voll(), 1)).toEqual({ ok: true });
   });
@@ -44,18 +44,18 @@ describe("schrittFertig", () => {
     // aufgefallen ist - nach dem Laden der Modelle.
     expect(schrittFertig({ ...voll(), language: "Deutsch" }, 1)).toEqual({
       ok: false,
-      grund: "Fuer diese Sprache fehlt das Modell.",
+      grund: "languageModelMissing",
     });
     expect(schrittFertig({ ...voll(), language: "  " }, 1)).toEqual({
       ok: false,
-      grund: "Sprache fehlt.",
+      grund: "languageMissing",
     });
   });
 
   it("verlangt eine Quelle in Schritt 2", () => {
     expect(schrittFertig({ ...voll(), quelle: null }, 2)).toEqual({
       ok: false,
-      grund: "Keine Quelle gewaehlt.",
+      grund: "noSource",
     });
     expect(schrittFertig(voll(), 2)).toEqual({ ok: true });
   });
@@ -63,7 +63,7 @@ describe("schrittFertig", () => {
   it("sperrt Schritt 3 bei leerem Text", () => {
     expect(schrittFertig({ ...voll(), rohtext: "   " }, 3)).toEqual({
       ok: false,
-      grund: "Kein Liedtext eingefuegt.",
+      grund: "noLyrics",
     });
   });
 
@@ -71,7 +71,8 @@ describe("schrittFertig", () => {
     const e = { ...voll(), rohtext: "Zeile A\nZeile B 2x" };
     expect(schrittFertig(e, 3)).toEqual({
       ok: false,
-      grund: "Noch 1 offene Rueckfrage zum Text.",
+      grund: "openQuestions",
+      anzahl: 1,
     });
     expect(
       schrittFertig(
@@ -88,7 +89,8 @@ describe("schrittFertig", () => {
     const e = { ...voll(), rohtext: "Zeile A 2x\nZeile B\nZeile C 2x" };
     expect(schrittFertig(e, 3)).toEqual({
       ok: false,
-      grund: "Noch 2 offene Rueckfragen zum Text.",
+      grund: "openQuestions",
+      anzahl: 2,
     });
   });
 
@@ -96,14 +98,14 @@ describe("schrittFertig", () => {
     // Nur eine Kopfzeile: die wird verworfen, uebrig bleibt nichts.
     expect(schrittFertig({ ...voll(), rohtext: "[Strophe]" }, 3)).toEqual({
       ok: false,
-      grund: "Nach dem Aufbereiten bleibt keine Zeile uebrig.",
+      grund: "noLineLeft",
     });
   });
 
   it("verlangt eine Bildentscheidung in Schritt 4", () => {
     expect(schrittFertig({ ...voll(), coverWahl: null }, 4)).toEqual({
       ok: false,
-      grund: "Noch keine Bildentscheidung.",
+      grund: "noCoverChoice",
     });
     expect(schrittFertig(voll(), 4)).toEqual({ ok: true });
   });
@@ -139,7 +141,7 @@ describe("zuJob", () => {
   });
 
   it("wirft bei unfertigem Entwurf", () => {
-    expect(() => zuJob({ ...voll(), quelle: null })).toThrow(/Quelle/);
+    expect(() => zuJob({ ...voll(), quelle: null })).toThrow(/noSource/);
   });
 
   it("gibt die Sprache als ISO-Code weiter, nicht als Anzeigenamen", () => {

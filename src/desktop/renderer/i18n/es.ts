@@ -169,6 +169,107 @@ export const es: Katalog = {
     removeWaiting: "Quitar las que esperan",
     noCreations: "Todavía no hay creaciones. El asistente está en “Crear”.",
   },
+  create: {
+    title: "Crear una canción",
+    steps: { 1: "Canción", 2: "Fuente", 3: "Letra", 4: "Imagen", 5: "Revisar" },
+    envMissing: "El entorno de IA todavía no está configurado.",
+    envBroken: "El entorno de IA está dañado.",
+    envOutdated: "El entorno de IA está desactualizado.",
+    envHint:
+      "Aun así puedes preparar canciones — solo empiezan cuando el entorno esté listo.",
+    envInstalling: "Configurando…",
+    envInstallNow: "Configurar ahora",
+    back: "Atrás",
+    next: "Siguiente",
+    reason: {
+      artistAndTitleMissing: "Faltan el intérprete y el título.",
+      artistMissing: "Falta el intérprete.",
+      titleMissing: "Falta el título.",
+      languageMissing: "Falta el idioma.",
+      languageModelMissing: "No hay modelo para este idioma.",
+      noSource: "No has elegido ninguna fuente.",
+      noLyrics: "No has pegado ninguna letra.",
+      openQuestions: (n: number) =>
+        `${n} pregunta${n === 1 ? "" : "s"} pendiente${n === 1 ? "" : "s"} sobre la letra.`,
+      noLineLeft: "Tras depurar la letra no queda ninguna línea.",
+      noCoverChoice: "Aún no has decidido la imagen.",
+    },
+    source: {
+      searching: "Buscando…",
+      searchYoutube: "Buscar en YouTube",
+      localFile: "Archivo de audio local…",
+      linkPlaceholder: "…o pega un enlace de YouTube",
+      apply: "Aplicar",
+      noHits: "Sin resultados. Revisa el intérprete y el título — o pega un enlace.",
+      noDuration:
+        "No se pudo determinar la duración — el paso 3 no propondrá ninguna letra.",
+      fileUnreadable:
+        "El archivo no se pudo leer o no tiene una duración reconocible. Compruébalo.",
+      chosen: "Elegida",
+      choose: "Elegir",
+      chosenLabel: "Elegida:",
+    },
+    cover: {
+      searching: "Buscando imágenes…",
+      albumCover: "Portada del álbum",
+      youtubeImage: "Imagen de YouTube",
+      ownFile: "Archivo propio…",
+      noImage: "Sin imagen",
+      nothingFound:
+        "No se encontró portada del álbum ni hay imagen de YouTube — elige un archivo propio o continúa sin imagen.",
+    },
+    review: {
+      song: "Canción",
+      language: "Idioma",
+      source: "Fuente",
+      lyricLines: "Líneas de letra",
+      syncedLyrics: "Letra sincronizada",
+      syncedPresent: "disponible",
+      syncedNone: "ninguna",
+      image: "Imagen",
+      imageNone: "ninguna",
+      imageChosen: "elegida",
+      duplicate: (name: string) =>
+        `«${name}» ya está en tu colección. La carpeta nueva se coloca al lado; la antigua queda intacta.`,
+      submitting: "Poniendo en cola…",
+      toQueue: "A la cola",
+      hint:
+        "Se inicia desde la cola — allí solo se procesa una canción a la vez, porque solo hay una GPU.",
+    },
+    lyrics: {
+      noDuration: "Sin la duración no se puede consultar LRCLIB.",
+      notFound: "No se encontró nada en LRCLIB — pega la letra a mano.",
+      found: "Letra sincronizada encontrada — mejora la sincronización.",
+      searching: "Buscando…",
+      lookUp: "Consultar LRCLIB",
+      syncedPresent: "Hay letra sincronizada ✓",
+      placeholder:
+        "Una línea por frase cantada. Las líneas vacías separan bloques.",
+      dropped: (zeilen: string) =>
+        `Estas líneas se descartan porque nunca se cantan: ${zeilen}`,
+      repeatQuestion: (zeile: number, marker: string) =>
+        `La línea ${zeile} termina en «${marker}». ¿Qué debe cantarse dos veces?`,
+      repeatLineOnly: "Solo esta línea",
+      repeatWholeBlock: (n: number) => `El bloque entero (${n} líneas)`,
+      chorusQuestion: (zeile: number) =>
+        `La línea ${zeile} solo contiene una referencia al estribillo.`,
+      chorusInsertAsk: (erste: string) =>
+        ` ¿Insertar ese estribillo? («${erste}» …)`,
+      chorusNone: " No hay ningún estribillo anterior que se pueda insertar.",
+      chorusInsert: "Insertar el estribillo",
+      chorusDrop: "Descartar la línea",
+    },
+    song: {
+      artistPlaceholder: "Intérprete…",
+      titlePlaceholder: "Título…",
+      languageLabel: "Idioma",
+      genrePlaceholder: "Género (opcional)",
+      yearPlaceholder: "Año (opcional)",
+      bpmPlaceholder: "BPM (opcional)",
+      hint:
+        "El intérprete y el título también definen el nombre de la carpeta. Deja BPM vacío si no lo sabes — la canalización deduce el tempo por su cuenta.",
+    },
+  },
   settings: {
     language: "Idioma",
   },

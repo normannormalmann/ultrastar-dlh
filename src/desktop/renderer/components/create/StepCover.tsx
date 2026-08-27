@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { CoverKandidat } from "../../../shared/ipcContract.ts";
+import { useT } from "../../i18n/index.tsx";
 import type { Entwurf } from "../../views/createDraft.ts";
 
 const KACHEL = {
@@ -23,6 +24,7 @@ export const StepCover: FC<{
   entwurf: Entwurf;
   onChange: (patch: Partial<Entwurf>) => void;
 }> = ({ entwurf, onChange }) => {
+  const t = useT();
   const [kandidaten, setKandidaten] = useState<CoverKandidat[] | null>(null);
   const [eigenes, setEigenes] = useState<string | null>(null);
 
@@ -61,7 +63,8 @@ export const StepCover: FC<{
     onChange({ coverWahl: { pfad } });
   };
 
-  if (kandidaten === null) return <p className="muted">Suche Bilder…</p>;
+  if (kandidaten === null)
+    return <p className="muted">{t.create.cover.searching}</p>;
 
   return (
     <div>
@@ -75,7 +78,11 @@ export const StepCover: FC<{
             onClick={() => onChange({ coverWahl: { pfad: k.pfad } })}
           >
             <img src={k.dataUrl} alt="" style={KACHEL} />
-            <span>{k.kind === "caa" ? "Album-Cover" : "YouTube-Bild"}</span>
+            <span>
+              {k.kind === "caa"
+                ? t.create.cover.albumCover
+                : t.create.cover.youtubeImage}
+            </span>
           </button>
         ))}
         <button
@@ -87,7 +94,7 @@ export const StepCover: FC<{
           onClick={() => void waehleEigenes()}
         >
           <span style={{ ...KACHEL, display: "block", border: "1px dashed" }} />
-          <span>Eigene Datei…</span>
+          <span>{t.create.cover.ownFile}</span>
         </button>
         <button
           type="button"
@@ -96,14 +103,11 @@ export const StepCover: FC<{
           onClick={() => onChange({ coverWahl: "keins" })}
         >
           <span style={{ ...KACHEL, display: "block", border: "1px dashed" }} />
-          <span>Kein Bild</span>
+          <span>{t.create.cover.noImage}</span>
         </button>
       </div>
       {kandidaten.length === 0 && (
-        <p className="muted">
-          Kein Album-Cover gefunden und kein YouTube-Bild vorhanden — eigene
-          Datei wählen oder ohne Bild fortfahren.
-        </p>
+        <p className="muted">{t.create.cover.nothingFound}</p>
       )}
     </div>
   );

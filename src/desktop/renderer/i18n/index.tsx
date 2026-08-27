@@ -48,6 +48,20 @@ export const SpracheProvider: FC<{
   </Kontext.Provider>
 );
 
+/**
+ * Display name of a song language, in the UI language. Intl knows all of
+ * them, so the German names in core/create/languages.ts do not have to be
+ * maintained three times over. Falls back to the code if Intl has no name.
+ */
+export const spracheAnzeige = (locale: string, code: string): string => {
+  try {
+    const namen = new Intl.DisplayNames([locale], { type: "language" });
+    return namen.of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
+
 /** The catalog for the active language. */
 export const useT = (): Katalog => useContext(Kontext).t;
 

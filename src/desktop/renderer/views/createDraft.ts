@@ -56,7 +56,27 @@ export const leererEntwurf = (id: string): Entwurf => ({
   coverWahl: null,
 });
 
-export type Pruefung = { ok: true } | { ok: false; grund: string };
+/**
+ * Why a step is not done yet. A code rather than a sentence: this module is
+ * pure logic and must not know which language the UI happens to speak.
+ * The catalog turns these into text.
+ */
+export type PruefGrund =
+  | "artistAndTitleMissing"
+  | "artistMissing"
+  | "titleMissing"
+  | "languageMissing"
+  | "languageModelMissing"
+  | "noSource"
+  | "noLyrics"
+  | "openQuestions"
+  | "noLineLeft"
+  | "noCoverChoice";
+
+export type Pruefung =
+  | { ok: true }
+  /** anzahl is only set for openQuestions. */
+  | { ok: false; grund: PruefGrund; anzahl?: number };
 
 export const offeneFragenZahl = (e: Entwurf): number => {
   const fragen = normalizeLyrics(e.rohtext).offeneFragen;
@@ -69,50 +89,42 @@ export const schrittFertig = (e: Entwurf, s: Schritt): Pruefung => {
     const fehltInterpret = e.artist.trim().length === 0;
     const fehltTitel = e.title.trim().length === 0;
     if (fehltInterpret && fehltTitel) {
-      return { ok: false, grund: "Interpret und Titel fehlen." };
+      return { ok: false, grund: "artistAndTitleMissing" };
     }
-    if (fehltInterpret) return { ok: false, grund: "Interpret fehlt." };
-    if (fehltTitel) return { ok: false, grund: "Titel fehlt." };
+    if (fehltInterpret) return { ok: false, grund: "artistMissing" };
+    if (fehltTitel) return { ok: false, grund: "titleMissing" };
     if (e.language.trim().length === 0) {
-      return { ok: false, grund: "Sprache fehlt." };
+      return { ok: false, grund: "languageMissing" };
     }
     // Blocked here rather than in the pipeline: there it costs the model
     // loading time first and only then says language_unsupported.
     if (!istBekannteSprache(e.language)) {
-      return { ok: false, grund: "Fuer diese Sprache fehlt das Modell." };
+      return { ok: false, grund: "languageModelMissing" };
     }
     return { ok: true };
   }
   if (s === 2) {
     if (e.quelle === null) {
-      return { ok: false, grund: "Keine Quelle gewaehlt." };
+      return { ok: false, grund: "noSource" };
     }
     return { ok: true };
   }
   if (s === 3) {
     if (e.rohtext.trim().length === 0) {
-      return { ok: false, grund: "Kein Liedtext eingefuegt." };
+      return { ok: false, grund: "noLyrics" };
     }
     const offen = offeneFragenZahl(e);
     if (offen > 0) {
-      return {
-        ok: false,
-        grund: `Noch ${offen} offene Rueckfrage${
-          offen === 1 ? "" : "n"
-        } zum Text.`,
-      };
+      return { ok: false, grund: "openQuestions", anzahl: offen };
     }
     if (resolveLyrics(e.rohtext, e.antworten).length === 0) {
-      return {
-        ok: false,
-        grund: "Nach dem Aufbereiten bleibt keine Zeile uebrig.",
-      };
+      return { ok: false, grund: "noLineLeft" };
     }
     return { ok: true };
   }
   if (s === 4) {
     if (e.coverWahl === null) {
-      return { ok: false, grund: "Noch keine Bildentscheidung." };
+      return { ok: false, grund: "noCoverChoice" };
     }
     return { ok: true };
   }
@@ -128,9 +140,9 @@ const zahlOderUndefined = (roh: string): number | undefined => {
 export const zuJob = (e: Entwurf): CreateJob => {
   for (const s of [1, 2, 3, 4] as const) {
     const p = schrittFertig(e, s);
-    if (!p.ok) throw new Error(p.grund);
+    if (!p.ok) throw new Error(`Draft incomplete: ${p.grund}`);
   }
-  if (e.quelle === null) throw new Error("Keine Quelle gewaehlt.");
+  if (e.quelle === null) throw new Error("Draft incomplete: noSource");
   const job: CreateJob = {
     id: e.id,
     quelle: e.quelle,

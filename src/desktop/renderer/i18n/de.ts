@@ -169,6 +169,106 @@ export const de = {
     removeWaiting: "Wartende entfernen",
     noCreations: "Noch keine Erstellungen. Der Assistent liegt unter „Erstellen“.",
   },
+  create: {
+    title: "Song erstellen",
+    steps: { 1: "Song", 2: "Quelle", 3: "Liedtext", 4: "Bild", 5: "Prüfen" },
+    envMissing: "Die KI-Umgebung ist noch nicht eingerichtet.",
+    envBroken: "Die KI-Umgebung ist beschädigt.",
+    envOutdated: "Die KI-Umgebung ist veraltet.",
+    envHint:
+      "Songs lassen sich trotzdem vorbereiten — gestartet werden sie erst, wenn die Umgebung steht.",
+    envInstalling: "Wird eingerichtet…",
+    envInstallNow: "Jetzt einrichten",
+    back: "Zurück",
+    next: "Weiter",
+    reason: {
+      artistAndTitleMissing: "Interpret und Titel fehlen.",
+      artistMissing: "Interpret fehlt.",
+      titleMissing: "Titel fehlt.",
+      languageMissing: "Sprache fehlt.",
+      languageModelMissing: "Für diese Sprache fehlt das Modell.",
+      noSource: "Keine Quelle gewählt.",
+      noLyrics: "Kein Liedtext eingefügt.",
+      openQuestions: (n: number) =>
+        `Noch ${n} offene Rückfrage${n === 1 ? "" : "n"} zum Text.`,
+      noLineLeft: "Nach dem Aufbereiten bleibt keine Zeile übrig.",
+      noCoverChoice: "Noch keine Bildentscheidung.",
+    },
+    source: {
+      searching: "Sucht…",
+      searchYoutube: "Bei YouTube suchen",
+      localFile: "Lokale Audiodatei…",
+      linkPlaceholder: "…oder YouTube-Link einfügen",
+      apply: "Übernehmen",
+      noHits: "Keine Treffer. Prüfe Interpret und Titel — oder füge einen Link ein.",
+      noDuration:
+        "Die Spieldauer war nicht zu ermitteln — Schritt 3 macht dann keinen Textvorschlag.",
+      fileUnreadable:
+        "Die Datei war nicht lesbar oder ohne erkennbare Dauer. Bitte prüfen.",
+      chosen: "Gewählt",
+      choose: "Wählen",
+      chosenLabel: "Gewählt:",
+    },
+    cover: {
+      searching: "Suche Bilder…",
+      albumCover: "Album-Cover",
+      youtubeImage: "YouTube-Bild",
+      ownFile: "Eigene Datei…",
+      noImage: "Kein Bild",
+      nothingFound:
+        "Kein Album-Cover gefunden und kein YouTube-Bild vorhanden — eigene Datei wählen oder ohne Bild fortfahren.",
+    },
+    review: {
+      song: "Song",
+      language: "Sprache",
+      source: "Quelle",
+      lyricLines: "Textzeilen",
+      syncedLyrics: "Synchronisierte Lyrics",
+      syncedPresent: "liegen vor",
+      syncedNone: "keine",
+      image: "Bild",
+      imageNone: "keines",
+      imageChosen: "gewählt",
+      duplicate: (name: string) =>
+        `„${name}“ liegt schon in der Bibliothek. Der neue Ordner wird danebengelegt, der alte bleibt unberührt.`,
+      submitting: "Wird eingereiht…",
+      toQueue: "Zur Queue",
+      hint:
+        "Gestartet wird in der Queue — dort läuft immer nur ein Song, weil es nur eine GPU gibt.",
+    },
+    lyrics: {
+      noDuration: "Ohne Spieldauer ist keine LRCLIB-Abfrage möglich.",
+      notFound: "Bei LRCLIB nichts gefunden — bitte den Text von Hand einfügen.",
+      found: "Synchronisierte Lyrics gefunden — sie verbessern das Timing.",
+      searching: "Sucht…",
+      lookUp: "Bei LRCLIB nachsehen",
+      syncedPresent: "Synchronisierte Lyrics liegen vor ✓",
+      placeholder:
+        "Eine Zeile pro gesungener Phrase. Leerzeilen trennen Blöcke.",
+      dropped: (zeilen: string) =>
+        `Diese Zeilen fliegen raus, weil sie nie gesungen werden: ${zeilen}`,
+      repeatQuestion: (zeile: number, marker: string) =>
+        `Zeile ${zeile} endet auf „${marker}“. Was soll doppelt gesungen werden?`,
+      repeatLineOnly: "Nur diese Zeile",
+      repeatWholeBlock: (n: number) => `Den ganzen Block (${n} Zeilen)`,
+      chorusQuestion: (zeile: number) =>
+        `In Zeile ${zeile} steht nur ein Refrain-Verweis.`,
+      chorusInsertAsk: (erste: string) => ` Diesen Refrain einsetzen? („${erste}“ …)`,
+      chorusNone: " Es gibt keinen früheren Refrain, den man einsetzen könnte.",
+      chorusInsert: "Refrain einsetzen",
+      chorusDrop: "Zeile verwerfen",
+    },
+    song: {
+      artistPlaceholder: "Interpret…",
+      titlePlaceholder: "Titel…",
+      languageLabel: "Sprache",
+      genrePlaceholder: "Genre (optional)",
+      yearPlaceholder: "Jahr (optional)",
+      bpmPlaceholder: "BPM (optional)",
+      hint:
+        "Interpret und Titel bestimmen auch den Ordnernamen. BPM leer lassen, wenn unbekannt — die Pipeline ermittelt das Tempo dann selbst.",
+    },
+  },
   settings: {
     language: "Sprache",
   },
