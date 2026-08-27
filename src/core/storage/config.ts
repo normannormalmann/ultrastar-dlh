@@ -10,6 +10,8 @@ export type AppConfig = {
   folderLayout?: string;
   downloadConcurrency?: number;
   videoQuality?: string;
+  /** UI language: "de" | "en" | "es". Absent means follow the system. */
+  uiLanguage?: string;
 };
 const FILE_NAME = "config.json";
 

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { FC } from "react";
 import type { AppStatus } from "../../shared/ipcContract.ts";
+import { type Katalog, useT } from "../i18n/index.tsx";
 import StatusDots from "./StatusDots.tsx";
 
 export type ViewId =
@@ -20,14 +21,17 @@ export type ViewId =
   | "repair"
   | "settings";
 
-const ITEMS: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
-  { id: "search", label: "Suche", icon: Search },
-  { id: "create", label: "Erstellen", icon: Wand2 },
-  { id: "queue", label: "Queue", icon: ListMusic },
-  { id: "downloaded", label: "Heruntergeladen", icon: Check },
-  { id: "repair", label: "Reparatur", icon: Wrench },
-  { id: "settings", label: "Einstellungen", icon: Settings },
+/** The id doubles as the catalog key - nav has exactly these entries. */
+const ITEMS: Array<{ id: ViewId; icon: LucideIcon }> = [
+  { id: "search", icon: Search },
+  { id: "create", icon: Wand2 },
+  { id: "queue", icon: ListMusic },
+  { id: "downloaded", icon: Check },
+  { id: "repair", icon: Wrench },
+  { id: "settings", icon: Settings },
 ];
+
+const navLabel = (t: Katalog, id: ViewId): string => t.nav[id];
 
 export const Sidebar: FC<{
   active: ViewId;
@@ -36,7 +40,9 @@ export const Sidebar: FC<{
   /** Waiting creations. The badge sits on the queue item - both live there. */
   creationCount: number;
   status: AppStatus;
-}> = ({ active, onSelect, queueCount, creationCount, status }) => (
+}> = ({ active, onSelect, queueCount, creationCount, status }) => {
+  const t = useT();
+  return (
   <nav className="sidebar">
     <div className="brand">
       <Mic size={18} aria-hidden />
@@ -53,7 +59,7 @@ export const Sidebar: FC<{
         onClick={() => onSelect(item.id)}
       >
         <item.icon size={16} aria-hidden />
-        <span>{item.label}</span>
+        <span>{navLabel(t, item.id)}</span>
         {item.id === "queue" && queueCount + creationCount > 0 && (
           <span className="badge">{queueCount + creationCount}</span>
         )}
@@ -62,6 +68,7 @@ export const Sidebar: FC<{
     <div className="spacer" />
     <StatusDots status={status} />
   </nav>
-);
+  );
+};
 
 export default Sidebar;

@@ -4,6 +4,12 @@ import type { AppError, InitialState } from "../shared/ipcContract.ts";
 import DownloadBar from "./components/DownloadBar.tsx";
 import Sidebar, { type ViewId } from "./components/Sidebar.tsx";
 import { useIpcEvent } from "./hooks.ts";
+import {
+  aufloesenSprache,
+  type Sprache,
+  SpracheProvider,
+  useT,
+} from "./i18n/index.tsx";
 import CreateView from "./views/CreateView.tsx";
 import { type Entwurf, leererEntwurf } from "./views/createDraft.ts";
 import DownloadedView from "./views/DownloadedView.tsx";
@@ -14,6 +20,16 @@ import SettingsView from "./views/SettingsView.tsx";
 
 const ERROR_DISPLAY_MS = 6000;
 
+/** Inside the provider, so it speaks the same language as the rest. */
+const Ladeanzeige: FC = () => {
+  const t = useT();
+  return (
+    <div className="app-shell">
+      <div className="main-view muted">{t.app.initialising}</div>
+    </div>
+  );
+};
+
 /**
  * Outer component: only loads the initial state. The shell is only mounted
  * afterwards, so the useIpcEvent hooks start with the correct initial values
@@ -21,22 +37,34 @@ const ERROR_DISPLAY_MS = 6000;
  */
 export const App: FC = () => {
   const [initial, setInitial] = useState<InitialState | null>(null);
+  // Until the config is in, the system language is the best guess; it only
+  // ever changes here through the settings picker.
+  const [sprache, setSprache] = useState<Sprache>(() =>
+    aufloesenSprache(undefined),
+  );
 
   useEffect(() => {
-    void window.ultrastar.getInitialState().then(setInitial);
+    void window.ultrastar.getInitialState().then((s) => {
+      setSprache(aufloesenSprache(s.config?.uiLanguage));
+      setInitial(s);
+    });
   }, []);
 
-  if (!initial) {
-    return (
-      <div className="app-shell">
-        <div className="main-view muted">Initialisiere…</div>
-      </div>
-    );
-  }
-  return <Shell initial={initial} />;
+  return (
+    <SpracheProvider sprache={sprache}>
+      {initial ? (
+        <Shell initial={initial} onSprache={setSprache} />
+      ) : (
+        <Ladeanzeige />
+      )}
+    </SpracheProvider>
+  );
 };
 
-const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
+const Shell: FC<{
+  initial: InitialState;
+  onSprache: (s: Sprache) => void;
+}> = ({ initial, onSprache }) => {
   const [view, setView] = useState<ViewId>("search");
   const [lastError, setLastError] = useState<AppError | null>(null);
 
@@ -96,6 +124,7 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
             initialConfig={initial.config}
             version={initial.version}
             update={update}
+            onSprache={onSprache}
           />
         )}
       </main>

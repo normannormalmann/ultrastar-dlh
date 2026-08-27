@@ -2,39 +2,23 @@ import { ChevronDown, ChevronRight, FolderOpen, X } from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { CreationEntry } from "../../shared/ipcContract.ts";
+import { type Katalog, useT } from "../i18n/index.tsx";
 
 /**
- * Stage labels. `stage` has two sources: creations.ts already sets German
- * ("beschaffen", "paket"), the sidecar reports English. The English names are
- * taken from python-sidecar/ultrastar_pipeline/, not guessed. An unknown stage
+ * Stage names have two sources: creations.ts sets the German ones
+ * ("beschaffen", "paket"), the sidecar reports English ones taken from
+ * python-sidecar/ultrastar_pipeline/. Both are catalog keys. An unknown stage
  * is shown verbatim - a new pipeline step must not blank the display.
  */
-const STUFE: Record<string, string> = {
-  beschaffen: "beschaffen",
-  separate: "trennen",
-  transcribe: "erkennen",
-  align: "ausrichten",
-  pitch: "Tonhöhe",
-  tempo: "Tempo",
-  notes: "Noten",
-  paket: "Paket bauen",
-};
-
-const stufenText = (stage?: string): string => {
+const stufenText = (t: Katalog, stage?: string): string => {
   if (!stage) return "";
-  if (stage.startsWith("preload:")) return "Modelle laden";
-  return STUFE[stage] ?? stage;
-};
-
-const STATUS: Record<CreationEntry["status"], string> = {
-  queued: "wartet",
-  running: "läuft",
-  completed: "fertig",
-  failed: "fehlgeschlagen",
-  cancelled: "abgebrochen",
+  if (stage.startsWith("preload:")) return t.creation.stage.loadModels;
+  const stufen: Record<string, string> = t.creation.stage;
+  return stufen[stage] ?? stage;
 };
 
 export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
+  const t = useT();
   const [offen, setOffen] = useState(false);
   const [cover, setCover] = useState<string | null>(null);
   const fertig = eintrag.status === "completed";
@@ -52,7 +36,7 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
             <button
               className="btn small"
               type="button"
-              aria-label="Details"
+              aria-label={t.creation.details}
               onClick={() => setOffen((v) => !v)}
             >
               {offen ? (
@@ -66,9 +50,9 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
         <td style={{ color: "var(--yellow)" }}>{eintrag.artist}</td>
         <td>{eintrag.title}</td>
         <td className="muted">
-          {STATUS[eintrag.status]}
+          {t.creation.status[eintrag.status]}
           {eintrag.status === "running" && eintrag.stage
-            ? ` · ${stufenText(eintrag.stage)}`
+            ? ` · ${stufenText(t, eintrag.stage)}`
             : ""}
           {eintrag.error ? ` · ${eintrag.error}` : ""}
         </td>
@@ -82,8 +66,8 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
             <button
               className="btn small"
               type="button"
-              aria-label="Entfernen"
-              title="Entfernen"
+              aria-label={t.creation.remove}
+              title={t.creation.remove}
               onClick={() => void window.ultrastar.createQueueRemove(eintrag.id)}
             >
               <X size={14} aria-hidden />
@@ -107,9 +91,7 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
                 <div>{eintrag.dirName}</div>
                 {eintrag.lowConfidence && (
                   <div style={{ color: "var(--yellow)" }}>
-                    Der Sync ist unsicher — die Erkennung war an mehreren
-                    Stellen unschlüssig. Der Korrektur-Editor zieht das später
-                    gerade.
+                    {t.creation.lowConfidence}
                   </div>
                 )}
                 <button
@@ -120,7 +102,7 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
                   }
                 >
                   <FolderOpen size={14} aria-hidden />
-                  Ordner öffnen
+                  {t.creation.openFolder}
                 </button>
               </div>
             </div>

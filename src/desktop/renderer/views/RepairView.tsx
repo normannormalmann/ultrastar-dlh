@@ -2,8 +2,10 @@ import type { FC } from "react";
 import { Wrench } from "lucide-react";
 import type { AppStatus } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
+import { useT } from "../i18n/index.tsx";
 
 export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
+  const t = useT();
   const repair = useIpcEvent("event:repair", {
     running: false,
     progress: null,
@@ -16,11 +18,9 @@ export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
 
   return (
     <div>
-      <h2>Video-Reparatur</h2>
+      <h2>{t.repair.title}</h2>
       <p className="muted" style={{ maxWidth: 560 }}>
-        Durchsucht den Download-Ordner nach Songs mit fehlendem oder defektem
-        video.mp4 und lädt die Videos erneut herunter. Songs ohne
-        Tracking-Eintrag werden dabei rekonstruiert.
+        {t.repair.intro}
       </p>
       <button
         className="btn primary"
@@ -29,11 +29,11 @@ export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
         onClick={() => void window.ultrastar.repairStart()}
       >
         {repair.running ? (
-          "Scan läuft…"
+          t.repair.scanRunning
         ) : (
           <>
             <Wrench size={14} aria-hidden />
-            Scan starten
+            {t.repair.startScan}
           </>
         )}
       </button>
@@ -67,23 +67,23 @@ export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
       {repair.result && (
         <div style={{ marginTop: 16 }}>
           <p>
-            <span className="check">Fertig!</span> Repariert:{" "}
+            <span className="check">{t.repair.done}</span> {t.repair.repaired}{" "}
             <strong>{repair.result.fixed}</strong> / {repair.result.total}
             {repair.result.rebuilt > 0 && (
-              <> · Tracking rekonstruiert: {repair.result.rebuilt}</>
+              <> · {t.repair.trackingRebuilt(repair.result.rebuilt)}</>
             )}
           </p>
           {repair.result.failed.length > 0 && (
             <>
               <p style={{ color: "var(--yellow)" }}>
-                Nicht reparierbar ({repair.result.failed.length}):
+                {t.repair.unrepairable(repair.result.failed.length)}
               </p>
               <ul className="muted">
                 {repair.result.failed.slice(0, 15).map((name) => (
                   <li key={name}>{name}</li>
                 ))}
                 {repair.result.failed.length > 15 && (
-                  <li>… und {repair.result.failed.length - 15} weitere</li>
+                  <li>{t.repair.andMore(repair.result.failed.length - 15)}</li>
                 )}
               </ul>
             </>

@@ -8,6 +8,14 @@ import type {
   UpdateState,
 } from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
+import {
+  aufloesenSprache,
+  type Sprache,
+  SPRACH_NAMEN,
+  SPRACHEN,
+  useSprache,
+  useT,
+} from "../i18n/index.tsx";
 
 const BROWSERS = [
   "edge",
@@ -65,7 +73,11 @@ export const SettingsView: FC<{
   initialConfig: AppConfig | null;
   version: string;
   update: UpdateState;
-}> = ({ initialConfig, version, update }) => {
+  /** Applies the picked language immediately, before the config is saved. */
+  onSprache: (s: Sprache) => void;
+}> = ({ initialConfig, version, update, onSprache }) => {
+  const t = useT();
+  const sprache = useSprache();
   const [downloadDir, setDownloadDir] = useState(
     initialConfig?.downloadDir ?? "",
   );
@@ -123,6 +135,7 @@ export const SettingsView: FC<{
       folderLayout,
       downloadConcurrency,
       videoQuality,
+      uiLanguage: sprache,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -450,6 +463,20 @@ export const SettingsView: FC<{
           {envError && <div className="error-banner">{envError}</div>}
         </>
       )}
+
+      <h3 style={{ marginTop: 28 }}>{t.settings.language}</h3>
+      <div className="row">
+        <select
+          value={sprache}
+          onChange={(e) => onSprache(aufloesenSprache(e.target.value))}
+        >
+          {SPRACHEN.map((code) => (
+            <option key={code} value={code}>
+              {SPRACH_NAMEN[code]}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <h3 style={{ marginTop: 28 }}>App</h3>
       <p className="muted">UltraStar Desktop v{version}</p>

@@ -1,4 +1,4 @@
-🇬🇧 [English](README.en.md) | 🇩🇪 Deutsch
+🇬🇧 [English](README.en.md) | 🇩🇪 Deutsch | 🇪🇸 [Español](README.es.md)
 
 # UltraStar - Dirty Little Helper
 
@@ -19,6 +19,12 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 - **Cover-Vorschau** in Suchergebnissen und Bibliothek (inkl. lokaler Cover importierter Songs).
 - **VIDEOGAP-Korrekturen aus USDB-Kommentaren** werden automatisch übernommen — Videos laufen synchron zum Text.
 
+### Songs erstellen
+- **Fünf-Schritte-Assistent:** Aus einem beliebigen Titel einen singbaren Song bauen — Quelle wählen (YouTube-Suche, Link oder lokale Datei), Text holen, Cover aussuchen, prüfen, fertig.
+- **KI-Pipeline im Hintergrund:** Ein Python-Sidecar trennt die Stimme ab, transkribiert sie, richtet den Text am Gesang aus und erkennt die Tonhöhen — daraus entsteht eine vollständige `song.txt` mit Noten.
+- **Eigene Warteschlange:** Erstellungen laufen neben den Downloads, mit Fortschritt, Abbruch und direktem Sprung in den fertigen Ordner.
+- **Einmalige Einrichtung:** Die KI-Umgebung (Python, Torch, Modelle) installiert die App auf Knopfdruck selbst — mit GPU-Erkennung, falls vorhanden.
+
 ### Bibliothek
 - **Archiv-Import:** Bestehende Sammlungen (auch zehntausende Songs, auch verschachtelte Ordnerstrukturen) ohne erneute Downloads übernehmen — inklusive Metadaten aus den song.txt-Dateien.
 - **Facetten-Filter:** Sprache, Genre, Jahr-Bereich und Textsuche kombinierbar; Dropdown-Zähler passen sich der aktuellen Auswahl an; mehrsprachige Songs erscheinen unter jeder ihrer Sprachen. Sortierung A–Z, nach Jahr oder Neueste zuerst. Endloses Scrollen statt Seitenlimits.
@@ -28,15 +34,20 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 ### Komfort
 - **Alles automatisch:** USDB-Konto, yt-dlp und ffmpeg richtet die App selbst ein — kein manuelles Setup nötig.
 - **Konfigurierbar:** Ordnerstruktur neuer Downloads (flach, nach Interpret, nach Anfangsbuchstabe), Download-Parallelität (1–5), maximale Video-Qualität (720p/1080p/beste), YouTube-Cookie-Browser.
+- **Automatische Updates:** Die App meldet neue Versionen selbst und installiert sie auf Knopfdruck — kein manuelles Nachladen mehr.
 - **Duplikatschutz über Sitzungen hinweg**, Fehl-Download-Protokoll als Excel-Datei, dunkles Design.
 
 ---
 
 ## 🚀 Installation (Windows)
 
-1. Neueste `UltraStar - Dirty Little Helper Setup *.exe` von den [GitHub Releases](https://github.com/normannormalmann/ultrastar-dlh/releases) herunterladen.
+1. Neueste `UltraStar-DLH-Setup-*.exe` von den [GitHub Releases](https://github.com/normannormalmann/ultrastar-dlh/releases) herunterladen.
 2. Ausführen. Windows SmartScreen warnt bei unsignierten Apps — **„Weitere Informationen" → „Trotzdem ausführen"**.
 3. Fertig. Beim ersten Start lädt die App yt-dlp und ffmpeg automatisch herunter und legt ein USDB-Konto an.
+
+Ab dann meldet sich die App selbst, wenn eine neue Version vorliegt: **Einstellungen → App → „Auf Updates prüfen"**, herunterladen, neu starten. Weil der Installer nicht signiert ist, fragt SmartScreen auch beim Update noch einmal nach.
+
+Für Linux liegt ein `UltraStar-DLH-*.AppImage` bei — ausführbar machen und starten.
 
 Ausführliche Einrichtung inkl. Archiv-Import: **[Tutorial](docs/TUTORIAL.md)**
 

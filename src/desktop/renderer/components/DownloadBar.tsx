@@ -1,10 +1,12 @@
 import { Check, X } from "lucide-react";
 import type { FC } from "react";
 import type { ActiveDownload } from "../../shared/ipcContract.ts";
+import { useT } from "../i18n/index.tsx";
 
 export const DownloadBar: FC<{ downloads: ActiveDownload[] }> = ({
   downloads,
 }) => {
+  const t = useT();
   if (downloads.length === 0) return null;
   return (
     <div className="download-bar">
@@ -30,7 +32,7 @@ export const DownloadBar: FC<{ downloads: ActiveDownload[] }> = ({
           )}
           {d.status === "completed" && (
             <span className="check row-inline">
-              <Check size={14} aria-hidden /> fertig
+              <Check size={14} aria-hidden /> {t.downloads.done}
             </span>
           )}
           {d.status === "failed" && <X size={14} aria-hidden />}
