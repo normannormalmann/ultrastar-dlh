@@ -361,8 +361,21 @@ const findCookiesTxt = (outputPath: string): string | undefined => {
 };
 
 /**
+ * True when yt-dlp could not read the browser's cookies at all, rather than
+ * failing the download itself. The profile may be locked by a running browser
+ * (https://github.com/yt-dlp/yt-dlp/issues/7271), decryption may have failed,
+ * or the database may be missing. Every one of these is worth retrying with a
+ * cookies.txt file or with no cookies at all.
+ */
+export const isCookieExtractionFailure = (message: string): boolean =>
+  message.includes("DPAPI") ||
+  /could not copy .*cookie database/i.test(message) ||
+  /could not find .*cookies? database/i.test(message);
+
+/**
  * Download with progress updates via callback. Parses yt-dlp stdout progress lines in JSON format.
- * On DPAPI/auth errors, falls back to cookies.txt if found, then retries without cookies.
+ * When the cookies could not be read, or on auth errors, falls back to cookies.txt
+ * if found, then retries without cookies.
  */
 export const downloadYoutubeVideoWithProgress = (
   link: string,
@@ -400,7 +413,7 @@ export const downloadYoutubeVideoWithProgress = (
         if (signal?.aborted) throw err;
         const message = err instanceof Error ? err.message : String(err);
 
-        const isDpapi = message.includes("DPAPI");
+        const isCookieFailure = isCookieExtractionFailure(message);
         const isAuthBlock =
           message.includes("Sign in to confirm") ||
           message.includes("page needs to be reloaded") ||
@@ -424,9 +437,9 @@ export const downloadYoutubeVideoWithProgress = (
               fallbackMsg.includes("Video unavailable");
 
             if (isFallbackAuthBlock) {
-              if (isDpapi) {
+              if (isCookieFailure) {
                 throw new Error(
-                  `Could not use cookies from '${cookiesBrowser}' (browser locked or DPAPI error). Download without cookies was blocked by YouTube bot protection. Please close your browser and try again, or use a 'cookies.txt' file.`,
+                  `Could not read the cookies from '${cookiesBrowser}' (the browser holds a lock on its profile, or decryption failed). The download without cookies was blocked by YouTube bot protection. Please close the browser and try again, or use a 'cookies.txt' file.`,
                 );
               }
               throw new Error(
@@ -438,7 +451,7 @@ export const downloadYoutubeVideoWithProgress = (
           }
         };
 
-        if (isDpapi || isAuthBlock) {
+        if (isCookieFailure || isAuthBlock) {
           const cookiesTxt = findCookiesTxt(path);
 
           if (cookiesTxt && cookieArgs.length > 0) {
@@ -480,7 +493,7 @@ export const downloadYoutubeVideoWithProgress = (
               return;
             }
           } else if (cookieArgs.length > 0) {
-            if (isAuthBlock && !isDpapi) {
+            if (isAuthBlock && !isCookieFailure) {
               // If cookies were extracted but we still got an auth block, no-cookies will also fail.
               throw new Error(
                 `YouTube blocked the download (bot protection). Your browser cookies from '${cookiesBrowser}' were used but did not bypass the check. Are you logged into YouTube? You may also try a 'cookies.txt' file.`,
