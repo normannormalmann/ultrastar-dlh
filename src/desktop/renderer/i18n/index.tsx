@@ -5,7 +5,7 @@
 // Strings that take values are plain functions, which keeps the argument
 // types honest per language.
 import type { FC, ReactNode } from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { de } from "./de.ts";
 import { en } from "./en.ts";
 import { es } from "./es.ts";
@@ -42,11 +42,18 @@ const Kontext = createContext<{ t: Katalog; sprache: Sprache }>({
 export const SpracheProvider: FC<{
   sprache: Sprache;
   children: ReactNode;
-}> = ({ sprache, children }) => (
-  <Kontext.Provider value={{ t: KATALOGE[sprache], sprache }}>
-    {children}
-  </Kontext.Provider>
-);
+}> = ({ sprache, children }) => {
+  // index.html ships lang="de"; screen readers and hyphenation go by this
+  // attribute, so it has to follow the picked language.
+  useEffect(() => {
+    document.documentElement.lang = sprache;
+  }, [sprache]);
+  return (
+    <Kontext.Provider value={{ t: KATALOGE[sprache], sprache }}>
+      {children}
+    </Kontext.Provider>
+  );
+};
 
 /**
  * Display name of a song language, in the UI language. Intl knows all of
