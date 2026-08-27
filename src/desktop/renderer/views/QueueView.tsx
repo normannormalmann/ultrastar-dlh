@@ -29,8 +29,10 @@ export const QueueView: FC<{ queue: Song[]; creations: CreationEntry[] }> = ({
   const refreshFailed = useCallback((): void => {
     void window.ultrastar.failedList().then(setFailed);
   }, []);
-  // Refresh the list when opening the view and after every queue run
-  useEffect(refreshFailed, []);
+  // Refresh the list when opening the view and after every queue run.
+  // refreshFailed is a useCallback with empty deps, so its identity is stable
+  // and naming it here keeps the effect a mount-only run.
+  useEffect(refreshFailed, [refreshFailed]);
   useEffect(() => {
     if (!running) refreshFailed();
   }, [running, refreshFailed]);

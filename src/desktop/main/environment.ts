@@ -1,7 +1,6 @@
 // Desktop wiring for the managed sidecar environment - same shape as
 // binaries.ts: status query, install with progress broadcast, install lock
 // (the lock itself lives in core installEnvironment).
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { app } from "electron";
