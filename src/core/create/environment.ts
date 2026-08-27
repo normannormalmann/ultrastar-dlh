@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
+import { extractZipSafely } from "../archive.ts";
 
 export type EnvironmentState = "missing" | "broken" | "outdated" | "ready";
 export type InstallStep = "uv" | "venv" | "gpu" | "torch" | "sidecar" | "preload";
@@ -469,8 +470,7 @@ const ensureUv = async (
     }
   }
   await writeFile(zipPath, Buffer.concat(chunks));
-  const extractZip = (await import("extract-zip")).default;
-  await extractZip(zipPath, { dir: binDir });
+  await extractZipSafely(zipPath, binDir);
   await rm(zipPath, { force: true });
   if (!(await fileExists(managed))) {
     throw { schritt: "uv", detail: "uv.exe nach dem Entpacken nicht gefunden." };

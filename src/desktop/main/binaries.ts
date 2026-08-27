@@ -7,11 +7,11 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { Effect } from "effect";
 import { app } from "electron";
-import extractZip from "extract-zip";
 import {
   checkFfmpegAvailable,
   checkYtDlpAvailable,
 } from "../../core/api/youtube/check.ts";
+import { extractZipSafely } from "../../core/archive.ts";
 import type { BinariesStatus, BinarySource } from "../shared/ipcContract.ts";
 import { broadcast, state } from "./state.ts";
 
@@ -144,7 +144,7 @@ const downloadFile = async (
 };
 
 /**
- * Extract an archive. zip goes through the existing extract-zip dependency;
+ * Extract an archive. zip goes through core's guarded extract-zip wrapper;
  * tar.xz (Linux ffmpeg builds) goes through the system tar, since Node has
  * no built-in xz decoder and tar with xz support ships on virtually every
  * Linux distro (AppImages already run directly on the host anyway, just
@@ -157,7 +157,7 @@ const extractArchive = async (
 ): Promise<void> => {
   await mkdir(destDir, { recursive: true });
   if (archiveType === "zip") {
-    await extractZip(archivePath, { dir: destDir });
+    await extractZipSafely(archivePath, destDir);
     return;
   }
   await execFileAsync("tar", ["-xJf", archivePath, "-C", destDir]);
