@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ultrastar_pipeline import separate
+from ultrastar_pipeline import align as align_modul, modellwahl, separate
 from ultrastar_pipeline.align import (
     AlignmentFailed,
     LanguageUnsupported,
@@ -88,10 +88,11 @@ def _cache_pfad(
             "lines": len(lines),
             "text": text_digest,
             "anker": anker_digest,
+            "aligner": modellwahl.ALIGNER,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
-        "2",
+        align_modul.STAGE_VERSION,
         ".json",
     )
 
@@ -136,6 +137,38 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
     # gezaehlte Zugriff.
     with pytest.raises(LanguageUnsupported):
         align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], anker)
+    assert zugriffe == ["de"]
+
+
+def test_anderer_aligner_invalidiert_den_align_cache(tmp_path, monkeypatch):
+    """Die Aligner-Identitaet gehoert in den Schluessel, sonst liefert ein
+    Vergleichslauf mit einem anderen Aligner still die Zeiten des alten -
+    und der A/B-Vergleich zeigt "kein Unterschied", wo keiner gemessen wurde.
+    Gleicher Nachweis wie beim Versionswechsel, nur ueber modellwahl.ALIGNER.
+    """
+    lines = ["eins"]
+    anker_liste = [None]
+    ziel = _cache_pfad(tmp_path, "hashALG", lines, anker_liste)
+    atomic_write_bytes(
+        ziel, json.dumps({"words": [], "warnungen": []}, ensure_ascii=False).encode("utf8")
+    )
+
+    zugriffe: list[str] = []
+
+    def load_align_model(language_code: str, device: str):
+        zugriffe.append(language_code)
+        raise RuntimeError("Platzhalter: dieser Test laedt kein Modell")
+
+    platzhalter = types.ModuleType("whisperx")
+    platzhalter.load_align_model = load_align_model
+    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+
+    assert align(Path("egal.wav"), lines, "de", tmp_path, "hashALG", "cpu", [], anker_liste) == []
+    assert zugriffe == []
+
+    monkeypatch.setattr(modellwahl, "ALIGNER", "ein-anderer-aligner")
+    with pytest.raises(LanguageUnsupported):
+        align(Path("egal.wav"), lines, "de", tmp_path, "hashALG", "cpu", [], anker_liste)
     assert zugriffe == ["de"]
 
 

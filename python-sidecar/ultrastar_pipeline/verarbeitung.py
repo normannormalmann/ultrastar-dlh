@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import anchors, transcribe
+from . import anchors, modellwahl, transcribe
 from .align import (
     STAGE_VERSION as ALIGN_STAGE_VERSION,
     AlignmentFailed,
@@ -68,13 +68,22 @@ def _stage_versions() -> dict[str, str]:
     """Stufenversionen fuer den Bericht, aus den Modulen selbst — nicht
     hartkodiert, damit eine Versionsbumpe in separate/transcribe/align/pitch
     hier automatisch ankommt. notes wird nie gecacht (siehe Modulkopf) und
-    hat darum keine eigene STAGE_VERSION."""
+    hat darum keine eigene STAGE_VERSION.
+
+    Die Modell-IDs stehen mit drin: sonst sagt eine song_data.json nicht,
+    womit sie gemacht wurde, und ein Vergleichslauf laesst sich hinterher
+    nicht mehr zuordnen. meta.stageVersions ist im Vertrag ein offenes
+    Record, die Ergaenzung braucht also keine Schemaaenderung."""
     return {
         "separate": SEPARATE_STAGE_VERSION,
         "transcribe": TRANSCRIBE_STAGE_VERSION,
         "align": ALIGN_STAGE_VERSION,
         "pitch": PITCH_STAGE_VERSION,
         "notes": "1",
+        "separate_model": modellwahl.SEPARATOR,
+        "asr_model": modellwahl.ASR,
+        "aligner": modellwahl.ALIGNER,
+        "pitch_model": modellwahl.PITCH,
     }
 
 

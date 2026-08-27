@@ -9,10 +9,11 @@ from pathlib import Path
 
 from . import modelle
 from .cache import atomic_write_bytes, stage_path
+from . import modellwahl
 from .progress import emit_progress
 
 STAGE_VERSION = "1"
-MODELL = "htdemucs"
+MODELL = modellwahl.SEPARATOR
 
 
 def separate(audio: Path, work_dir: Path, audio_hash: str, device: str) -> Path:

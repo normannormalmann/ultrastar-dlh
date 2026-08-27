@@ -10,7 +10,7 @@ der Probelauf genau das prueft, was der erste Song brauchen wird.
 import json
 from pathlib import Path
 
-from . import modelle, separate, transcribe
+from . import modelle, modellwahl, separate, transcribe
 from .cache import atomic_write_bytes
 from .errors import LanguageUnsupported
 from .progress import emit_progress
@@ -73,7 +73,7 @@ def preload(sprache: str, device: str, out: Path) -> None:
                     "demucs": separate.MODELL,
                     "asr": transcribe.MODELL,
                     "align": sprache,
-                    "pitch": "swift-f0",
+                    "pitch": modellwahl.PITCH,
                 },
                 "silben": silben_ok,
             },

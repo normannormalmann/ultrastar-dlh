@@ -4,12 +4,12 @@ import json
 import math
 from pathlib import Path
 
-from . import modelle, separate
+from . import modelle, modellwahl, separate
 from .cache import atomic_write_bytes, stage_path
 from .notes import PitchPoint
 from .progress import emit_progress
 
-STAGE_VERSION = "1"
+STAGE_VERSION = "2"
 
 
 def _hz_zu_midi(hz: float) -> float:
@@ -25,6 +25,9 @@ def track_pitch(vocals: Path, work_dir: Path, audio_hash: str) -> list[PitchPoin
     # wuerde eine geanderte Stimmtrennung (neues Modell, neue Version) einen
     # Tonhoehenverlauf wiederverwenden, der noch auf dem alten Stem beruht.
     parameter = {
+        # Ohne diesen Eintrag liefert ein getauschtes Tonhoehenmodell still
+        # den Verlauf des alten aus dem Cache.
+        "pitch_model": modellwahl.PITCH,
         "separate_stage_version": separate.STAGE_VERSION,
         "separate_model": separate.MODELL,
     }

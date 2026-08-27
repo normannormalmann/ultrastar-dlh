@@ -12,10 +12,11 @@ from pathlib import Path
 from . import modelle, separate
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
+from . import modellwahl
 from .progress import emit_progress
 
-STAGE_VERSION = "2"
-MODELL = "large-v2"
+STAGE_VERSION = "3"
+MODELL = modellwahl.ASR
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,8 @@ def transcribe(
     """Gehoerte Woerter mit Zeitstempeln."""
     # Die Identitaet der separate-Stufe geht in den Schluessel ein: ein
     # Transkript des alten Stems beschriebe Audio, das es nie gesehen hat.
+    # Der Aligner ebenso: Pass 1 laeuft hier (whisperx.align weiter unten),
+    # seine Zeiten stecken also im gecachten Ergebnis.
     ziel = stage_path(
         work_dir,
         audio_hash,
@@ -42,6 +45,7 @@ def transcribe(
         {
             "sprache": sprache,
             "modell": MODELL,
+            "aligner": modellwahl.ALIGNER,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },

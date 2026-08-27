@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import modelle, separate
+from . import modelle, modellwahl, separate
 from .anchors import GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
@@ -22,7 +22,7 @@ from .notes import AlignedWord
 from .numerals import erweitere_zahlwort
 from .progress import emit_progress
 
-STAGE_VERSION = "2"
+STAGE_VERSION = "3"
 
 # Re-exportiert: bestehender Code und Tests importieren LanguageUnsupported
 # von hier, die eigentliche Definition liegt aber in errors.py (Importzyklus,
@@ -451,6 +451,9 @@ def align(
             "lines": len(lines),
             "text": text_digest,
             "anker": anker_digest,
+            # Ohne diesen Eintrag liefert ein getauschter Aligner still die
+            # Zeiten des alten aus dem Cache.
+            "aligner": modellwahl.ALIGNER,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },

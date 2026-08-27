@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ultrastar_pipeline import separate, transcribe
+from ultrastar_pipeline import modellwahl, separate, transcribe
 from ultrastar_pipeline.cache import atomic_write_bytes, stage_path
 from ultrastar_pipeline.errors import LanguageUnsupported
 from ultrastar_pipeline.transcribe import TranskriptWort
@@ -19,6 +19,7 @@ def _cache_pfad(work_dir: Path, audio_hash: str, sprache: str = "de") -> Path:
         {
             "sprache": sprache,
             "modell": transcribe.MODELL,
+            "aligner": modellwahl.ALIGNER,
             "separate_stage_version": separate.STAGE_VERSION,
             "separate_model": separate.MODELL,
         },
@@ -175,3 +176,20 @@ def test_fehlendes_alignment_modell_nennt_die_stufe_transcribe(tmp_path, monkeyp
     with pytest.raises(LanguageUnsupported) as fehler:
         transcribe.transcribe(Path("egal.wav"), "xy", tmp_path, "hashF", "cpu")
     assert fehler.value.stufe == "transcribe"
+
+
+def test_anderer_aligner_invalidiert_den_transcribe_cache(tmp_path, monkeypatch):
+    """Pass 1 des Alignments laeuft in dieser Stufe (whisperx.align), seine
+    Zeiten stecken also im gecachten Ergebnis. Ohne die Aligner-Identitaet im
+    Schluessel liefert ein Vergleichslauf still die Zeiten des alten."""
+    zugriffe: list[str] = []
+    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    atomic_write_bytes(_cache_pfad(tmp_path, "hashC"), json.dumps([]).encode("utf8"))
+
+    assert transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashC", "cpu") == []
+    assert zugriffe == []
+
+    monkeypatch.setattr(modellwahl, "ALIGNER", "ein-anderer-aligner")
+    with pytest.raises(LanguageUnsupported):
+        transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashC", "cpu")
+    assert zugriffe == ["load_model"]
