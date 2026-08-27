@@ -43,6 +43,36 @@ export const es: Katalog = {
     },
   },
   repair: {
+    reason: {
+      bot_protection: {
+        label: "Protección antibots de YouTube",
+        hint: "YouTube pide cookies. En Ajustes → Navegador para las cookies de YouTube elige un navegador en el que hayas iniciado sesión en YouTube, ciérralo y vuelve a lanzar el análisis.",
+      },
+      video_unavailable: {
+        label: "El vídeo ya no está disponible",
+        hint: "El vídeo enlazado se borró, se puso en privado o está bloqueado en tu país. Aquí solo ayuda otro enlace en USDB.",
+      },
+      no_link: {
+        label: "No se encontró enlace de vídeo",
+        hint: "Los comentarios de USDB no traen enlace y la búsqueda en YouTube no encontró nada adecuado. Estas canciones necesitan un enlace a mano.",
+      },
+      rate_limit: {
+        label: "Demasiadas peticiones",
+        hint: "YouTube nos ha frenado temporalmente. Vuelve a analizar más tarde — normalmente bastan unas horas.",
+      },
+      auth_error: {
+        label: "Acceso denegado",
+        hint: "USDB o YouTube rechazaron la petición. Comprueba el punto de estado de USDB abajo a la izquierda y reinicia la aplicación si hace falta.",
+      },
+      network_error: {
+        label: "Problema de red",
+        hint: "La conexión se cortó o expiró. Otro análisis suele recuperar estas canciones.",
+      },
+      unknown: {
+        label: "Error desconocido",
+        hint: "Ningún patrón conocido. Los detalles están en la carpeta de cada canción y en el registro.",
+      },
+    },
     title: "Reparación de vídeos",
     intro:
       "Recorre la carpeta de descargas en busca de canciones con un video.mp4 ausente o dañado y vuelve a descargar esos vídeos. Las canciones sin registro de seguimiento se reconstruyen por el camino.",

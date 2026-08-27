@@ -1,5 +1,10 @@
-import { expect, test } from "bun:test";
-import { applyHeader, applyVideoGap, parseTxtHeaders } from "./repairSongs.ts";
+import { describe, expect, it, test } from "bun:test";
+import {
+  applyHeader,
+  applyVideoGap,
+  categorizeRepairError,
+  parseTxtHeaders,
+} from "./repairSongs.ts";
 
 test("parses ARTIST and TITLE headers", () => {
   const content = "#ARTIST:ABBA\n#TITLE:Waterloo\n#MP3:song.mp3\n: 0 4 0 Wa";
@@ -87,4 +92,39 @@ test("applyHeader replaces and inserts arbitrary headers", () => {
   expect(applyHeader(noGenre, "GENRE", "Pop")).toBe(
     "#ARTIST:X\r\n#GENRE:Pop\r\n: 0 4 0 La\r\n",
   );
+});
+
+describe("categorizeRepairError", () => {
+  const typ = (nachricht: string): string =>
+    categorizeRepairError(new Error(nachricht)).type;
+
+  it("names YouTube's bot protection instead of shrugging", () => {
+    // The single most common repair failure, and the one with an actual
+    // remedy: pick a signed-in browser and close it.
+    expect(
+      typ(
+        "YouTube bot protection blocked the download. Please ensure you are logged into YouTube.",
+      ),
+    ).toBe("bot_protection");
+    expect(typ("ERROR: Sign in to confirm you are not a bot")).toBe(
+      "bot_protection",
+    );
+  });
+
+  it("separates a dead video from a missing link", () => {
+    // Different remedies: one is gone for good, the other may be findable.
+    expect(typ("ERROR: Video unavailable")).toBe("video_unavailable");
+    expect(typ("ERROR: Private video")).toBe("video_unavailable");
+    expect(typ("No video link found")).toBe("no_link");
+  });
+
+  it("keeps the transport failures apart", () => {
+    expect(typ("getaddrinfo ENOTFOUND youtube.com")).toBe("network_error");
+    expect(typ("HTTP 429 Too Many Requests")).toBe("rate_limit");
+    expect(typ("HTTP 401 Unauthorized")).toBe("auth_error");
+  });
+
+  it("falls back to unknown rather than guessing", () => {
+    expect(typ("yt-dlp exited with code 1")).toBe("unknown");
+  });
 });

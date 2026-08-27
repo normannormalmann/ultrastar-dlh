@@ -1,8 +1,33 @@
 import type { FC } from "react";
 import { Wrench } from "lucide-react";
-import type { AppStatus } from "../../shared/ipcContract.ts";
+import type {
+  AppStatus,
+  RepairErrorType,
+  RepairResultWire,
+} from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 import { useT } from "../i18n/index.tsx";
+
+/**
+ * Failures grouped by reason, biggest group first. A bare list of folder
+ * names says nothing about what to do; the reason does. Songs without an
+ * error entry fall under "unknown" so the groups always add up to the
+ * failed count.
+ */
+const nachGrund = (
+  r: RepairResultWire,
+): Array<[RepairErrorType, string[]]> => {
+  const grundFuer = new Map(r.errors);
+  const gruppen = new Map<RepairErrorType, string[]>();
+  for (const name of r.failed) {
+    const typ = grundFuer.get(name)?.type ?? "unknown";
+    gruppen.set(typ, [...(gruppen.get(typ) ?? []), name]);
+  }
+  return [...gruppen.entries()].sort((a, b) => b[1].length - a[1].length);
+};
+
+/** Names shown per group before it collapses into a count. */
+const NAMEN_PRO_GRUPPE = 10;
 
 export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
   const t = useT();
@@ -78,14 +103,27 @@ export const RepairView: FC<{ status: AppStatus }> = ({ status }) => {
               <p style={{ color: "var(--yellow)" }}>
                 {t.repair.unrepairable(repair.result.failed.length)}
               </p>
-              <ul className="muted">
-                {repair.result.failed.slice(0, 15).map((name) => (
-                  <li key={name}>{name}</li>
-                ))}
-                {repair.result.failed.length > 15 && (
-                  <li>{t.repair.andMore(repair.result.failed.length - 15)}</li>
-                )}
-              </ul>
+              {nachGrund(repair.result).map(([typ, namen]) => (
+                <div key={typ} style={{ marginTop: 12 }}>
+                  <p style={{ marginBottom: 2 }}>
+                    <strong>{t.repair.reason[typ].label}</strong> (
+                    {namen.length})
+                  </p>
+                  <p className="muted" style={{ marginTop: 0, maxWidth: 620 }}>
+                    {t.repair.reason[typ].hint}
+                  </p>
+                  <ul className="muted">
+                    {namen.slice(0, NAMEN_PRO_GRUPPE).map((name) => (
+                      <li key={name}>{name}</li>
+                    ))}
+                    {namen.length > NAMEN_PRO_GRUPPE && (
+                      <li>
+                        {t.repair.andMore(namen.length - NAMEN_PRO_GRUPPE)}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              ))}
             </>
           )}
         </div>

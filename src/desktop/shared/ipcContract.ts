@@ -134,6 +134,9 @@ export type CreationEntry = {
   lowConfidence?: boolean;
 };
 
+// Re-exported so the renderer can group failures without reaching into core.
+export type { RepairErrorType };
+
 /** RepairResult with an IPC-friendly errors field (Map → Array). */
 export type RepairResultWire = {
   total: number;

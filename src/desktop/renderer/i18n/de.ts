@@ -43,6 +43,36 @@ export const de = {
     },
   },
   repair: {
+    reason: {
+      bot_protection: {
+        label: "YouTube-Bot-Schutz",
+        hint: "YouTube verlangt Cookies. Einstellungen → Browser für YouTube-Cookies auf einen Browser stellen, in dem du bei YouTube angemeldet bist, diesen Browser schließen und den Scan erneut starten.",
+      },
+      video_unavailable: {
+        label: "Video nicht mehr verfügbar",
+        hint: "Das verlinkte Video wurde gelöscht, auf privat gestellt oder ist in deinem Land gesperrt. Hier hilft nur ein anderer Link auf USDB.",
+      },
+      no_link: {
+        label: "Kein Video-Link gefunden",
+        hint: "In den USDB-Kommentaren steht kein Link, und die YouTube-Suche fand nichts Passendes. Diese Songs brauchen einen Link von Hand.",
+      },
+      rate_limit: {
+        label: "Zu viele Anfragen",
+        hint: "YouTube hat vorübergehend gebremst. Später erneut scannen — meist reichen ein paar Stunden.",
+      },
+      auth_error: {
+        label: "Zugriff verweigert",
+        hint: "USDB oder YouTube haben die Anfrage abgelehnt. Prüfe den USDB-Status unten links und starte die App notfalls neu.",
+      },
+      network_error: {
+        label: "Netzwerkproblem",
+        hint: "Verbindung unterbrochen oder Zeitüberschreitung. Ein erneuter Scan holt diese Songs meist nach.",
+      },
+      unknown: {
+        label: "Unbekannter Fehler",
+        hint: "Kein bekanntes Muster. Details stehen im Ordner der jeweiligen Songs bzw. im Log.",
+      },
+    },
     title: "Video-Reparatur",
     intro:
       "Durchsucht den Download-Ordner nach Songs mit fehlendem oder defektem video.mp4 und lädt die Videos erneut herunter. Songs ohne Tracking-Eintrag werden dabei rekonstruiert.",

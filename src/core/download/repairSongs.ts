@@ -23,13 +23,80 @@ export type RepairProgress = {
   videoProgress?: number; // 0..1
 };
 
+/**
+ * Why a song could not be repaired. The UI groups the failures by this,
+ * because a list of 250 folder names tells nobody what to do next.
+ */
 export type RepairErrorType =
-  | "not_found"
+  /** USDB had no link and the YouTube search came up empty. */
+  | "no_link"
+  /** The video exists but is deleted, private or region-locked. */
+  | "video_unavailable"
+  /** YouTube wants cookies from a signed-in browser. */
+  | "bot_protection"
   | "network_error"
-  | "no_video"
-  | "auth_error"
   | "rate_limit"
+  | "auth_error"
   | "unknown";
+
+/**
+ * Sort a failure into a bucket by what its message says. Order matters:
+ * the bot-protection wording also carries the words a later bucket looks
+ * for, and the old version checked "not found" in two places, which made
+ * the second branch unreachable.
+ */
+export const categorizeRepairError = (
+  error: Error,
+): { type: RepairErrorType; message: string } => {
+  const m = error.message.toLowerCase();
+  const enthaelt = (...teile: string[]): boolean =>
+    teile.some((teil) => m.includes(teil));
+
+  if (
+    enthaelt(
+      "bot protection",
+      "sign in to confirm",
+      "confirm you are not a bot",
+      "confirm you're not a bot",
+    )
+  ) {
+    return { type: "bot_protection", message: error.message };
+  }
+  if (
+    enthaelt(
+      "video unavailable",
+      "video not available",
+      "private video",
+      "removed by the uploader",
+      "account associated with this video has been terminated",
+      "not available in your country",
+    )
+  ) {
+    return { type: "video_unavailable", message: error.message };
+  }
+  if (enthaelt("no video link", "no video found")) {
+    return { type: "no_link", message: error.message };
+  }
+  if (enthaelt("429", "rate limit", "too many requests")) {
+    return { type: "rate_limit", message: error.message };
+  }
+  if (enthaelt("401", "403", "unauthorized", "forbidden")) {
+    return { type: "auth_error", message: error.message };
+  }
+  if (
+    enthaelt(
+      "network",
+      "etimedout",
+      "enotfound",
+      "econnreset",
+      "socket hang up",
+      "timed out",
+    )
+  ) {
+    return { type: "network_error", message: error.message };
+  }
+  return { type: "unknown", message: error.message };
+};
 
 export type RepairResult = {
   total: number;
@@ -326,47 +393,6 @@ export const scanAndRepairVideos = (
     };
 
     // Helper function to categorize errors
-    const categorizeError = (
-      error: Error,
-    ): { type: RepairErrorType; message: string } => {
-      const message = error.message.toLowerCase();
-
-      // Check for specific error patterns
-      if (
-        message.includes("network") ||
-        message.includes("etimedout") ||
-        message.includes("enotfound")
-      ) {
-        return { type: "network_error", message: error.message };
-      }
-      if (
-        message.includes("401") ||
-        message.includes("unauthorized") ||
-        message.includes("forbidden")
-      ) {
-        return { type: "auth_error", message: error.message };
-      }
-      if (
-        message.includes("429") ||
-        message.includes("rate limit") ||
-        message.includes("too many requests")
-      ) {
-        return { type: "rate_limit", message: error.message };
-      }
-      if (
-        message.includes("no video") ||
-        message.includes("video not available") ||
-        message.includes("not found")
-      ) {
-        return { type: "no_video", message: error.message };
-      }
-      if (message.includes("not found")) {
-        return { type: "not_found", message: error.message };
-      }
-
-      return { type: "unknown", message: error.message };
-    };
-
     const repairEffects = needsRepair.map((name, idx) =>
       Effect.gen(function* () {
         const songDir = join(downloadDir, name);
@@ -396,7 +422,7 @@ export const scanAndRepairVideos = (
           ),
           (error) => {
             // Categorize the error for better user feedback
-            const categorized = categorizeError(
+            const categorized = categorizeRepairError(
               error instanceof Error ? error : new Error(String(error)),
             );
             return Effect.succeed<{

@@ -43,6 +43,36 @@ export const en: Katalog = {
     },
   },
   repair: {
+    reason: {
+      bot_protection: {
+        label: "YouTube bot protection",
+        hint: "YouTube wants cookies. In Settings → Browser for YouTube cookies pick a browser you are signed in to YouTube with, close that browser, and run the scan again.",
+      },
+      video_unavailable: {
+        label: "Video no longer available",
+        hint: "The linked video was deleted, made private, or is blocked in your country. Only a different link on USDB helps here.",
+      },
+      no_link: {
+        label: "No video link found",
+        hint: "The USDB comments hold no link and the YouTube search found nothing suitable. These songs need a link by hand.",
+      },
+      rate_limit: {
+        label: "Too many requests",
+        hint: "YouTube throttled us for a while. Scan again later — a few hours usually suffice.",
+      },
+      auth_error: {
+        label: "Access denied",
+        hint: "USDB or YouTube refused the request. Check the USDB status dot at the bottom left and restart the app if needed.",
+      },
+      network_error: {
+        label: "Network problem",
+        hint: "The connection dropped or timed out. Another scan usually picks these songs up.",
+      },
+      unknown: {
+        label: "Unknown error",
+        hint: "No pattern we recognise. The details are in each song's folder and in the log.",
+      },
+    },
     title: "Video repair",
     intro:
       "Scans the download folder for songs with a missing or broken video.mp4 and downloads those videos again. Songs without a tracking entry are reconstructed along the way.",
