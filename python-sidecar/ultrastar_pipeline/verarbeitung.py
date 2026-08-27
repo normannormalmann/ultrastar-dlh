@@ -175,39 +175,6 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
         emit_error("lyrics_empty")
         return 1
 
-        # Probelauf der Umgebungs-Einrichtung: Modelle laden, Ergebnis
-        # schreiben, fertig. Die Ausnahme-Uebersetzung entspricht der
-        # bestehenden Fehlerleitung des echten Laufs.
-        try:
-            preload_modul.preload(auftrag.language, device, auftrag.out)
-        except LanguageUnsupported as exc:
-            emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
-            return 1
-        except ModuleNotFoundError as exc:
-            emit_error("env_missing", module=exc.name)
-            return 1
-        except Exception as exc:  # noqa: BLE001 - letzte Instanz
-            art = type(exc).__name__
-            if "OutOfMemory" in art or "out of memory" in str(exc).lower():
-                emit_error("device_error", detail="GPU-Speicher voll. Mit --device cpu erneut versuchen.")
-            else:
-                emit_error("pipeline_failed", detail=f"{art}: {exc}")
-            return 1
-        return 0
-
-    if auftrag.audio is None or not auftrag.audio.is_file():
-        emit_error("audio_unreadable", path=str(auftrag.audio))
-        return 1
-    if auftrag.lyrics_file is None or not auftrag.lyrics_file.is_file():
-        emit_error("lyrics_unreadable", path=str(auftrag.lyrics_file))
-        return 1
-
-    roh = auftrag.lyrics_file.read_text(encoding="utf8")
-    zeilen = [z.strip() for z in roh.splitlines() if z.strip()]
-    if not zeilen:
-        emit_error("lyrics_empty")
-        return 1
-
     # Bekannte Lücke, absichtlich ungefixt: dieser Scan findet nur die
     # literalen Marker selbst. Liedtext, der von lyrics.ts schon normalisiert
     # wurde, dessen offene Rueckfragen aber nie beantwortet wurden, sieht in

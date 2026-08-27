@@ -2,6 +2,10 @@
 // Qualitaetsnachweis: laesst die Pipeline gegen von Menschen gesyncte
 // Referenzsongs laufen und meldet die Abweichung.
 // Aufruf: bun run scripts/evaluate-pipeline.ts scripts/reference-corpus.json
+//         [--out ergebnis.json]
+// --out schreibt die Rohwerte je Song. Aus zwei Markdown-Tabellen laesst
+// sich kein GEPAARTER Vergleich rechnen, und ungepaart verschenkt man bei
+// dieser Streuung den Grossteil der Aussagekraft.
 // Interpreter ueber PIPELINE_PYTHON steuern (z.B. die venv aus
 // python-sidecar/.venv), sonst wird 'python' aus dem PATH genutzt.
 import { access, readFile, writeFile } from "node:fs/promises";
@@ -13,6 +17,38 @@ import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
 import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
 
 type Eintrag = { artist: string; title: string; songDir: string };
+
+/** Ein Lauf, so wie er in die JSON-Ausgabe geht. */
+type Zeile = {
+  name: string;
+  songDir: string;
+  lrc: boolean;
+  sekunden: number;
+  m: Metrics;
+  interpolationsAnteil: number;
+};
+
+/** Ein Song, der gar nicht erst ausgewertet werden konnte. */
+type Fehlzeile = { name: string; songDir: string; fehler: string };
+
+/**
+ * Anteil der Noten, deren Zeiten interpoliert statt gemessen sind.
+ * verarbeitung.py setzt confidence 0 fuer genau diese Abschnitte. Der
+ * beste verfuegbare Mediator: hebt ein besserer Stem die Zeitmetriken,
+ * dann fast sicher ueber mehr Anker und weniger Interpolation. Bewegt
+ * sich dieser Wert nicht, waehrend die Zeiten sich bewegen, stimmt etwas
+ * mit der Messung nicht.
+ */
+const interpolationsAnteil = (daten: {
+  notes: unknown[];
+  sections: { fromNoteIndex: number; toNoteIndex: number; confidence: number }[];
+}): number => {
+  if (daten.notes.length === 0) return 0;
+  const interpoliert = daten.sections
+    .filter((a) => a.confidence === 0)
+    .reduce((summe, a) => summe + (a.toNoteIndex - a.fromNoteIndex), 0);
+  return interpoliert / daten.notes.length;
+};
 
 // lrclib.ts liefert nur noch Text -- die Erstellen-UI hat zur Abfragezeit
 // kein Songverzeichnis. Hier gibt es eines, und die Pipeline will einen
@@ -104,7 +140,15 @@ const main = async (): Promise<void> => {
   // Environment. Der Interpreter kommt daher aus der Umgebung, nicht aus
   // einer Konstante — so zeigt der Aufruf ohne Codeaenderung auf die venv.
   const pythonBin = process.env.PIPELINE_PYTHON ?? "python";
-  const ergebnisse: { name: string; m: Metrics; lrc: boolean }[] = [];
+  const ergebnisse: Zeile[] = [];
+  // Aus meta.stageVersions, damit die Datei selbst sagt, womit sie
+  // gemessen wurde - sonst ist ein Vergleichslauf hinterher nicht mehr
+  // zuzuordnen.
+  let stufen: Record<string, string> = {};
+  // Fehlschlaege wurden bisher nur nach stderr geschrieben und fallen
+  // gelassen. Ein Arm, der drei Songs zum Absturz bringt, sieht dadurch
+  // BESSER aus - genau die schweren Songs fehlen dann im Aggregat.
+  const fehlschlaege: Fehlzeile[] = [];
 
   for (const song of manifest.songs) {
     const referenzTxt = await readFile(join(song.songDir, "song.txt"), "utf8");
@@ -112,6 +156,11 @@ const main = async (): Promise<void> => {
     const audio = await findeAudio(song.songDir, referenzTxt);
     if (!audio) {
       console.error(`${song.artist} - ${song.title}: kein Audio gefunden, uebersprungen`);
+      fehlschlaege.push({
+        name: `${song.artist} - ${song.title}`,
+        songDir: song.songDir,
+        fehler: "kein Audio gefunden",
+      });
       continue;
     }
 
@@ -137,6 +186,7 @@ const main = async (): Promise<void> => {
 
     // Cache zuerst: bei wiederholten Bewertungslaeufen liegt die .lrc
     // schon im Songverzeichnis und es braucht nur einen Pipeline-Lauf.
+    const begonnen = Date.now();
     let lrcPfad = await gecachteLrc(song.songDir);
     let ergebnis = await lauf(lrcPfad ?? undefined);
     process.stderr.write("\n");
@@ -160,7 +210,13 @@ const main = async (): Promise<void> => {
     }
 
     if (ergebnis._tag === "Left") {
-      console.error(`${song.title}: FEHLER ${ergebnis.left.kind} ${ergebnis.left.detail ?? ""}`);
+      const text = `${ergebnis.left.kind} ${ergebnis.left.detail ?? ""}`.trim();
+      console.error(`${song.title}: FEHLER ${text}`);
+      fehlschlaege.push({
+        name: `${song.artist} - ${song.title}`,
+        songDir: song.songDir,
+        fehler: text,
+      });
       continue;
     }
 
@@ -171,10 +227,14 @@ const main = async (): Promise<void> => {
         mp3: "x.ogg",
       }),
     );
+    stufen = ergebnis.right.meta.stageVersions;
     ergebnisse.push({
       name: `${song.artist} - ${song.title}`,
-      m: compareToReference(unser, referenz),
+      songDir: song.songDir,
       lrc: lrcPfad !== null,
+      sekunden: Math.round((Date.now() - begonnen) / 1000),
+      m: compareToReference(unser, referenz),
+      interpolationsAnteil: interpolationsAnteil(ergebnis.right),
     });
   }
 
@@ -229,6 +289,39 @@ const main = async (): Promise<void> => {
   console.log(`Anteil <100 ms:      ${(mittel((m) => m.anteilUnter100ms) * 100).toFixed(0)}%`);
   console.log(`Median-Pitch-Offset: ${mittel((m) => m.medianPitchOffset).toFixed(1)} Halbtoene`);
   console.log(`Anteil Pitch exakt:  ${(mittel((m) => m.anteilPitchExakt) * 100).toFixed(0)}%`);
+  console.log(
+    `Interpolationsanteil: ${(
+      (ergebnisse.reduce((s2, z) => s2 + z.interpolationsAnteil, 0) /
+        ergebnisse.length) *
+      100
+    ).toFixed(0)}%`,
+  );
+
+  // Fehlschlaege gehoeren ins Ergebnis, nicht nur nach stderr: sonst sieht
+  // ein Lauf, der die schweren Songs verliert, besser aus als einer, der sie
+  // durchbringt.
+  if (fehlschlaege.length > 0) {
+    console.log("");
+    console.log(`Nicht ausgewertet:   ${fehlschlaege.length}`);
+    for (const f of fehlschlaege) console.log(`  ${f.name}: ${f.fehler}`);
+  }
+
+  const outIndex = process.argv.indexOf("--out");
+  const outPfad = outIndex >= 0 ? process.argv[outIndex + 1] : undefined;
+  if (outPfad) {
+    await writeFile(
+      outPfad,
+      `${JSON.stringify(
+        { modelle: stufen, songs: ergebnisse, fehlschlaege },
+        null,
+        2,
+      )}
+`,
+      "utf8",
+    );
+    console.log("");
+    console.log(`Rohwerte: ${outPfad}`);
+  }
 };
 
 // Nur beim direkten Aufruf ausfuehren, nicht beim Import in Tests
