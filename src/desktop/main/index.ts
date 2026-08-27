@@ -11,6 +11,7 @@ import {
   registerIpcHandlers,
 } from "./ipc.ts";
 import { broadcast, initializeState, state } from "./state.ts";
+import { initUpdater } from "./updater.ts";
 
 const createWindow = (): BrowserWindow => {
   const win = new BrowserWindow({
@@ -55,6 +56,8 @@ const createWindow = (): BrowserWindow => {
 
 void app.whenReady().then(async () => {
   registerIpcHandlers(ipcMain);
+  // Wires the auto-updater and kicks off one background check.
+  initUpdater();
   prependManagedBinToPath();
   // Before the first window on purpose: app:getInitialState carries the
   // restored creations, and the renderer asks for it the moment it mounts.

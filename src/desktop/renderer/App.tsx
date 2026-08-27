@@ -56,6 +56,7 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
   // Startwert aus dem Initialzustand: eine wiederhergestellte Queue meldet
   // sich, bevor dieser Hook zuhoert.
   const creations = useIpcEvent("event:creations", initial.creations);
+  const update = useIpcEvent("event:update", initial.update);
   const [entwurf, setEntwurf] = useState<Entwurf>(() =>
     leererEntwurf(crypto.randomUUID()),
   );
@@ -94,6 +95,7 @@ const Shell: FC<{ initial: InitialState }> = ({ initial }) => {
           <SettingsView
             initialConfig={initial.config}
             version={initial.version}
+            update={update}
           />
         )}
       </main>

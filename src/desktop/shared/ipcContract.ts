@@ -97,6 +97,7 @@ export type InitialState = {
    */
   creations: CreationEntry[];
   version: string;
+  update: UpdateState;
 };
 
 export type BinarySource = "system" | "managed" | "missing";
@@ -190,10 +191,27 @@ export const INVOKE_CHANNELS = [
   "shell:openFolder",
   "genres:enrich",
   "genres:cancel",
+  "update:check",
+  "update:download",
+  "update:install",
 ] as const;
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 
 /** Main → renderer (webContents.send). */
+/**
+ * Where the in-app update stands. "disabled" is the unpackaged dev build,
+ * which has no release feed to ask.
+ */
+export type UpdateState =
+  | { phase: "idle" }
+  | { phase: "disabled" }
+  | { phase: "checking" }
+  | { phase: "uptodate"; version: string }
+  | { phase: "available"; version: string }
+  | { phase: "downloading"; version: string; percent: number }
+  | { phase: "ready"; version: string }
+  | { phase: "error"; message: string };
+
 export const EVENT_CHANNELS = [
   "event:status",
   "event:queueChanged",
@@ -211,6 +229,7 @@ export const EVENT_CHANNELS = [
   "event:creations",
   "event:error",
   "event:genreEnrichProgress",
+  "event:update",
 ] as const;
 export type EventChannel = (typeof EVENT_CHANNELS)[number];
 
@@ -236,6 +255,7 @@ export type EventPayloads = {
     total: number;
     enriched: number;
   } | null;
+  "event:update": UpdateState;
 };
 
 /** Exposed by preload in the renderer as window.ultrastar. */
@@ -285,6 +305,12 @@ export type UltrastarApi = {
   coversClearCache: () => Promise<{ deletedFiles: number }>;
   openFolder: (path: string) => Promise<void>;
   genresEnrich: () => Promise<GenreEnrichResult>;
+  /** Asks the release feed; the answer also arrives on event:update. */
+  updateCheck: () => Promise<UpdateState>;
+  /** Downloads the pending update. No-op unless one was found. */
+  updateDownload: () => Promise<void>;
+  /** Quits and runs the installer. No-op unless the download finished. */
+  updateInstall: () => Promise<void>;
   genresCancel: () => Promise<void>;
   on: <C extends EventChannel>(
     channel: C,

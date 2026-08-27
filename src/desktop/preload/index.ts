@@ -62,6 +62,9 @@ const api: UltrastarApi = {
   openFolder: (path) => ipcRenderer.invoke("shell:openFolder", path),
   genresEnrich: () => ipcRenderer.invoke("genres:enrich"),
   genresCancel: () => ipcRenderer.invoke("genres:cancel"),
+  updateCheck: () => ipcRenderer.invoke("update:check"),
+  updateDownload: () => ipcRenderer.invoke("update:download"),
+  updateInstall: () => ipcRenderer.invoke("update:install"),
   on,
 };
 

@@ -1,7 +1,12 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import { Check, Download, RefreshCw, Trash2 } from "lucide-react";
-import type { AppConfig, BinariesStatus, EnvironmentStatus } from "../../shared/ipcContract.ts";
+import type {
+  AppConfig,
+  BinariesStatus,
+  EnvironmentStatus,
+  UpdateState,
+} from "../../shared/ipcContract.ts";
 import { useIpcEvent } from "../hooks.ts";
 
 const BROWSERS = [
@@ -26,6 +31,27 @@ const envLabel = (s: EnvironmentStatus): string =>
         ? `defekt (Schritt ${s.fehler?.schritt ?? "?"})`
         : "nicht eingerichtet";
 
+const updateLabel = (u: UpdateState): string => {
+  switch (u.phase) {
+    case "disabled":
+      return "Updates gibt es nur in der installierten App.";
+    case "checking":
+      return "Suche nach Updates…";
+    case "uptodate":
+      return "Du hast die neueste Version.";
+    case "available":
+      return `Version ${u.version} ist verfügbar.`;
+    case "downloading":
+      return `Lade Version ${u.version}…`;
+    case "ready":
+      return `Version ${u.version} ist bereit.`;
+    case "error":
+      return "";
+    default:
+      return "Noch nicht geprüft.";
+  }
+};
+
 const SCHRITT_LABELS: Record<string, string> = {
   uv: "Werkzeug (uv)",
   venv: "Python 3.12",
@@ -38,7 +64,8 @@ const SCHRITT_LABELS: Record<string, string> = {
 export const SettingsView: FC<{
   initialConfig: AppConfig | null;
   version: string;
-}> = ({ initialConfig, version }) => {
+  update: UpdateState;
+}> = ({ initialConfig, version, update }) => {
   const [downloadDir, setDownloadDir] = useState(
     initialConfig?.downloadDir ?? "",
   );
@@ -426,6 +453,52 @@ export const SettingsView: FC<{
 
       <h3 style={{ marginTop: 28 }}>App</h3>
       <p className="muted">UltraStar Desktop v{version}</p>
+
+      <div className="row" style={{ marginTop: 8 }}>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => void window.ultrastar.updateCheck()}
+          disabled={
+            update.phase === "checking" || update.phase === "downloading"
+          }
+        >
+          <RefreshCw size={16} /> Auf Updates prüfen
+        </button>
+        {update.phase === "available" && (
+          <button
+            className="btn primary"
+            type="button"
+            onClick={() => void window.ultrastar.updateDownload()}
+          >
+            <Download size={16} /> Version {update.version} herunterladen
+          </button>
+        )}
+        {update.phase === "ready" && (
+          <button
+            className="btn primary"
+            type="button"
+            onClick={() => void window.ultrastar.updateInstall()}
+          >
+            <Check size={16} /> Neu starten und installieren
+          </button>
+        )}
+        <span className="muted">{updateLabel(update)}</span>
+      </div>
+      {update.phase === "downloading" && (
+        <div className="row" style={{ marginTop: 8 }}>
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${Math.round(update.percent * 100)}%` }}
+            />
+          </div>
+          <span className="muted">{Math.round(update.percent * 100)}%</span>
+        </div>
+      )}
+      {update.phase === "error" && (
+        <div className="error-banner">{update.message}</div>
+      )}
     </div>
   );
 };

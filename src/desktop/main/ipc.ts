@@ -66,6 +66,12 @@ import {
   requestQueueCancel,
 } from "./downloads.ts";
 import { broadcast, reloadDownloadedEntries, state } from "./state.ts";
+import {
+  checkForUpdate,
+  downloadUpdate,
+  getUpdateState,
+  installUpdate,
+} from "./updater.ts";
 import type { Song } from "../shared/ipcContract.ts";
 
 export const SEARCH_PAGE_SIZE = 20;
@@ -163,6 +169,9 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       downloaded: state.downloaded,
       creations: creations.alleEintraege(),
       version: app.getVersion(),
+      // The startup check may already have finished before the renderer
+      // subscribes, so the current state travels with the initial payload.
+      update: getUpdateState(),
     }),
 
     "usdb:search": async (req: SearchRequest) => {
@@ -454,6 +463,10 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     "genres:cancel": async () => {
       genreEnrichCancel = true;
     },
+
+    "update:check": async () => checkForUpdate(),
+    "update:download": async () => downloadUpdate(),
+    "update:install": async () => installUpdate(),
   };
 
 export const registerIpcHandlers = (ipcMain: IpcMain): void => {

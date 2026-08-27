@@ -2,6 +2,12 @@ appId: com.github.normannormalmann.ultrastar
 productName: UltraStar - Dirty Little Helper
 directories:
   output: dist
+# electron-updater reads this from the app-update.yml that gets baked into
+# the package; without it the app has no feed to check.
+publish:
+  provider: github
+  owner: normannormalmann
+  repo: ultrastar-dlh
 files:
   - out/**
   - package.json
@@ -22,6 +28,7 @@ extraResources:
       - "!**/__pycache__/**"
       - "!.pipeline-cache/**"
 win:
+  artifactName: UltraStar-DLH-Setup-${version}.${ext}
   target:
     - nsis
   signAndEditExecutable: false
@@ -30,6 +37,7 @@ nsis:
   oneClick: true
   deleteAppDataOnUninstall: false
 linux:
+  artifactName: UltraStar-DLH-${version}.${ext}
   target:
     - AppImage
   icon: resources/icon.png

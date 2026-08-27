@@ -109,7 +109,9 @@ jobs:
 
       - name: Attach installer to the release
         shell: bash
-        run: gh release upload "${{ github.ref_name }}" dist/*Setup*.exe dist/*Setup*.exe.blockmap --clobber
+        # latest.yml is the feed electron-updater polls; without it the
+        # installed app can never see this release.
+        run: gh release upload "${{ github.ref_name }}" dist/*Setup*.exe dist/*Setup*.exe.blockmap dist/latest.yml --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -133,7 +135,7 @@ jobs:
         run: bun run desktop:dist:linux --publish never
 
       - name: Attach AppImage to the release
-        run: gh release upload "${{ github.ref_name }}" dist/*.AppImage --clobber
+        run: gh release upload "${{ github.ref_name }}" dist/*.AppImage dist/latest-linux.yml --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
