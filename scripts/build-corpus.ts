@@ -19,7 +19,12 @@ const MIN_SILBEN = 40;
 /** Obergrenze fuer gelesene song.txt, damit der Scan nicht ewig laeuft. */
 const MAX_GELESEN = 4000;
 
-type Kandidat = { artist: string; title: string; songDir: string; silben: number };
+type Kandidat = {
+  artist: string;
+  title: string;
+  songDir: string;
+  silben: number;
+};
 
 const header = (txt: string, name: string): string | null => {
   const m = new RegExp(`^#${name}:(.*)$`, "m").exec(txt);
@@ -77,7 +82,9 @@ const main = async (): Promise<void> => {
   }
   const sprache = arg("language", "German") ?? "German";
   const anzahl = Number.parseInt(arg("count", "30") ?? "30", 10);
-  const ziel = arg("out", "scripts/reference-corpus.json") ?? "scripts/reference-corpus.json";
+  const ziel =
+    arg("out", "scripts/reference-corpus.json") ??
+    "scripts/reference-corpus.json";
 
   const eintraege = await readdir(wurzel, { withFileTypes: true });
   const ordner = eintraege

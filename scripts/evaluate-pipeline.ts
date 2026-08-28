@@ -2,7 +2,11 @@
 // Qualitaetsnachweis: laesst die Pipeline gegen von Menschen gesyncte
 // Referenzsongs laufen und meldet die Abweichung.
 // Aufruf: bun run scripts/evaluate-pipeline.ts scripts/reference-corpus.json
-//         [--out ergebnis.json]
+//         [--out ergebnis.json] [--offset 0] [--limit 10]
+// --offset/--limit schneiden einen Block aus dem Korpus. Ein Lauf ueber
+// Stunden ueberlebt keinen erzwungenen Windows-Neustart; in Bloecken
+// kostet eine Unterbrechung hoechstens den laufenden Song, weil jeder
+// Block seine Ergebnisse selbst schreibt.
 // --out schreibt die Rohwerte je Song. Aus zwei Markdown-Tabellen laesst
 // sich kein GEPAARTER Vergleich rechnen, und ungepaart verschenkt man bei
 // dieser Streuung den Grossteil der Aussagekraft.
@@ -190,6 +194,25 @@ const main = async (): Promise<void> => {
     songs: Eintrag[];
   };
   const sprache = manifest.language ?? "de";
+
+  const zahlArg = (name: string, standard: number): number => {
+    const i = process.argv.indexOf(`--${name}`);
+    if (i < 0) return standard;
+    const wert = Number.parseInt(process.argv[i + 1] ?? "", 10);
+    return Number.isFinite(wert) ? wert : standard;
+  };
+  const offset = zahlArg("offset", 0);
+  const limit = zahlArg("limit", manifest.songs.length);
+  const block = manifest.songs.slice(offset, offset + limit);
+  if (block.length === 0) {
+    console.error(`Leerer Block: offset ${offset}, limit ${limit}`);
+    process.exit(2);
+  }
+  if (offset > 0 || limit < manifest.songs.length) {
+    console.log(
+      `Block: Songs ${offset + 1}-${offset + block.length} von ${manifest.songs.length}`,
+    );
+  }
   // Nachtrag B: Modellpakete gehoeren in eine venv, nicht ins globale
   // Environment. Der Interpreter kommt daher aus der Umgebung, nicht aus
   // einer Konstante — so zeigt der Aufruf ohne Codeaenderung auf die venv.
@@ -204,7 +227,7 @@ const main = async (): Promise<void> => {
   // BESSER aus - genau die schweren Songs fehlen dann im Aggregat.
   const fehlschlaege: Fehlzeile[] = [];
 
-  for (const song of manifest.songs) {
+  for (const song of block) {
     const referenzTxt = await readFile(join(song.songDir, "song.txt"), "utf8");
     const referenz = parseReferenceTxt(referenzTxt);
     const audio = await stelleAudioBereit(song.songDir, referenzTxt);
