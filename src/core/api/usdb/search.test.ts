@@ -147,3 +147,18 @@ test("buildFormBody sends golden and songcheck only when true", () => {
   expect(f.get("golden")).toBe("1");
   expect(f.get("songcheck")).toBe("1");
 });
+
+test("decodes each HTML entity only once without interpreting the decoded text again", () => {
+  const cases = [
+    ["&amp;lt;", "&lt;"],
+    ["&amp;#39;", "&#39;"],
+    ["&#x26;#39;", "&#39;"],
+    ["&amp;#x27;", "&#x27;"],
+    ["&amp;amp;", "&amp;"],
+    ["&#38;lt;", "&lt;"],
+  ];
+  for (const [encoded, expected] of cases) {
+    const song = parseSongFromTable(songRow(42, encoded!, "Title", "English"));
+    expect(song?.artist).toBe(expected);
+  }
+});
