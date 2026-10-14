@@ -50,7 +50,7 @@ jobs:
           printf '## Bun audit: %s\n\nResult: **%s**\n' "$AUDIT_SCOPE" "$AUDIT_STATUS" >> "$GITHUB_STEP_SUMMARY"
 
   archive-regression:
-    name: ZIP security regression (${{ matrix.os }})
+    name: Security regression (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -70,6 +70,8 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Test real ZIP attacks and legitimate extraction
         run: bun test src/core/archive.test.ts --coverage
+      - name: Test HTML decoding and filesystem race regressions
+        run: bun test src/core/api/usdb/search.test.ts scripts/read-regular-text.test.ts
 
   python-audit:
     name: Python audit (${{ matrix.scope }}, ${{ matrix.os }})

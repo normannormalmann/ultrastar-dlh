@@ -42,17 +42,26 @@ export type SearchParams = {
   songcheck?: boolean;
 };
 
-const decodeHtmlEntities = (str: string): string =>
-  str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
-      String.fromCharCode(Number.parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+/** Decode one layer only; generated ampersands must not become new entities. */
+const decodeHtmlEntities = (str: string): string => {
+  const named: Readonly<Record<string, string>> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+  };
+  return str.replace(
+    /&(amp|lt|gt|quot|apos|#x[0-9a-fA-F]+|#\d+);/g,
+    (entity: string, value: string) => {
+      if (!value.startsWith("#")) return named[value] ?? entity;
+      const hex = value.startsWith("#x");
+      return String.fromCharCode(
+        Number.parseInt(value.slice(hex ? 2 : 1), hex ? 16 : 10),
+      );
+    },
+  );
+};
 
 /**
  * Parse single song result

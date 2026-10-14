@@ -1,8 +1,9 @@
 // Prueft BEATS_PER_BPM_UNIT gegen echte, von Menschen gesyncte .txt-Dateien.
 // Aufruf: bun run scripts/measure-beat-convention.ts <songs-verzeichnis>
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BEATS_PER_BPM_UNIT, beatToMs } from "../src/core/create/format.ts";
+import { readRegularText } from "./read-regular-text.ts";
 
 type Befund = { datei: string; verhaeltnis: number };
 
@@ -42,9 +43,14 @@ const leseMedium = (txt: string): string | null => {
 /** Laufzeit der Mediendatei in Sekunden, ueber ffprobe. */
 const audioDauer = (pfad: string): number | null => {
   const p = Bun.spawnSync([
-    "ffprobe", "-v", "error",
-    "-show_entries", "format=duration",
-    "-of", "csv=p=0", pfad,
+    "ffprobe",
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    pfad,
   ]);
   if (p.exitCode !== 0) return null;
   const wert = Number.parseFloat(new TextDecoder().decode(p.stdout).trim());
@@ -72,12 +78,17 @@ const main = async (): Promise<void> => {
     if (befunde.length >= grenze) break;
     if (!eintrag.isDirectory()) continue;
     const txtPfad = join(wurzel, eintrag.name, "song.txt");
+    let txt: string | null;
     try {
-      if (!(await stat(txtPfad)).isFile()) continue;
-    } catch {
+      txt = await readRegularText(txtPfad);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR" && code !== "ELOOP") {
+        console.warn(`Songdatei uebersprungen: ${txtPfad}: ${String(error)}`);
+      }
       continue;
     }
-    const txt = await readFile(txtPfad, "utf8");
+    if (txt === null) continue;
     const bpm = leseBpm(txt);
     const beat = letzterBeat(txt);
     const medium = leseMedium(txt);
