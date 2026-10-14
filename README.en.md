@@ -107,6 +107,12 @@ bun run lint           # Biome
 
 Architecture: `src/core/` (shared core: USDB API, downloads, storage, genre providers) ← `src/desktop/` (Electron: main/preload/renderer with a typed IPC contract) and `src/tui/` (Ink). Design documents under `docs/superpowers/`.
 
+### Security checks
+
+Use Bun 1.4.3 and install with `bun install --frozen-lockfile`. CI runs `bun audit --audit-level=high` and `bun audit --prod --audit-level=moderate` independently. ZIP regression tests run on Windows and Linux; CodeQL analyzes TypeScript/JavaScript and Python.
+
+Python audits check base and model dependencies separately for Python 3.12, including the managed installer's Torch pins. Resolved versions and findings are retained as artifacts. Model findings remain blocking; the [separate migration plan](docs/superpowers/plans/2026-10-14-model-security-migration.md) describes the follow-up work.
+
 ---
 
 ## 🚨 Troubleshooting

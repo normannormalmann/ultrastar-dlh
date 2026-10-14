@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  BUN_VERSION: "1.2.19"
+  BUN_VERSION: "1.4.3"
 
 jobs:
   determine_tag:
@@ -81,7 +81,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun i
+        run: bun install --frozen-lockfile
 
       - name: Build CLI
         run: bun run build
@@ -100,7 +100,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun i
+        run: bun install --frozen-lockfile
 
       # electron-builder publishes on its own as soon as it sees a tag in CI
       # and aborts without a token. We upload explicitly instead.
@@ -129,7 +129,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: bun i
+        run: bun install --frozen-lockfile
 
       - name: Build Linux AppImage
         run: bun run desktop:dist:linux --publish never

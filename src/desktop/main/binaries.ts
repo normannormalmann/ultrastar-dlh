@@ -144,7 +144,7 @@ const downloadFile = async (
 };
 
 /**
- * Extract an archive. zip goes through core's guarded extract-zip wrapper;
+ * Extract an archive. zip goes through core's validated staging extractor;
  * tar.xz (Linux ffmpeg builds) goes through the system tar, since Node has
  * no built-in xz decoder and tar with xz support ships on virtually every
  * Linux distro (AppImages already run directly on the host anyway, just

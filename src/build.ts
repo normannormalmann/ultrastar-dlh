@@ -48,16 +48,25 @@ export const prettyPrintBunBuildArtifact = (artifact: Bun.BuildArtifact) => {
   );
 };
 
+const sourceDir = path.dirname(fileURLToPath(import.meta.url));
+const projectDir = path.dirname(sourceDir);
+const buildDir = path.resolve(projectDir, "build");
+// Bun on Windows requires absolute paths for recursive cleanup. Verify the
+// target before deleting it, regardless of the caller's working directory.
+if (path.relative(projectDir, buildDir) !== "build") {
+  throw new Error("Build cleanup must stay in the project build directory");
+}
+
 // Clean up previous build directory
-await rm("../build", {
+await rm(buildDir, {
   recursive: true,
   force: true,
 });
 
 // Build the CLI
 const result = await Bun.build({
-  entrypoints: ["index.tsx"],
-  outdir: "../build/dist",
+  entrypoints: [path.join(sourceDir, "index.tsx")],
+  outdir: path.join(buildDir, "dist"),
   target: "node",
   minify: {
     syntax: true,
@@ -69,9 +78,6 @@ const result = await Bun.build({
 for (const output of result.outputs) {
   prettyPrintBunBuildArtifact(output);
 }
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Create package.json and README for the build
 type PackageJson = {
@@ -87,7 +93,7 @@ type PackageJson = {
   homepage: string;
 };
 const packageJsonString = await readFile(
-  path.join(__dirname, "..", "package.json"),
+  path.join(projectDir, "package.json"),
   "utf8",
 );
 const packageJson: PackageJson = JSON.parse(packageJsonString);
@@ -106,15 +112,15 @@ const packageJsonBuild = {
   },
 };
 
-// ../build/ already exists (created by Bun.build above)
+// buildDir already exists (created by Bun.build above)
 await writeFile(
-  "../build/package.json",
+  path.join(buildDir, "package.json"),
   JSON.stringify(packageJsonBuild, null, 2),
 );
 await copyFiles({
   pattern: "README.md",
-  outdir: "../build",
-  baseDir: "../",
+  outdir: buildDir,
+  baseDir: projectDir,
   msgName: "README",
 });
 

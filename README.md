@@ -107,6 +107,12 @@ bun run lint           # Biome
 
 Architektur: `src/core/` (geteilter Kern: USDB-API, Downloads, Storage, Genre-Provider) ← `src/desktop/` (Electron: Main/Preload/Renderer mit typisiertem IPC-Vertrag) und `src/tui/` (Ink). Design-Dokumente unter `docs/superpowers/`.
 
+### Security-Checks
+
+Bun 1.4.3 verwenden und mit `bun install --frozen-lockfile` installieren. `bun audit --audit-level=high` und `bun audit --prod --audit-level=moderate` laufen in CI unabhängig voneinander. ZIP-Regressionstests laufen unter Windows und Linux; CodeQL analysiert TypeScript/JavaScript und Python.
+
+Der Python-Audit prüft Basis- und Modellabhängigkeiten getrennt für Python 3.12 und berücksichtigt die Torch-Pins der automatischen Einrichtung. Aufgelöste Versionen und Befunde werden als Artefakte gespeichert. Die Modellbefunde bleiben blockierend; der [separate Migrationsplan](docs/superpowers/plans/2026-10-14-model-security-migration.md) beschreibt die nächsten Schritte.
+
 ---
 
 ## 🚨 Problemlösung

@@ -1,50 +1,45 @@
 version: 2
 updates:
-  # Enable version updates for npm
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
+      interval: weekly
+      day: monday
+      time: '09:00'
     open-pull-requests-limit: 10
-    # Labels for pull requests
-    labels:
-      - "dependencies"
-      - "security"
-    # Group dependencies by major version
+    labels: [dependencies, security]
     groups:
       prod-dependencies:
-        patterns:
-          - "dependencies"
-        exclude-patterns:
-          - "@types/*"
-          - "eslint*"
-          - "prettier*"
+        dependency-type: production
+        patterns: ['*']
       dev-dependencies:
-        patterns:
-          - "@types/*"
-          - "eslint*"
-          - "prettier*"
-          - "vitest*"
-          - "@typescript-eslint/*"
-    # Require security updates
+        dependency-type: development
+        patterns: ['*']
     versioning-strategy: increase
     commit-message:
-      prefix: "chore"
-      prefix-development: "chore(deps)"
-      include: "scope"
+      prefix: chore
+      prefix-development: chore(deps)
+      include: scope
 
-  # Enable version updates for GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: pip
+    directory: /python-sidecar
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    labels:
-      - "github-actions"
-      - "dependencies"
+      interval: weekly
+      day: monday
+      time: '09:00'
+    open-pull-requests-limit: 10
+    labels: [dependencies, security]
     commit-message:
-      prefix: "ci"
-      include: "scope"
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+    labels: [github-actions, dependencies]
+    commit-message:
+      prefix: ci
+      include: scope

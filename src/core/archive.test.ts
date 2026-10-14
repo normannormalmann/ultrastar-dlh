@@ -1,17 +1,39 @@
-﻿import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertSafeZipEntry, extractZipSafely, UnsafeZipEntryError } from "./archive.ts";
+import { deflateRawSync } from "node:zlib";
+import {
+  assertSafeZipEntry,
+  extractZipSafely,
+  UnsafeZipEntryError,
+} from "./archive.ts";
 
 const attrsFor = (mode: number): number => mode * 0x10000;
 const REGULAR = attrsFor(0o100644);
-type FixtureEntry = { name: string; data?: string; mode?: number; size?: number };
+type FixtureEntry = {
+  name: string;
+  data?: string;
+  mode?: number;
+  size?: number;
+  compressed?: boolean;
+  flags?: number;
+};
 const crc32 = (data: Buffer): number => {
   let crc = 0xffffffff;
   for (const byte of data) {
     crc ^= byte;
-    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    for (let bit = 0; bit < 8; bit++)
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
 };
@@ -19,27 +41,41 @@ const crc32 = (data: Buffer): number => {
 const zipFixture = (entries: FixtureEntry[]): Buffer => {
   const records = entries.map((entry) => {
     const name = Buffer.from(entry.name);
-    const data = Buffer.from(entry.data ?? "");
+    const raw = Buffer.from(entry.data ?? "");
+    const data = entry.compressed ? deflateRawSync(raw) : raw;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
-    local.writeUInt32LE(crc32(data), 14);
+    local.writeUInt16LE(entry.flags ?? 0, 6);
+    local.writeUInt16LE(entry.compressed ? 8 : 0, 8);
+    local.writeUInt32LE(crc32(raw), 14);
     local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(entry.size ?? data.length, 22);
+    local.writeUInt32LE(entry.size ?? raw.length, 22);
     local.writeUInt16LE(name.length, 26);
-    return { entry, name, data, local: Buffer.concat([local, name, data]) };
+    return {
+      entry,
+      name,
+      data,
+      raw,
+      local: Buffer.concat([local, name, data]),
+    };
   });
   const directory = records.map((record, index) => {
     const header = Buffer.alloc(46);
     header.writeUInt32LE(0x02014b50, 0);
     header.writeUInt16LE(0x0314, 4);
     header.writeUInt16LE(20, 6);
-    header.writeUInt32LE(crc32(record.data), 16);
+    header.writeUInt16LE(record.entry.flags ?? 0, 8);
+    header.writeUInt16LE(record.entry.compressed ? 8 : 0, 10);
+    header.writeUInt32LE(crc32(record.raw), 16);
     header.writeUInt32LE(record.data.length, 20);
-    header.writeUInt32LE(record.entry.size ?? record.data.length, 24);
+    header.writeUInt32LE(record.entry.size ?? record.raw.length, 24);
     header.writeUInt16LE(record.name.length, 28);
     header.writeUInt32LE(attrsFor(record.entry.mode ?? 0o100644), 38);
-    header.writeUInt32LE(records.slice(0, index).reduce((sum, item) => sum + item.local.length, 0), 42);
+    header.writeUInt32LE(
+      records.slice(0, index).reduce((sum, item) => sum + item.local.length, 0),
+      42,
+    );
     return Buffer.concat([header, record.name]);
   });
   const body = Buffer.concat(records.map((record) => record.local));
@@ -53,7 +89,12 @@ const zipFixture = (entries: FixtureEntry[]): Buffer => {
   return Buffer.concat([body, central, end]);
 };
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))); roots.length = 0; });
+afterEach(async () => {
+  await Promise.all(
+    roots.map((root) => rm(root, { recursive: true, force: true })),
+  );
+  roots.length = 0;
+});
 const setup = async (entries: FixtureEntry[]) => {
   const root = await mkdtemp(join(tmpdir(), "ultrastar-zip-test-"));
   roots.push(root);
@@ -66,55 +107,108 @@ const setup = async (entries: FixtureEntry[]) => {
 
 describe("assertSafeZipEntry", () => {
   it("accepts regular and nested archive files", () => {
-    for (const name of ["uv.exe", "bin/ffmpeg", "package/bin/"]) expect(() => assertSafeZipEntry(name, REGULAR)).not.toThrow();
+    for (const name of ["uv.exe", "bin/ffmpeg", "package/bin/"])
+      expect(() => assertSafeZipEntry(name, REGULAR)).not.toThrow();
   });
-  it.each(["../evil", "a/../../evil", "a\\evil", "/etc/passwd", "C:/evil", "bin/tool:payload", "a//b", "./tool", "tool.", "CON", "bin/NUL.txt", ""])("rejects unsafe name %s", (name) => {
-    expect(() => assertSafeZipEntry(name, REGULAR)).toThrow(UnsafeZipEntryError);
+  it.each([
+    "../evil",
+    "a/../../evil",
+    "a\\evil",
+    "/etc/passwd",
+    "C:/evil",
+    "bin/tool:payload",
+    "a//b",
+    "./tool",
+    "tool.",
+    "CON",
+    "bin/NUL.txt",
+    "",
+  ])("rejects unsafe name %s", (name) => {
+    expect(() => assertSafeZipEntry(name, REGULAR)).toThrow(
+      UnsafeZipEntryError,
+    );
   });
-  it.each([0o120777, 0o010644, 0o020644, 0o060644, 0o140644])("rejects nonregular mode %s", (mode) => {
-    expect(() => assertSafeZipEntry("entry", attrsFor(mode))).toThrow(UnsafeZipEntryError);
-  });
+  it.each([0o120777, 0o010644, 0o020644, 0o060644, 0o140644])(
+    "rejects nonregular mode %s",
+    (mode) => {
+      expect(() => assertSafeZipEntry("entry", attrsFor(mode))).toThrow(
+        UnsafeZipEntryError,
+      );
+    },
+  );
 });
 
 describe("extractZipSafely real archives", () => {
   it("merges files and directories, preserves unrelated files and replaces regular files", async () => {
-    const { archive, dest } = await setup([{ name: "bin/", mode: 0o040755 }, { name: "bin/tool", data: "executable", mode: 0o100755 }, { name: "old", data: "replacement" }]);
+    const { archive, dest } = await setup([
+      { name: "bin/", mode: 0o040755 },
+      { name: "bin/tool", data: "executable", mode: 0o100755 },
+      { name: "old", data: "replacement" },
+    ]);
     await writeFile(join(dest, "old"), "old content");
     await writeFile(join(dest, "keep"), "untouched");
     await extractZipSafely(archive, dest);
     expect(await readFile(join(dest, "bin/tool"), "utf8")).toBe("executable");
     expect(await readFile(join(dest, "old"), "utf8")).toBe("replacement");
     expect(await readFile(join(dest, "keep"), "utf8")).toBe("untouched");
-    if (process.platform !== "win32") expect((await stat(join(dest, "bin/tool"))).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32")
+      expect((await stat(join(dest, "bin/tool"))).mode & 0o777).toBe(0o755);
   });
-  it.each(["../evil", "/evil", "C:/evil", "a\\evil", "tool:payload"])("rejects malicious ZIP path %s before publishing earlier entries", async (name) => {
-    const { archive, dest } = await setup([{ name: "innocent", data: "ok" }, { name, data: "attack" }]);
-    await expect(extractZipSafely(archive, dest)).rejects.toThrow();
-    expect(await readdir(dest)).toEqual([]);
-  });
+  it.each(["../evil", "/evil", "C:/evil", "a\\evil", "tool:payload"])(
+    "rejects malicious ZIP path %s before publishing earlier entries",
+    async (name) => {
+      const { archive, dest } = await setup([
+        { name: "innocent", data: "ok" },
+        { name, data: "attack" },
+      ]);
+      await expect(extractZipSafely(archive, dest)).rejects.toThrow();
+      expect(await readdir(dest)).toEqual([]);
+    },
+  );
   it("rejects symlinks including duplicate symlink/file attack and cleans staging", async () => {
-    const { archive, dest, root } = await setup([{ name: "innocent", data: "ok" }, { name: "link", data: "../victim", mode: 0o120777 }, { name: "link", data: "attack" }]);
+    const { archive, dest, root } = await setup([
+      { name: "innocent", data: "ok" },
+      { name: "link", data: "../victim", mode: 0o120777 },
+      { name: "link", data: "attack" },
+    ]);
     await writeFile(join(root, "victim"), "safe");
     await expect(extractZipSafely(archive, dest)).rejects.toThrow();
     expect(await readFile(join(root, "victim"), "utf8")).toBe("safe");
     expect(await readdir(dest)).toEqual([]);
-    expect((await readdir(root)).sort()).toEqual(["dest", "download.zip", "victim"]);
+    expect((await readdir(root)).sort()).toEqual([
+      "dest",
+      "download.zip",
+      "victim",
+    ]);
   });
-  it("rejects duplicate archive entries", async () => {
-    const { archive, dest } = await setup([{ name: "file", data: "one" }, { name: "file", data: "two" }]);
+  it.each([
+    ["file", "file"],
+    ["File", "file"],
+  ])("rejects duplicate archive entries %s", async (first, second) => {
+    const { archive, dest } = await setup([
+      { name: first, data: "one" },
+      { name: second, data: "two" },
+    ]);
     await expect(extractZipSafely(archive, dest)).rejects.toThrow();
     expect(await readdir(dest)).toEqual([]);
   });
-  it("rejects an existing file symlink without modifying its target", async () => {
-    const { archive, dest, root } = await setup([{ name: "file", data: "attack" }]);
-    const victim = join(root, "victim");
-    await writeFile(victim, "safe");
-    await symlink(victim, join(dest, "file"), "file");
-    await expect(extractZipSafely(archive, dest)).rejects.toThrow();
-    expect(await readFile(victim, "utf8")).toBe("safe");
-  });
+  it.skipIf(process.platform === "win32")(
+    "rejects an existing file symlink without modifying its target",
+    async () => {
+      const { archive, dest, root } = await setup([
+        { name: "file", data: "attack" },
+      ]);
+      const victim = join(root, "victim");
+      await writeFile(victim, "safe");
+      await symlink(victim, join(dest, "file"), "file");
+      await expect(extractZipSafely(archive, dest)).rejects.toThrow();
+      expect(await readFile(victim, "utf8")).toBe("safe");
+    },
+  );
   it("rejects an existing parent junction without modifying outside files", async () => {
-    const { archive, dest, root } = await setup([{ name: "bin/file", data: "attack" }]);
+    const { archive, dest, root } = await setup([
+      { name: "bin/file", data: "attack" },
+    ]);
     const outside = join(root, "outside");
     await mkdir(outside);
     await symlink(outside, join(dest, "bin"), "junction");
@@ -127,11 +221,58 @@ describe("extractZipSafely real archives", () => {
     await mkdir(outside);
     const link = join(root, "link");
     await symlink(outside, link, "junction");
-    await expect(extractZipSafely(archive, join(link, "child"))).rejects.toThrow();
+    await expect(
+      extractZipSafely(archive, join(link, "child")),
+    ).rejects.toThrow();
     expect(await readdir(outside)).toEqual([]);
   });
+
+  it.each(
+    [
+      [{ name: "huge", compressed: true, size: 0xffffffff }],
+      [{ name: "encrypted", flags: 1, data: "secret" }],
+      [{ name: "directory", mode: 0o040755 }],
+      [
+        { name: "file", data: "ok" },
+        { name: "file/child", data: "conflict" },
+      ],
+      [{ name: "corrupt", compressed: true, data: "abc", size: 100 }],
+    ].map((entries) => ({ entries })),
+  )(
+    "rejects limits, encoding, conflicts and corrupt streams without publication",
+    async ({ entries }) => {
+      const { archive, dest } = await setup(entries);
+      await expect(extractZipSafely(archive, dest)).rejects.toThrow();
+      expect(await readdir(dest)).toEqual([]);
+    },
+  );
+  it("rejects excessive entry counts before extraction", async () => {
+    const { archive, dest } = await setup(
+      Array.from({ length: 10001 }, (_, index) => ({ name: String(index) })),
+    );
+    await expect(extractZipSafely(archive, dest)).rejects.toThrow(/limit/);
+    expect(await readdir(dest)).toEqual([]);
+  });
+  it("extracts a valid deflated binary", async () => {
+    const { archive, dest } = await setup([
+      { name: "tool", compressed: true, data: "binary data" },
+    ]);
+    await extractZipSafely(archive, dest);
+    expect(await readFile(join(dest, "tool"), "utf8")).toBe("binary data");
+  });
+  it("rejects archive names colliding with an existing destination directory", async () => {
+    const { archive, dest } = await setup([
+      { name: "directory", data: "attack" },
+    ]);
+    await mkdir(join(dest, "directory"));
+    await expect(extractZipSafely(archive, dest)).rejects.toThrow();
+    expect((await stat(join(dest, "directory"))).isDirectory()).toBe(true);
+  });
+
   it("rejects excessive declared size and corrupt ZIP, leaving no staged files", async () => {
-    const { archive, dest, root } = await setup([{ name: "huge", size: 0xffffffff }]);
+    const { archive, dest, root } = await setup([
+      { name: "huge", size: 0xffffffff },
+    ]);
     await expect(extractZipSafely(archive, dest)).rejects.toThrow();
     await writeFile(archive, "invalid zip");
     await expect(extractZipSafely(archive, dest)).rejects.toThrow();

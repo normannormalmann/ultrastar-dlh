@@ -2,61 +2,135 @@ name: Security Scan
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   schedule:
-    # Run security scan daily at 2 AM UTC
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: '1.4.3'
+
 jobs:
   security-audit:
+    name: Bun audit (${{ matrix.scope }})
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: all dependencies
+            flags: --audit-level=high
+          - scope: production dependencies
+            flags: --prod --audit-level=moderate
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Bun.js
+        with:
+          persist-credentials: false
+      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # Accepted risk: GHSA-jmr9-qjv8-65gv (symlink path traversal) in
-      # extract-zip. There is no fix: 2.0.1 is the final release of an
-      # archived project. We mitigate it ourselves instead of pulling the
-      # library out - src/core/archive.ts wraps every extraction in an
-      # onEntry guard that rejects symlink entries, absolute names and names
-      # that climb out of the destination, which aborts the extraction
-      # before anything is written. Both call sites (desktop binaries
-      # install, managed sidecar environment) go through that wrapper, and
-      # src/core/archive.test.ts pins the guard.
-      # TODO: drop extract-zip once a maintained drop-in replacement exists.
-      - name: Run audit (high severity and above)
-        run: bun audit --audit-level=high --ignore=GHSA-jmr9-qjv8-65gv
-        continue-on-error: false
-
-      - name: Run audit (production dependencies only)
-        run: bun audit --prod --audit-level=moderate --ignore=GHSA-jmr9-qjv8-65gv
-        continue-on-error: false
-
-      - name: Check for outdated dependencies
-        run: bun outdated || true
-
-      - name: Generate security report
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Audit dependencies
+        run: bun audit ${{ matrix.flags }}
+      - name: Report result
         if: always()
+        env:
+          AUDIT_SCOPE: ${{ matrix.scope }}
+          AUDIT_STATUS: ${{ job.status }}
         run: |
-          echo "## Security Scan Results" > $GITHUB_STEP_SUMMARY
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "✅ Security audit completed successfully" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Security audit found issues or failed to run" >> $GITHUB_STEP_SUMMARY
+          printf '## Bun audit: %s\n\nResult: **%s**\n' "$AUDIT_SCOPE" "$AUDIT_STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+  archive-regression:
+    name: ZIP security regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies without lifecycle scripts
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Test real ZIP attacks and legitimate extraction
+        run: bun test src/core/archive.test.ts --coverage
+
+  python-audit:
+    name: Python audit (${{ matrix.scope }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        scope: [base, models]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install metadata resolver and auditor
+        run: python -m pip install uv==0.13.1 pip-audit==2.10.1
+      - name: Resolve complete dependencies without installing GPU packages
+        shell: bash
+        env:
+          AUDIT_SCOPE: ${{ matrix.scope }}
+        run: |
+          extra_flags=()
+          if [ "$AUDIT_SCOPE" = models ]; then
+            # The managed environment installs CPU/CUDA wheels first. Audit
+            # their shared upstream version rather than ignoring local suffixes.
+            python - <<'PY'
+          import os
+          import pathlib
+          import re
+          source = pathlib.Path('src/core/create/environment.ts').read_text(encoding='utf-8-sig')
+          pins = sorted(set(re.findall(r'(torch(?:audio)?)==([0-9.]+)\+(?:cpu|cu128)', source)))
+          assert len(pins) == 2 and {name for name, version in pins} == {'torch', 'torchaudio'}, 'Update model audit for changed runtime Torch pins'
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'runtime-torch.txt').write_text(''.join(f'{name}=={version}\n' for name, version in pins))
+          PY
+            extra_flags=(--extra models --constraint "$RUNNER_TEMP/runtime-torch.txt")
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Audit Levels" >> $GITHUB_STEP_SUMMARY
-          echo "- **High/Severe**: Failed the build" >> $GITHUB_STEP_SUMMARY
-          echo "- **Moderate (production)**: Failed the build" >> $GITHUB_STEP_SUMMARY
+          python -m uv pip compile python-sidecar/pyproject.toml \
+            --python-version 3.12 "${extra_flags[@]}" \
+            --no-annotate --no-header --output-file "$RUNNER_TEMP/audit-requirements.txt"
+      - name: Audit resolved versions
+        run: python -m pip_audit --no-deps --disable-pip --requirement "${{ runner.temp }}/audit-requirements.txt" --format json --output "${{ runner.temp }}/python-audit.json"
+      - name: Preserve resolved versions and findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-security-${{ matrix.scope }}-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/audit-requirements.txt
+            ${{ runner.temp }}/python-audit.json
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Report result
+        if: always()
+        shell: bash
+        env:
+          AUDIT_SCOPE: ${{ matrix.scope }}
+          AUDIT_STATUS: ${{ job.status }}
+        run: |
+          printf '## Python audit: %s\n\nResult: **%s**\n\nResolved versions and findings are attached as artifacts.\n' "$AUDIT_SCOPE" "$AUDIT_STATUS" >> "$GITHUB_STEP_SUMMARY"
