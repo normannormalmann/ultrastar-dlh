@@ -16,8 +16,8 @@ dependencies = ["num2words>=0.5", "pyphen>=0.18.1"]
 # librosa zieht es nach, und moderne numba-Versionen begrenzen numpy nach
 # oben. Ohne diese Grenze weicht die Aufloesung auf numba 0.53.1 aus, das
 # keine solche Grenze kennt — und dessen llvmlite 0.36 laesst sich fuer
-# Python 3.12 nicht bauen. Mit der Grenze landet sie bei numba 0.66 und
-# nimmt numpy dafuer auf 2.4 zurueck.
+# Python 3.12 nicht bauen. Mit der Grenze (seit Oktober 2026 >=0.68)
+# landet sie bei numba 0.68 mit numpy 2.5.
 models = [
   "demucs",
   "whisperx",
