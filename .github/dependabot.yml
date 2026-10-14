@@ -15,6 +15,11 @@ updates:
       dev-dependencies:
         dependency-type: development
         patterns: ['*']
+    # Effect 4 renames core APIs (Effect.either, Effect.catchAll) used across
+    # src/core/; that migration is its own project, not a dependency bump.
+    ignore:
+      - dependency-name: effect
+        update-types: [version-update:semver-major]
     versioning-strategy: increase
     commit-message:
       prefix: chore
