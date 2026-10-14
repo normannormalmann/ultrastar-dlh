@@ -118,7 +118,7 @@ jobs:
         run: python -m pip_audit --no-deps --disable-pip --requirement "${{ runner.temp }}/audit-requirements.txt" --format json --output "${{ runner.temp }}/python-audit.json"
       - name: Preserve resolved versions and findings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-security-${{ matrix.scope }}-${{ matrix.os }}
           path: |
