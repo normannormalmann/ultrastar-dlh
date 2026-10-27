@@ -2,90 +2,74 @@
 import { describe, expect, it } from "bun:test";
 import {
   dismissSupport,
-  initialSupportState,
+  INITIAL_SUPPORT_STATE,
+  mentionsSongCount,
   parseSupportState,
-  SUPPORT_MIN_AGE_MS,
-  SUPPORT_MIN_SONGS,
+  SUPPORT_COUNT_MENTION_MIN,
   SUPPORT_SNOOZE_MS,
   shouldShowSupportPrompt,
   snoozeSupport,
 } from "./supportPrompt.ts";
 
-const START = 1_700_000_000_000;
-const LATER = START + SUPPORT_MIN_AGE_MS;
+const NOW = 1_700_000_000_000;
 
 describe("shouldShowSupportPrompt", () => {
-  it("shows once enough songs and enough time have passed", () => {
-    expect(
-      shouldShowSupportPrompt(
-        initialSupportState(START),
-        SUPPORT_MIN_SONGS,
-        LATER,
-      ),
-    ).toBe(true);
-  });
-
-  it("stays hidden below the song threshold", () => {
-    expect(
-      shouldShowSupportPrompt(
-        initialSupportState(START),
-        SUPPORT_MIN_SONGS - 1,
-        LATER,
-      ),
-    ).toBe(false);
-  });
-
-  it("stays hidden during the grace period after first launch, even for big imports", () => {
-    expect(
-      shouldShowSupportPrompt(initialSupportState(START), 10_000, LATER - 1),
-    ).toBe(false);
+  it("shows right from the first start", () => {
+    expect(shouldShowSupportPrompt(INITIAL_SUPPORT_STATE, NOW)).toBe(true);
   });
 
   it("stays hidden while snoozed and returns afterwards", () => {
-    const snoozed = snoozeSupport(initialSupportState(START), LATER);
-    expect(shouldShowSupportPrompt(snoozed, 100, LATER + 1)).toBe(false);
-    expect(
-      shouldShowSupportPrompt(snoozed, 100, LATER + SUPPORT_SNOOZE_MS),
-    ).toBe(true);
+    const snoozed = snoozeSupport(INITIAL_SUPPORT_STATE, NOW);
+    expect(shouldShowSupportPrompt(snoozed, NOW + 1)).toBe(false);
+    expect(shouldShowSupportPrompt(snoozed, NOW + SUPPORT_SNOOZE_MS)).toBe(
+      true,
+    );
   });
 
   it("never shows again once dismissed", () => {
-    const dismissed = dismissSupport(initialSupportState(START));
+    const dismissed = dismissSupport(INITIAL_SUPPORT_STATE);
     expect(
-      shouldShowSupportPrompt(dismissed, 100, LATER + SUPPORT_SNOOZE_MS * 10),
+      shouldShowSupportPrompt(dismissed, NOW + SUPPORT_SNOOZE_MS * 10),
     ).toBe(false);
   });
 
   it("does not mutate the input state", () => {
-    const state = initialSupportState(START);
-    snoozeSupport(state, LATER);
+    const state = { ...INITIAL_SUPPORT_STATE };
+    snoozeSupport(state, NOW);
     dismissSupport(state);
-    expect(state).toEqual(initialSupportState(START));
+    expect(state).toEqual(INITIAL_SUPPORT_STATE);
+  });
+});
+
+describe("mentionsSongCount", () => {
+  it("only mentions the collection size once it is worth mentioning", () => {
+    expect(mentionsSongCount(0)).toBe(false);
+    expect(mentionsSongCount(SUPPORT_COUNT_MENTION_MIN - 1)).toBe(false);
+    expect(mentionsSongCount(SUPPORT_COUNT_MENTION_MIN)).toBe(true);
   });
 });
 
 describe("parseSupportState", () => {
   it("starts fresh when nothing is stored", () => {
-    expect(parseSupportState(null, START)).toEqual(initialSupportState(START));
+    expect(parseSupportState(null)).toEqual(INITIAL_SUPPORT_STATE);
   });
 
   it("round-trips a stored state", () => {
-    const state = { firstSeenAt: START, snoozedUntil: LATER, dismissed: true };
-    expect(parseSupportState(JSON.stringify(state), LATER)).toEqual(state);
+    const state = { snoozedUntil: NOW, dismissed: true };
+    expect(parseSupportState(JSON.stringify(state))).toEqual(state);
   });
 
-  it("falls back to a fresh state for broken JSON", () => {
-    expect(parseSupportState("{not json", START)).toEqual(
-      initialSupportState(START),
-    );
+  it("ignores fields from older versions", () => {
+    const raw = JSON.stringify({ firstSeenAt: NOW, snoozedUntil: null });
+    expect(parseSupportState(raw)).toEqual(INITIAL_SUPPORT_STATE);
+  });
+
+  it("falls back to the initial state for broken JSON", () => {
+    expect(parseSupportState("{not json")).toEqual(INITIAL_SUPPORT_STATE);
   });
 
   it("replaces malformed fields individually", () => {
-    const raw = JSON.stringify({
-      firstSeenAt: "yesterday",
-      snoozedUntil: "soon",
-      dismissed: "yes",
-    });
-    expect(parseSupportState(raw, START)).toEqual(initialSupportState(START));
+    const raw = JSON.stringify({ snoozedUntil: "soon", dismissed: "yes" });
+    expect(parseSupportState(raw)).toEqual(INITIAL_SUPPORT_STATE);
   });
 });

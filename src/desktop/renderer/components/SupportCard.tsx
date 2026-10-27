@@ -7,6 +7,7 @@ import {
   dismissSupport,
   GITHUB_URL,
   loadSupportState,
+  mentionsSongCount,
   type SupportPromptState,
   saveSupportState,
   shouldShowSupportPrompt,
@@ -14,17 +15,15 @@ import {
 } from "../supportPrompt.ts";
 
 /**
- * Unobtrusive "star / buy me a coffee" card. Appears only for people who have
- * used the app for a while; any action hides it, "Later" only for a month.
+ * Unobtrusive "star / buy me a coffee" card, shown from the first start on.
+ * Any action hides it for good, "Later" only for a month.
  * External links are opened in the system browser by the main process.
  */
 const SupportCard: FC<{ downloadedCount: number }> = ({ downloadedCount }) => {
   const t = useT();
-  const [state, setState] = useState<SupportPromptState>(() =>
-    loadSupportState(Date.now()),
-  );
+  const [state, setState] = useState<SupportPromptState>(loadSupportState);
 
-  if (!shouldShowSupportPrompt(state, downloadedCount, Date.now())) return null;
+  if (!shouldShowSupportPrompt(state, Date.now())) return null;
 
   const update = (next: SupportPromptState): void => {
     saveSupportState(next);
@@ -36,7 +35,9 @@ const SupportCard: FC<{ downloadedCount: number }> = ({ downloadedCount }) => {
     <div className="support-card">
       <strong>{t.support.title}</strong>
       <p className="muted">
-        {t.support.text(downloadedCount.toLocaleString(t.locale))}
+        {mentionsSongCount(downloadedCount)
+          ? t.support.textWithCount(downloadedCount.toLocaleString(t.locale))
+          : t.support.text}
       </p>
       <div className="row">
         <a className="btn primary" href={GITHUB_URL} onClick={dismiss}>

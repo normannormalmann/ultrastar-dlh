@@ -389,7 +389,8 @@ export const es: Katalog = {
   },
   support: {
     title: "¿Te gusta UltraStar DLH?",
-    text: (count: string) =>
+    text: "La app es gratuita y un proyecto personal: una estrella en GitHub ayuda a que otros la encuentren, y un café mantiene vivo el desarrollo.",
+    textWithCount: (count: string) =>
       `Ya tienes ${count} canciones en tu colección. La app es gratuita y un proyecto personal: una estrella en GitHub ayuda a que otros la encuentren, y un café mantiene vivo el desarrollo.`,
     star: "Estrella en GitHub",
     coffee: "Invítame a un café",

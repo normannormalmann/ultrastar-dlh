@@ -387,7 +387,8 @@ export const en: Katalog = {
   },
   support: {
     title: "Enjoying UltraStar DLH?",
-    text: (count: string) =>
+    text: "The app is free and a hobby project – a star on GitHub helps others find it, and a coffee keeps development going.",
+    textWithCount: (count: string) =>
       `You already have ${count} songs in your collection. The app is free and a hobby project – a star on GitHub helps others find it, and a coffee keeps development going.`,
     star: "Star on GitHub",
     coffee: "Buy me a coffee",

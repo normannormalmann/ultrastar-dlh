@@ -388,7 +388,8 @@ export const de = {
   },
   support: {
     title: "Gefällt dir UltraStar DLH?",
-    text: (count: string) =>
+    text: "Die App ist kostenlos und ein Freizeitprojekt – ein Stern auf GitHub hilft anderen, sie zu finden, und ein Kaffee hält die Entwicklung am Laufen.",
+    textWithCount: (count: string) =>
       `Du hast schon ${count} Songs in deiner Sammlung. Die App ist kostenlos und ein Freizeitprojekt – ein Stern auf GitHub hilft anderen, sie zu finden, und ein Kaffee hält die Entwicklung am Laufen.`,
     star: "Stern auf GitHub",
     coffee: "Buy me a coffee",
