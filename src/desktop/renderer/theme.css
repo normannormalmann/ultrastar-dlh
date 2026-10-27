@@ -248,6 +248,27 @@ body,
   margin-bottom: 12px;
   font-size: 13px;
 }
+.support-card {
+  background: rgba(203, 166, 247, 0.08);
+  border: 1px solid var(--mauve);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.support-card p {
+  margin: 6px 0 10px;
+}
+.support-card .row {
+  flex-wrap: wrap;
+}
+.support-card-spacer {
+  flex: 1;
+}
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
 
 /* ── Table ── */
 .song-table {

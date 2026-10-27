@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { AppError, InitialState } from "../shared/ipcContract.ts";
 import DownloadBar from "./components/DownloadBar.tsx";
 import Sidebar, { type ViewId } from "./components/Sidebar.tsx";
+import SupportCard from "./components/SupportCard.tsx";
 import { useIpcEvent } from "./hooks.ts";
 import {
   aufloesenSprache,
@@ -104,6 +105,7 @@ const Shell: FC<{
             [{lastError.context}] {lastError.message}
           </div>
         )}
+        <SupportCard downloadedCount={downloaded.length} />
         {view === "search" && (
           <SearchView downloaded={downloaded} status={status} />
         )}

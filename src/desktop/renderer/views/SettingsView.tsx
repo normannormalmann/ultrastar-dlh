@@ -1,6 +1,13 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import { Check, Download, RefreshCw, Trash2 } from "lucide-react";
+import {
+  Check,
+  Coffee,
+  Download,
+  RefreshCw,
+  Star,
+  Trash2,
+} from "lucide-react";
 import type {
   AppConfig,
   BinariesStatus,
@@ -17,6 +24,7 @@ import {
   useSprache,
   useT,
 } from "../i18n/index.tsx";
+import { COFFEE_URL, GITHUB_URL } from "../supportPrompt.ts";
 
 const BROWSERS = [
   "edge",
@@ -528,6 +536,16 @@ export const SettingsView: FC<{
       {update.phase === "error" && (
         <div className="error-banner">{update.message}</div>
       )}
+
+      <h3 style={{ marginTop: 28 }}>{t.settings.supportProject}</h3>
+      <div className="row">
+        <a className="btn" href={GITHUB_URL}>
+          <Star size={16} /> {t.support.star}
+        </a>
+        <a className="btn" href={COFFEE_URL}>
+          <Coffee size={16} /> {t.support.coffee}
+        </a>
+      </div>
     </div>
   );
 };

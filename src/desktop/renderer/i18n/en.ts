@@ -383,5 +383,15 @@ export const en: Katalog = {
     updateReady: (v: string) => `Version ${v} is ready.`,
     updateNotChecked: "Not checked yet.",
     language: "Language",
+    supportProject: "Support the project",
+  },
+  support: {
+    title: "Enjoying UltraStar DLH?",
+    text: (count: string) =>
+      `You already have ${count} songs in your collection. The app is free and a hobby project – a star on GitHub helps others find it, and a coffee keeps development going.`,
+    star: "Star on GitHub",
+    coffee: "Buy me a coffee",
+    later: "Later",
+    never: "Don't show again",
   },
 };

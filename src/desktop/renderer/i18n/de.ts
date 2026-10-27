@@ -384,5 +384,15 @@ export const de = {
     updateReady: (v: string) => `Version ${v} ist bereit.`,
     updateNotChecked: "Noch nicht geprüft.",
     language: "Sprache",
+    supportProject: "Projekt unterstützen",
+  },
+  support: {
+    title: "Gefällt dir UltraStar DLH?",
+    text: (count: string) =>
+      `Du hast schon ${count} Songs in deiner Sammlung. Die App ist kostenlos und ein Freizeitprojekt – ein Stern auf GitHub hilft anderen, sie zu finden, und ein Kaffee hält die Entwicklung am Laufen.`,
+    star: "Stern auf GitHub",
+    coffee: "Buy me a coffee",
+    later: "Später",
+    never: "Nicht mehr anzeigen",
   },
 };
