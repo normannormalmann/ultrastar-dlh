@@ -116,8 +116,41 @@ jobs:
           python -m uv pip compile python-sidecar/pyproject.toml \
             --python-version 3.12 "${extra_flags[@]}" \
             --no-annotate --no-header --output-file "$RUNNER_TEMP/audit-requirements.txt"
+      - name: Check time-limited risk exceptions
+        shell: bash
+        env:
+          AUDIT_SCOPE: ${{ matrix.scope }}
+        run: |
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+          import pathlib
+          import urllib.request
+          # Ignore flags only for the scope the exceptions were decided for;
+          # every other scope audits without any exception.
+          exceptions = json.loads(pathlib.Path('.github/python-audit-exceptions.json').read_text(encoding='utf-8'))
+          args = []
+          if os.environ['AUDIT_SCOPE'] == exceptions['scope']:
+              expires = datetime.date.fromisoformat(exceptions['expires'])
+              assert datetime.date.today() <= expires, f'Python audit exceptions expired on {expires}: re-assess them or finish the migration'
+              # The exceptions only exist because whisperx blocks the fixed
+              # versions. Once it stops pinning torch 2.8 they must go.
+              with urllib.request.urlopen('https://pypi.org/pypi/whisperx/json', timeout=30) as response:
+                  whisperx = json.load(response)['info']
+              torch_pins = [r for r in whisperx['requires_dist'] if r.replace(' ', '').startswith('torch~=2.8')]
+              assert torch_pins, f"whisperx {whisperx['version']} no longer pins torch 2.8: migrate and drop .github/python-audit-exceptions.json"
+              for advisory in exceptions['advisories']:
+                  args += ['--ignore-vuln', advisory['id']]
+              print(f"{len(exceptions['advisories'])} advisories excepted until {expires} (whisperx {whisperx['version']} still pins torch 2.8)")
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'audit-ignore-args.txt').write_text(''.join(f'{a}\n' for a in args), newline='\n')
+          PY
       - name: Audit resolved versions
-        run: python -m pip_audit --no-deps --disable-pip --requirement "${{ runner.temp }}/audit-requirements.txt" --format json --output "${{ runner.temp }}/python-audit.json"
+        shell: bash
+        run: |
+          mapfile -t ignore_args < "$RUNNER_TEMP/audit-ignore-args.txt"
+          python -m pip_audit --no-deps --disable-pip --requirement "$RUNNER_TEMP/audit-requirements.txt" \
+            "${ignore_args[@]}" --format json --output "$RUNNER_TEMP/python-audit.json"
       - name: Preserve resolved versions and findings
         if: always()
         uses: actions/upload-artifact@v7

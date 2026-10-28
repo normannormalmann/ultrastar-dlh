@@ -2,6 +2,12 @@
 
 Stand: 14. Oktober 2026. Separater Folgeauftrag nach dem Fix der Bun-Security-Scans. Die Migration ist vorbereitet, noch nicht umgesetzt.
 
+## Befristete Risikoausnahme (28. Oktober 2026)
+
+Bis zur Migration gilt die gesonderte Risikoausnahme aus `.github/python-audit-exceptions.json`: 14 Advisory-IDs (17 Audit-Einträge) für torch 2.8.0 und transformers 4.57.6, jeweils mit Erreichbarkeitsanalyse, nur im Modell-Audit und **gültig bis 31. Januar 2027**. Der Security-Workflow schlägt danach wieder fehl, ebenso sobald die aktuelle WhisperX-Version torch 2.8 nicht mehr pinnt. Neue Advisories bleiben blockierend. Der NLTK-Befund aus der Tabelle unten tritt im aktuellen Audit nicht mehr auf.
+
+Geprüfter und verworfener Ausweg: WhisperX 3.7.2 erlaubt torch 2.10/2.11 (Audit-Rest: PYSEC-2025-194, Fix erst in torch 2.13, torchaudio endet bei 2.11). Sein VAD importiert aber pyannote-audio 3.4, das mit torchaudio ab 2.9 schon beim Import abbricht (`torchaudio.AudioMetaData` entfernt). Ein Downgrade ist damit keine Lösung; Phase 2 (WhisperX entkoppeln) bleibt der Weg.
+
 ## Ausgangslage und Ziel
 
 Der Python-Modell-Audit meldet 18 Advisory-Einträge in drei Paketen. Einige Transformers-Einträge enthalten dieselben Advisory-IDs mit unterschiedlichen Fixangaben; die Anzahl entspricht daher nicht 18 verschiedenen Schwachstellen. Die Basisinstallation des Sidecars hat keine gemeldeten Befunde.

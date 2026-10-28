@@ -1,0 +1,23 @@
+{
+  "scope": "models",
+  "decided": "2026-10-28",
+  "expires": "2027-01-31",
+  "blocker": "whisperx (latest stable 3.8.6) pins torch~=2.8.0 and huggingface-hub<1.0.0, which rules out every torch and transformers release carrying these fixes. whisperx 3.7.2 would allow torch 2.11, but its VAD imports pyannote-audio 3.4, which crashes on torchaudio>=2.9 (torchaudio.AudioMetaData was removed). Migration plan: docs/superpowers/plans/2026-10-14-model-security-migration.md.",
+  "context": "The sidecar runs locally on the user's own audio. ASR uses faster-whisper (CTranslate2), not torch or transformers. Torch is reached through Demucs (weights from dl.fbaipublicfiles.com), the pyannote VAD checkpoint bundled in the whisperx wheel and the wav2vec2 alignment models (torchaudio pipelines or fixed Hugging Face repos chosen by whisperx).",
+  "advisories": [
+    { "id": "PYSEC-2025-193", "package": "torch", "aliases": ["CVE-2025-2999", "GHSA-vgrw-7cvw-pwgx"], "reachability": "torch.nn.utils.rnn.unpack_sequence is not called; exploitation needs a local attacker." },
+    { "id": "PYSEC-2025-194", "package": "torch", "aliases": ["CVE-2025-3000", "GHSA-rrmf-rvhw-rf47"], "reachability": "torch.jit.script is never applied to untrusted code; exploitation needs a local attacker." },
+    { "id": "PYSEC-2025-195", "package": "torch", "aliases": ["CVE-2025-3001", "GHSA-qfhq-4f3w-5fph"], "reachability": "torch.lstm_cell is only fed by fixed model weights and the user's own audio; exploitation needs a local attacker." },
+    { "id": "PYSEC-2025-203", "package": "torch", "aliases": ["CVE-2025-55551"], "reachability": "torch.linalg.lu is not used by the sidecar." },
+    { "id": "PYSEC-2025-204", "package": "torch", "aliases": ["CVE-2025-55552"], "reachability": "torch.rot90 combined with torch.randn_like is not used by the sidecar." },
+    { "id": "PYSEC-2025-206", "package": "torch", "aliases": ["CVE-2025-55554"], "reachability": "torch.nan_to_num(...).long() is not used by the sidecar." },
+    { "id": "PYSEC-2026-139", "package": "torch", "aliases": ["CVE-2026-4538"], "reachability": "No pt2 archives are loaded; exploitation needs a local attacker." },
+    { "id": "PYSEC-2026-2286", "package": "torch", "aliases": ["CVE-2026-24747", "GHSA-63cw-57p8-fm3p"], "reachability": "Needs a malicious .pth checkpoint. Checkpoints only come from the fixed upstream sources listed in context, so this requires a compromised model source." },
+    { "id": "PYSEC-2025-217", "package": "transformers", "aliases": ["CVE-2025-14929"], "reachability": "The X-CLIP checkpoint conversion script is not used." },
+    { "id": "PYSEC-2026-2288", "package": "transformers", "aliases": ["CVE-2026-1839", "GHSA-69w3-r845-3855"], "reachability": "Trainer is not used; the sidecar never trains." },
+    { "id": "PYSEC-2026-2289", "package": "transformers", "aliases": ["CVE-2026-4372", "GHSA-29pf-2h5f-8g72"], "reachability": "Needs a malicious config.json, i.e. a compromised alignment-model repository on the Hugging Face Hub." },
+    { "id": "PYSEC-2026-2290", "package": "transformers", "aliases": ["CVE-2026-5241", "GHSA-fgcw-684q-jj6r"], "reachability": "Only wav2vec2 models are loaded; the LightGlue loading path is not used." },
+    { "id": "PYSEC-2026-3929", "package": "transformers", "aliases": ["CVE-2026-9856", "GHSA-xrqw-3rrv-vx5w"], "reachability": "save_pretrained is never called." },
+    { "id": "PYSEC-2026-4174", "package": "transformers", "aliases": ["CVE-2026-80047", "GHSA-x9r9-c232-4q39"], "reachability": "load_custom_generate is not used; the sidecar does not generate text with transformers." }
+  ]
+}
