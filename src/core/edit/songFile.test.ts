@@ -180,7 +180,10 @@ describe("mediaInside", () => {
     expect(mediaInside(dir, "audio.mp3")).toBe(join(dir, "audio.mp3"));
     expect(mediaInside(dir, "..\\..\\geheim.txt")).toBeNull();
     expect(mediaInside(dir, "../geheim.txt")).toBeNull();
-    expect(mediaInside(dir, "C:\\Windows\\win.ini")).toBeNull();
+    // An absolute path in this platform's spelling - on Linux "C:\..." is
+    // just an odd file name inside the folder.
+    const absolut = process.platform === "win32" ? "C:\\Windows\\win.ini" : "/etc/passwd";
+    expect(mediaInside(dir, absolut)).toBeNull();
     expect(mediaInside(dir, "  ")).toBeNull();
     expect(mediaInside(dir, undefined)).toBeNull();
   });
