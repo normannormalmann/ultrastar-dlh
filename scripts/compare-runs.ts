@@ -6,7 +6,7 @@
 // nicht mehr verschoben werden kann: Ausschlussliste, Primaermetrik,
 // Schwelle, Bootstrap-Seed und die Gueltigkeitswaechter sind Eingaben,
 // die Entscheidung ist Ausgabe.
-import type { Metrics } from "../src/core/create/evaluate.ts";
+import { DRIFT_GRENZE_MS_PRO_S, type Metrics } from "../src/core/create/evaluate.ts";
 
 /** Eine Zeile aus der --out-Datei von evaluate-pipeline.ts. */
 export type Zeile = {
@@ -70,7 +70,7 @@ export type Vergleich = {
   /** Gepaarte Songs mit |medianVersatzMs| ueber der Editionsgrenze, die
    * nicht auf der Ausschlussliste stehen: wahrscheinlich eine andere
    * Edition als die Referenz, siehe ultrastar-basislinie. */
-  editionsHinweise: { name: string; medianVersatzMs: number }[];
+  editionsHinweise: { name: string; medianVersatzMs: number; driftMsProSekunde: number }[];
   entscheidung: "uebernehmen" | "verworfen" | "ungueltig";
 };
 
@@ -193,8 +193,16 @@ export const vergleicheLaeufe = (basis: Lauf, arm: Lauf, optionen: Optionen): Ve
   };
 
   const editionsHinweise = basisGepaart
-    .filter((z) => Math.abs(z.m.medianVersatzMs) > EDITIONS_GRENZE_MS)
-    .map((z) => ({ name: z.name, medianVersatzMs: z.m.medianVersatzMs }));
+    .filter(
+      (z) =>
+        Math.abs(z.m.medianVersatzMs) > EDITIONS_GRENZE_MS ||
+        Math.abs(z.m.driftMsProSekunde) > DRIFT_GRENZE_MS_PRO_S,
+    )
+    .map((z) => ({
+      name: z.name,
+      medianVersatzMs: z.m.medianVersatzMs,
+      driftMsProSekunde: z.m.driftMsProSekunde,
+    }));
 
   return {
     songs: gepaart.length,
@@ -277,8 +285,14 @@ export const formatiereBericht = (
   z.push(`  Streuung medianPitchOffset: Basis ${v.sekundaer.pitchOffsetStreuung.basis.toFixed(2)}, Arm ${v.sekundaer.pitchOffsetStreuung.arm.toFixed(2)} Halbtoene`);
   if (v.editionsHinweise.length > 0) {
     z.push("");
-    z.push(`Hinweis: Versatz ueber ${EDITIONS_GRENZE_MS} ms, aber nicht ausgeschlossen (andere Edition?):`);
-    for (const h of v.editionsHinweise) z.push(`  ${h.name}: ${h.medianVersatzMs.toFixed(0)} ms`);
+    z.push(
+      `Hinweis: Versatz ueber ${EDITIONS_GRENZE_MS} ms oder Drift ueber ${DRIFT_GRENZE_MS_PRO_S} ms/s, aber nicht ausgeschlossen (andere Edition?):`,
+    );
+    for (const h of v.editionsHinweise) {
+      z.push(
+        `  ${h.name}: Versatz ${h.medianVersatzMs.toFixed(0)} ms, Drift ${h.driftMsProSekunde.toFixed(1)} ms/s`,
+      );
+    }
   }
   if (v.waechterVerletzungen.length > 0) {
     z.push("");

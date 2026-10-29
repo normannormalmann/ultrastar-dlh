@@ -17,7 +17,12 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { compareToReference, type Metrics, parseReferenceTxt } from "../src/core/create/evaluate.ts";
+import {
+  compareToReference,
+  DRIFT_GRENZE_MS_PRO_S,
+  type Metrics,
+  parseReferenceTxt,
+} from "../src/core/create/evaluate.ts";
 import { runPipeline } from "../src/core/create/pipeline.ts";
 import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
 import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
@@ -344,6 +349,14 @@ const main = async (): Promise<void> => {
     if (Math.abs(m.medianVersatzMs) > 2000) {
       console.log(
         "  Hinweis: |Versatz| > 2 s - Referenz passt vermutlich nicht zur Audio-Edition.",
+      );
+    }
+    // Waechst der Versatz linear, laeuft das Audio in anderem Tempo als das
+    // der Referenz (29.10.2026: +3,6 ms/s = +0,9 s uebers Lied, vom 2-s-Check
+    // unbemerkt). Auch das ist eine Editionsfrage, kein Alignment-Problem.
+    if (Math.abs(m.driftMsProSekunde) > DRIFT_GRENZE_MS_PRO_S) {
+      console.log(
+        `  Hinweis: Drift ${m.driftMsProSekunde.toFixed(1)} ms/s - Audio laeuft in anderem Tempo als die Referenz-Edition.`,
       );
     }
   }

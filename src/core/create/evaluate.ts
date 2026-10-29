@@ -49,7 +49,18 @@ export type Metrics = {
    * per-Song-Kalibrierung den konstanten Versatz bereits herausgerechnet hat.
    */
   anteilUnter100msKalibriert: number;
+  /**
+   * Steigung des Versatzes ueber die Songzeit, in ms je Sekunde. Ein
+   * konstanter Versatz ergibt 0; waechst er linear, laeuft das Audio in
+   * anderem Tempo als das, auf dem die Referenz gesynct wurde (0,4 %
+   * schneller = +4 ms/s). Grobfehler (> 2 s vom Median) bleiben draussen,
+   * sonst dominiert ein einzelner Ausreisser die Gerade.
+   */
+  driftMsProSekunde: number;
 };
+
+/** Ab dieser Steigung gilt das Audio als andere Edition als die Referenz. */
+export const DRIFT_GRENZE_MS_PRO_S = 2;
 
 const zahlAusHeader = (txt: string, name: string, standard: number): number => {
   const m = new RegExp(`^#${name}:(.*)$`, "m").exec(txt);
@@ -65,12 +76,14 @@ export const parseReferenceTxt = (txt: string): ReferenceSong => {
   const gap = zahlAusHeader(txt, "GAP", 0);
   const syllables: { syllable: string; onsetMs: number; pitch: number }[] = [];
 
+  let duett = false;
   for (const roh of txt.split("\n")) {
     // Nur das Windows-Zeilenende kappen, nicht trimEnd(): die letzte Silbe
     // eines Worts traegt hier ihr Leerzeichen als Trennzeichen zum naechsten
     // Wort. trimEnd() wuerde genau dieses Leerzeichen verschlucken und alle
     // Woerter einer Zeile zu einer Silbe verschmelzen.
     const zeile = roh.replace(/\r$/, "");
+    if (/^P\s*\d/.test(zeile)) duett = true;
     const m = /^[:*FR]\s+(-?\d+)\s+(\d+)\s+(-?\d+)\s?(.*)$/.exec(zeile);
     if (!m?.[1]) continue;
     syllables.push({
@@ -79,6 +92,12 @@ export const parseReferenceTxt = (txt: string): ReferenceSong => {
       pitch: Number.parseInt(m[3] ?? "0", 10),
     });
   }
+  // Duett: die Stimmen stehen als Bloecke in der Datei (P1, dann P2), singen
+  // aber verschraenkt. Unsere Ausgabe ist eine zeitlich geordnete Stimme,
+  // also muss auch die Referenz in Zeitreihenfolge verglichen werden - sonst
+  // springt die Paarung um Minuten. Stabil sortiert, damit gleichzeitige
+  // Silben beider Stimmen ihre Dateireihenfolge behalten.
+  if (duett) syllables.sort((a, b) => a.onsetMs - b.onsetMs);
   return { bpm, gap, syllables };
 };
 
@@ -88,6 +107,16 @@ export const parseReferenceTxt = (txt: string): ReferenceSong => {
  * den Bewertungsbericht und bleibt fuer leere Listen bei 0, statt NaN zu
  * produzieren.
  */
+/** Steigung der Kleinste-Quadrate-Geraden durch (x, y)-Punkte; 0 bei weniger als zwei Punkten. */
+const steigung = (punkte: readonly (readonly [number, number])[]): number => {
+  if (punkte.length < 2) return 0;
+  const mx = punkte.reduce((s, [x]) => s + x, 0) / punkte.length;
+  const my = punkte.reduce((s, [, y]) => s + y, 0) / punkte.length;
+  const nenner = punkte.reduce((s, [x]) => s + (x - mx) ** 2, 0);
+  if (nenner === 0) return 0;
+  return punkte.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0) / nenner;
+};
+
 const quantil = (werte: number[], q: number): number => {
   if (werte.length === 0) return 0;
   const sortiert = [...werte].sort((a, b) => a - b);
@@ -205,6 +234,11 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
   );
 
   const medianVersatzMs = quantil(versatz, 0.5);
+  const driftMsProSekunde = steigung(
+    paarungen
+      .map(([, j], k) => [(referenz.syllables[j]?.onsetMs ?? 0) / 1000, versatz[k] ?? 0] as const)
+      .filter(([, v]) => Math.abs(v - medianVersatzMs) < 2000),
+  );
   const anteilUnter50msKalibriert =
     versatz.length === 0
       ? 0
@@ -229,5 +263,6 @@ export const compareToReference = (unser: ReferenceSong, referenz: ReferenceSong
       referenz.syllables.length === 0 ? 0 : paarungen.length / referenz.syllables.length,
     anteilUnter50msKalibriert,
     anteilUnter100msKalibriert,
+    driftMsProSekunde,
   };
 };
