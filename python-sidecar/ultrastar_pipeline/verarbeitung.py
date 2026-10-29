@@ -243,7 +243,7 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
             warnungen.append(
                 f"{interpoliert} von {len(woerter)} Woertern ohne Messung (interpoliert)."
             )
-        verlauf = track_pitch(vocals, auftrag.work_dir, fingerprint)
+        verlauf = track_pitch(vocals, auftrag.work_dir, fingerprint, device)
 
         # Groesste nicht zugeordnete Luecke: ein Indiz dafuer, dass der
         # Text nicht zum Audio passt (fehlende Strophe, falscher Song).
