@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   type ElectronApplication,
   _electron as electron,
@@ -132,7 +132,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await rm(bibliothek, { recursive: true, force: true });
-  await rm(datenDir(), { recursive: true, force: true });
+  // The app folder itself, not just its Cache child - otherwise every run
+  // leaves an empty "ultrastar-e2e-editor-<pid>" behind in LOCALAPPDATA.
+  await rm(dirname(datenDir()), { recursive: true, force: true });
 });
 
 const starte = (): Promise<ElectronApplication> =>

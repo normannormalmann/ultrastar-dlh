@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, protocol, shell } from "electron";
+import { app, BrowserWindow, ipcMain, protocol, screen, shell } from "electron";
 import {
   installMissingBinaries,
   prependManagedBinToPath,
@@ -23,12 +23,29 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+/**
+ * E2E runs open real windows. With ULTRASTAR_E2E_DISPLAY=secondary they go
+ * to a monitor other than the primary one and never take the focus, so a
+ * test run does not get in the way of someone working. Playwright sends its
+ * input straight to the page and needs no OS focus. Unset - the normal
+ * case - nothing changes.
+ */
+const testPlatzierung = (): { x: number; y: number } | null => {
+  if (process.env.ULTRASTAR_E2E_DISPLAY !== "secondary") return null;
+  const primaer = screen.getPrimaryDisplay();
+  const anderer = screen.getAllDisplays().find((d) => d.id !== primaer.id);
+  const ziel = (anderer ?? primaer).workArea;
+  return { x: ziel.x + 40, y: ziel.y + 40 };
+};
+
 const createWindow = (): BrowserWindow => {
+  const platz = testPlatzierung();
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
     minHeight: 600,
+    ...(platz ? { ...platz, show: false } : {}),
     backgroundColor: "#1e1e2e",
     autoHideMenuBar: true,
     // Dev mode: window icon from the repo; packaged builds get the icon from the executable
@@ -42,6 +59,8 @@ const createWindow = (): BrowserWindow => {
       sandbox: false, // ESM preload requires sandbox:false
     },
   });
+
+  if (platz) win.once("ready-to-show", () => win.showInactive());
 
   // Open external links in the system browser, not in the app window
   win.webContents.setWindowOpenHandler(({ url }) => {

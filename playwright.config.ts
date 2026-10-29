@@ -1,5 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
+// Test windows open on a secondary monitor and without taking the focus
+// (see testPlatzierung in src/desktop/main/index.ts). Workers and the
+// launched Electron inherit this. Set it to "" to watch on the main screen.
+process.env.ULTRASTAR_E2E_DISPLAY ??= "secondary";
+
 export default defineConfig({
   testDir: "e2e",
   timeout: 60_000,
