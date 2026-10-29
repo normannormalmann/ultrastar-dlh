@@ -121,6 +121,20 @@ describe("vergleicheLaeufe: Gueltigkeitswaechter", () => {
     ]);
   });
 
+  it("nennt ein abweichendes LRC-Flag als eigenen Waechter: andere Anker, anderes Alignment", () => {
+    // Gemessen am 29.10.2026: LRCLIB antwortete im Basislauf fuer einen Song
+    // nicht, im Arm dann doch. Die Zeitmetriken wanderten mit, aber die
+    // Ursache stand nicht im Bericht.
+    const basis = lauf([{ ...zeile("A"), lrc: false }]);
+    const arm = lauf([{ ...zeile("A"), lrc: true }]);
+
+    const ergebnis = vergleicheLaeufe(basis, arm, optionen);
+
+    expect(ergebnis.entscheidung).toBe("ungueltig");
+    expect(ergebnis.waechterVerletzungen).toEqual([{ name: "A", metrik: "lrc", basis: 0, arm: 1 }]);
+    expect(formatiereBericht(ergebnis, basis, arm, optionen)).toContain("lrc 0 -> 1");
+  });
+
   it("bleibt gueltig, wenn die Waechter gleich sind und nur die Tonhoehe sich aendert", () => {
     const basis = lauf([zeile("A", { anteilPitchExakt: 0.3 })]);
     const arm = lauf([zeile("A", { anteilPitchExakt: 0.5, medianPitchOffset: 1 })]);

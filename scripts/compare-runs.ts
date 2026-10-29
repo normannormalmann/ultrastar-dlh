@@ -46,7 +46,10 @@ export type Differenz = { name: string; basis: number; arm: number; punkte: numb
 
 export type WaechterVerletzung = {
   name: string;
-  metrik: (typeof WAECHTER)[number];
+  /** Eine der Zeitmetriken aus WAECHTER oder "lrc": ob fuer den Song ein
+   * LRC als Anker vorlag (0/1). Weicht das ab, hat LRCLIB in einem der
+   * Laeufe nicht geantwortet, und das Alignment ist ein anderes. */
+  metrik: (typeof WAECHTER)[number] | "lrc";
   basis: number;
   arm: number;
 };
@@ -152,6 +155,9 @@ export const vergleicheLaeufe = (basis: Lauf, arm: Lauf, optionen: Optionen): Ve
       arm: armWert,
       punkte: punkte(armWert) - punkte(basisWert),
     });
+    if (b.lrc !== a.lrc) {
+      waechterVerletzungen.push({ name, metrik: "lrc", basis: Number(b.lrc), arm: Number(a.lrc) });
+    }
     for (const metrik of WAECHTER) {
       if (b.m[metrik] !== a.m[metrik]) {
         waechterVerletzungen.push({ name, metrik, basis: b.m[metrik], arm: a.m[metrik] });
