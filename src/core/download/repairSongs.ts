@@ -113,10 +113,13 @@ export const applyHeader = (
   value: string,
 ): string => {
   const line = `#${key.toUpperCase()}:${value}`;
-  const pattern = new RegExp(`^#${key.toUpperCase()}:.*$`, "m");
-  if (pattern.test(txt)) return txt.replace(pattern, line);
+  // A leading BOM (files saved by the correction editor after a Windows-1252
+  // conversion) sits before the first "#"; without allowing for it, a header
+  // in the first line is not found and nothing gets inserted.
+  const pattern = new RegExp(`^(\\uFEFF?)#${key.toUpperCase()}:.*$`, "m");
+  if (pattern.test(txt)) return txt.replace(pattern, `$1${line}`);
   const eol = txt.includes("\r\n") ? "\r\n" : "\n";
-  return txt.replace(/^(#[^\n]*\n)/, `$1${line}${eol}`);
+  return txt.replace(/^(﻿?#[^\n]*\n)/, `$1${line}${eol}`);
 };
 
 export const applyVideoGap = (txt: string, gap: string): string =>

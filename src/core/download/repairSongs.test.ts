@@ -70,6 +70,16 @@ test("applyVideoGap replaces existing #VIDEOGAP line", () => {
   );
 });
 
+test("applyHeader copes with a BOM before the first header", () => {
+  const bom = String.fromCharCode(0xfeff);
+  expect(applyHeader(`${bom}#GENRE:Alt\n#BPM:300\n`, "GENRE", "Pop")).toBe(
+    `${bom}#GENRE:Pop\n#BPM:300\n`,
+  );
+  expect(applyHeader(`${bom}#TITLE:x\n#BPM:300\n`, "GENRE", "Pop")).toBe(
+    `${bom}#TITLE:x\n#GENRE:Pop\n#BPM:300\n`,
+  );
+});
+
 test("applyVideoGap inserts after first header when absent", () => {
   const txt = "#ARTIST:X\n#TITLE:Y\n#BPM:120\n: 0 4 0 La\n";
   expect(applyVideoGap(txt, "37.5")).toBe(
