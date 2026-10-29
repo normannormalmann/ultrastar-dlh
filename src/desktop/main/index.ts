@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, protocol, shell } from "electron";
 import {
   installMissingBinaries,
   prependManagedBinToPath,
@@ -10,8 +10,18 @@ import {
   raeumeCoverWaisen,
   registerIpcHandlers,
 } from "./ipc.ts";
+import { MEDIA_SCHEME, serveMedia } from "./editorMedia.ts";
 import { broadcast, initializeState, state } from "./state.ts";
 import { initUpdater } from "./updater.ts";
+
+// Must happen before "ready". stream lets <audio> seek through range
+// requests; without it Chromium buffers the whole file first.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MEDIA_SCHEME,
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+  },
+]);
 
 const createWindow = (): BrowserWindow => {
   const win = new BrowserWindow({
@@ -56,6 +66,7 @@ const createWindow = (): BrowserWindow => {
 
 void app.whenReady().then(async () => {
   registerIpcHandlers(ipcMain);
+  protocol.handle(MEDIA_SCHEME, serveMedia);
   // Wires the auto-updater and kicks off one background check.
   initUpdater();
   prependManagedBinToPath();

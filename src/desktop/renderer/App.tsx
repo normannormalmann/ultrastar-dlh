@@ -2,6 +2,11 @@ import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { AppError, InitialState } from "../shared/ipcContract.ts";
 import DownloadBar from "./components/DownloadBar.tsx";
+import { appErrorText, errorContextLabel } from "./errorText.ts";
+import {
+  type EditorTarget,
+  OpenEditorContext,
+} from "./components/editor/openEditor.ts";
 import Sidebar, { type ViewId } from "./components/Sidebar.tsx";
 import SupportCard from "./components/SupportCard.tsx";
 import { useIpcEvent } from "./hooks.ts";
@@ -14,6 +19,7 @@ import {
 import CreateView from "./views/CreateView.tsx";
 import { type Entwurf, leererEntwurf } from "./views/createDraft.ts";
 import DownloadedView from "./views/DownloadedView.tsx";
+import EditorView from "./views/EditorView.tsx";
 import QueueView from "./views/QueueView.tsx";
 import RepairView from "./views/RepairView.tsx";
 import SearchView from "./views/SearchView.tsx";
@@ -66,6 +72,7 @@ const Shell: FC<{
   initial: InitialState;
   onSprache: (s: Sprache) => void;
 }> = ({ initial, onSprache }) => {
+  const t = useT();
   const [view, setView] = useState<ViewId>("search");
   const [lastError, setLastError] = useState<AppError | null>(null);
 
@@ -89,8 +96,10 @@ const Shell: FC<{
   const [entwurf, setEntwurf] = useState<Entwurf>(() =>
     leererEntwurf(crypto.randomUUID()),
   );
+  const [editorZiel, setEditorZiel] = useState<EditorTarget | null>(null);
 
   return (
+    <OpenEditorContext.Provider value={setEditorZiel}>
     <div className="app-shell">
       <Sidebar
         active={view}
@@ -102,7 +111,8 @@ const Shell: FC<{
       <main className="main-view">
         {lastError && (
           <div className="error-banner">
-            [{lastError.context}] {lastError.message}
+            [{errorContextLabel(t, lastError.context)}]{" "}
+            {appErrorText(t, lastError)}
           </div>
         )}
         <SupportCard downloadedCount={downloaded.length} />
@@ -129,7 +139,16 @@ const Shell: FC<{
         )}
       </main>
       <DownloadBar downloads={downloads} />
+      {editorZiel && (
+        <EditorView
+          key={editorZiel.songDir}
+          songDir={editorZiel.songDir}
+          heading={editorZiel.heading}
+          onClose={() => setEditorZiel(null)}
+        />
+      )}
     </div>
+    </OpenEditorContext.Provider>
   );
 };
 

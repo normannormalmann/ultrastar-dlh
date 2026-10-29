@@ -174,6 +174,22 @@ describe("assemblePackage", () => {
     expect(txt).toContain("#VIDEO:video.mp4");
   });
 
+  it("legt die Zweifel der Pipeline als sync-hints.json dazu", async () => {
+    const { library, jobDir } = await aufbau();
+    const unsicher: SongData = {
+      ...songData(),
+      notes: [
+        { beat: 0, length: 4, pitch: 60, syllable: "La", confidence: 0.9 },
+        { beat: 4, length: 4, pitch: 62, syllable: "le", confidence: 0.2 },
+      ],
+    };
+    const ergebnis = await Effect.runPromise(
+      assemblePackage({ ...basis(library, jobDir), songData: unsicher }),
+    );
+    const datei = JSON.parse(await readFile(join(ergebnis.songDir, "sync-hints.json"), "utf8"));
+    expect(datei).toEqual({ version: 1, hints: [{ fromBeat: 4, toBeat: 8, kind: "low" }] });
+  });
+
   it("schreibt das Cover und setzt den Header", async () => {
     const { library, jobDir } = await aufbau();
     const ergebnis = await Effect.runPromise(

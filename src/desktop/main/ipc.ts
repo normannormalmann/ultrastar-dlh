@@ -72,7 +72,9 @@ import {
   getUpdateState,
   installUpdate,
 } from "./updater.ts";
-import type { Song } from "../shared/ipcContract.ts";
+import type { EditorSaveRequest, Song } from "../shared/ipcContract.ts";
+import { CodedError } from "../shared/appErrors.ts";
+import { loadForEditor, saveFromEditor } from "./editor.ts";
 
 export const SEARCH_PAGE_SIZE = 20;
 
@@ -246,9 +248,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
         repairRunning ||
         genreEnrichRunning
       ) {
-        throw new Error(
-          "Import nicht möglich, während Downloads, eine Reparatur oder Genre-Anreicherung laufen. Bitte warten und erneut versuchen.",
-        );
+        throw new CodedError("archiveImportBusy");
       }
       archiveImportRunning = true;
       try {
@@ -299,6 +299,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       if (archiveImportRunning || genreEnrichRunning) {
         broadcast("event:error", {
           context: "repair",
+          code: "repairBusy",
           message:
             "Reparatur nicht möglich, während der Archiv-Import oder Genre-Anreicherung läuft. Bitte warten und erneut versuchen.",
         });
@@ -413,7 +414,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
 
     "genres:enrich": async () => {
       if (genreEnrichRunning) {
-        throw new Error("Genre-Anreicherung läuft bereits.");
+        throw new CodedError("genreEnrichRunning");
       }
       if (
         state.queueRunning ||
@@ -421,9 +422,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
         repairRunning ||
         archiveImportRunning
       ) {
-        throw new Error(
-          "Anreicherung nicht möglich, während Downloads, Import oder Reparatur laufen.",
-        );
+        throw new CodedError("genreEnrichBusy");
       }
       const providerId = (state.config?.genreProvider ??
         "deezer") as GenreProviderId;
@@ -431,9 +430,7 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       if (providerId === "lastfm") {
         const key = state.config?.lastfmApiKey?.trim();
         if (!key) {
-          throw new Error(
-            "Last.fm benötigt einen API-Key (Einstellungen → Genre-Quelle).",
-          );
+          throw new CodedError("lastfmKeyMissing");
         }
         provider = makeLastfmProvider(key);
       } else if (providerId === "musicbrainz") {
@@ -467,6 +464,10 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     "update:check": async () => checkForUpdate(),
     "update:download": async () => downloadUpdate(),
     "update:install": async () => installUpdate(),
+    "editor:load": async (songDir: unknown) =>
+      loadForEditor(state.downloadDir, songDir),
+    "editor:save": async (req: EditorSaveRequest) =>
+      saveFromEditor(state.downloadDir, req),
   };
 
 export const registerIpcHandlers = (ipcMain: IpcMain): void => {

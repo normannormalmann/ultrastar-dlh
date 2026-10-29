@@ -12,6 +12,11 @@ import { type FolderLayout, songRelativePath } from "../download/naming.ts";
 import type { AcquiredMedia } from "./media.ts";
 import type { SongData } from "./songData.ts";
 import { renderSongTxt } from "./writeSongTxt.ts";
+import {
+  buildSyncHints,
+  SYNC_HINTS_FILE,
+  serializeSyncHints,
+} from "../edit/syncHints.ts";
 
 export type PackageError = {
   kind: "TargetNotWritable" | "MoveFailed";
@@ -175,6 +180,12 @@ export const assemblePackage = (
           video: opts.medien.videoPath ? mediendatei : undefined,
         });
         await writeFile(join(rohbau, "song.txt"), txt, "utf8");
+        // The pipeline's doubts, for the correction editor. A confident
+        // creation gets no file at all.
+        const hints = buildSyncHints(opts.songData);
+        if (hints.length > 0) {
+          await writeFile(join(rohbau, SYNC_HINTS_FILE), serializeSyncHints(hints), "utf8");
+        }
       },
       catch: (e): PackageError => ({
         kind: "TargetNotWritable",

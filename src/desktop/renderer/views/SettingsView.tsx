@@ -14,6 +14,7 @@ import type {
   EnvironmentStatus,
   UpdateState,
 } from "../../shared/ipcContract.ts";
+import { thrownErrorText } from "../errorText.ts";
 import { useIpcEvent } from "../hooks.ts";
 import {
   aufloesenSprache,
@@ -154,7 +155,7 @@ export const SettingsView: FC<{
     try {
       await window.ultrastar.binariesInstall(force);
     } catch (e) {
-      setInstallError(e instanceof Error ? e.message : String(e));
+      setInstallError(thrownErrorText(t, e));
     } finally {
       setInstalling(false);
     }
@@ -166,7 +167,7 @@ export const SettingsView: FC<{
     try {
       setEnv(await window.ultrastar.environmentInstall(force));
     } catch (e) {
-      setEnvError(e instanceof Error ? e.message : String(e));
+      setEnvError(thrownErrorText(t, e));
     } finally {
       setEnvInstalling(false);
     }

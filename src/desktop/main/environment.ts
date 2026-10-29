@@ -11,6 +11,7 @@ import {
   sidecarFingerprint,
   type EnvironmentStatus as Status,
 } from "../../core/create/environment.ts";
+import { CodedError } from "../shared/appErrors.ts";
 import { managedBinDir } from "./binaries.ts";
 import { broadcast } from "./state.ts";
 
@@ -78,7 +79,7 @@ export const installEnvironmentForApp = async (
   // finally - leaving the still-running first install unabortable and
   // sending the UI a stray progress=null/status mid-install.
   if (laufenderAbbruch !== null) {
-    throw new Error("Eine Einrichtung laeuft bereits.");
+    throw new CodedError("envSetupRunning");
   }
   const abbruch = new AbortController();
   laufenderAbbruch = abbruch;
