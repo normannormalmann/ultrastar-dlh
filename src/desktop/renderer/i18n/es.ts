@@ -30,7 +30,7 @@ export const es: Katalog = {
     remove: "Quitar",
     openFolder: "Abrir carpeta",
     lowConfidence:
-      "La sincronización no es fiable — el reconocimiento fue dudoso en varios puntos. El editor de corrección lo arreglará más adelante.",
+      "La sincronización no es fiable — el reconocimiento fue dudoso en varios puntos. Revisa la canción en el editor de corrección.",
     stage: {
       vorbereiten: "preparando",
       starte: "iniciando la canalización",
@@ -396,5 +396,152 @@ export const es: Katalog = {
     coffee: "Invítame a un café",
     later: "Más tarde",
     never: "No volver a mostrar",
+  },
+  editor: {
+    open: "Editar",
+    openTitle: "Editar notas y sincronización en el editor de corrección",
+    loading: "Cargando canción…",
+    close: "Cerrar",
+    save: "Guardar",
+    saving: "Guardando…",
+    saved: "Guardado",
+    unsaved: "Cambios sin guardar",
+    discardAndClose: "Descartar y cerrar",
+    saveAndClose: "Guardar y cerrar",
+    keepEditing: "Seguir editando",
+    undo: "Deshacer (Ctrl+Z)",
+    redo: "Rehacer (Ctrl+Y)",
+    play: "Reproducir (Espacio)",
+    pause: "Pausar (Espacio)",
+    playLine: "Reproducir línea (P)",
+    tones: "Tocar los tonos de las notas (T)",
+    zoomIn: "Acercar (+)",
+    zoomOut: "Alejar (−)",
+    gap: "GAP (ms)",
+    bpm: "BPM",
+    noAudio:
+      "No se encontró archivo de audio — se puede editar, pero no reproducir.",
+    converted:
+      "El archivo está codificado en Windows-1252 y se convertirá a UTF-8 al guardar.",
+    backupHint:
+      "La versión anterior a tu primer guardado se queda en la carpeta como song.txt.bak.",
+    overlaps: (n: number) =>
+      n === 1
+        ? "1 nota se solapa con la anterior"
+        : `${n} notas se solapan con la anterior`,
+    noteCount: (n: string) => `${n} notas`,
+    noteTitle: "Nota",
+    noSelection: "Ninguna nota seleccionada — haz clic en una o usa ← y →.",
+    beat: "Beat",
+    length: "Duración",
+    pitch: "Tono",
+    syllable: "Sílaba",
+    noteType: "Tipo",
+    time: "Tiempo",
+    line: "Línea",
+    type: {
+      normal: "normal",
+      golden: "dorada",
+      freestyle: "libre",
+      rap: "rap",
+      rapGolden: "rap dorado",
+    },
+    shortcutsTitle: "Atajos de teclado",
+    shortcuts: [
+      ["← →", "Seleccionar la nota anterior / siguiente"],
+      ["Mayús + ← →", "Mover la nota un beat"],
+      ["Ctrl + ← →", "Acortar / alargar la nota"],
+      ["Ctrl + Mayús + ← →", "Mover la nota y todo lo que sigue"],
+      ["↑ ↓", "Subir / bajar el tono (con Mayús: una octava)"],
+      ["Espacio", "Reproducir / pausar"],
+      ["P", "Reproducir la línea de la nota"],
+      ["E", "Editar la sílaba"],
+      ["S / M", "Dividir la nota / unirla con la siguiente"],
+      ["L", "Salto de línea tras la nota sí / no"],
+      ["G / F / R", "Dorada / libre / rap sí / no"],
+      ["Supr", "Borrar la nota"],
+      ["T", "Tonos de las notas sí / no"],
+      ["U / K", "Siguiente punto dudoso / marcar como revisado"],
+      ["I", "Cantar la línea de la nota"],
+      ["Intro / Esc", "Aplicar / descartar los tonos cantados"],
+      ["Tab", "Duetos: cambiar de voz"],
+      ["Ctrl + Z / Y / S", "Deshacer / rehacer / guardar"],
+    ],
+    mouseHint:
+      "Ratón: arrastra una nota para moverla (con Mayús, también todo lo que sigue), arrastra su borde derecho para cambiar la duración, haz clic en un hueco para fijar la posición de reproducción. La rueda desplaza, Ctrl + rueda hace zoom.",
+    error: {
+      notFound: "No se encontró song.txt.",
+      noNotes: "El archivo no contiene notas.",
+      badLine:
+        "El archivo contiene una línea que no es formato UltraStar válido.",
+      badHeader: "El archivo contiene una línea de cabecera no válida.",
+      badValue: "Valores de nota no válidos — no se ha guardado nada.",
+      changedOnDisk:
+        "El archivo se modificó fuera del editor mientras tanto. Cierra el editor y vuelve a abrir la canción; si no, esos cambios se perderían.",
+      writeFailed: "No se pudo guardar. ¿Está la canción abierta en un juego?",
+      outsideLibrary: "La carpeta no está dentro de tu biblioteca.",
+    },
+    atLine: (n: number) => ` (línea ${n})`,
+    unsureInterpolated:
+      "Dudoso: el reconocimiento solo estimó la sincronización de este punto.",
+    unsureLow: "Dudoso: el reconocimiento no estaba seguro aquí.",
+    markChecked: "Revisado (K)",
+    nextUnsure: "Ir al siguiente punto dudoso (U)",
+    unsureCount: (n: number) =>
+      n === 1 ? "1 punto dudoso" : `${n} puntos dudosos`,
+    singIn: "Cantar la línea (I): corrige los tonos según tu canto",
+    singRecording: "Canta la línea …",
+    singHeadphones: "Mejor con auriculares; si no, el micrófono también oye el original.",
+    singStop: "Terminar",
+    singNothing:
+      "No se detectó un canto claro. Acércate un poco más al micrófono e inténtalo de nuevo.",
+    singResult: (cambios: number, evaluadas: number) =>
+      cambios === 0
+        ? `${evaluadas} notas reconocidas: todos los tonos ya son correctos.`
+        : `${cambios} de ${evaluadas} notas reconocidas reciben otro tono (discontinuo).`,
+    singOctave: (desplazamiento: number) =>
+      desplazamiento < 0
+        ? `Cantaste ${-desplazamiento === 1 ? "una octava" : `${-desplazamiento} octavas`} más grave; compensado.`
+        : `Cantaste ${desplazamiento === 1 ? "una octava" : `${desplazamiento} octavas`} más agudo; compensado.`,
+    singApply: "Aplicar (Intro)",
+    singRetry: "Otra vez",
+    singDiscard: "Descartar (Esc)",
+    singNoMic:
+      "No hay micrófono disponible. Comprueba que haya uno conectado y que Windows permita el acceso (Configuración → Privacidad → Micrófono).",
+    voice: (marker: string) => `Voz ${marker.replace(/^P\s*/, "")}`,
+    voiceHint: "La otra voz se ve tenue al fondo.",
+    relativeHint: "El archivo está en formato RELATIVE y se guarda de nuevo así.",
+  },
+  errors: {
+    context: {
+      erstellen: "Crear",
+      warnung: "Aviso",
+      download: "Descarga",
+      tracking: "Biblioteca",
+      "bulk-fetch": "Cola",
+      binaries: "Herramientas",
+      repair: "Reparación",
+    } as Record<string, string>,
+    code: {
+      archiveImportBusy:
+        "No se puede importar mientras haya descargas, una reparación o la búsqueda de géneros en curso. Espera e inténtalo de nuevo.",
+      repairBusy:
+        "No se puede reparar mientras la importación del archivo o la búsqueda de géneros estén en curso. Espera e inténtalo de nuevo.",
+      genreEnrichRunning: "La búsqueda de géneros ya está en curso.",
+      genreEnrichBusy:
+        "No se pueden completar géneros mientras haya descargas, una importación o una reparación en curso.",
+      lastfmKeyMissing:
+        "Last.fm necesita una clave de API (Ajustes → Fuente de géneros).",
+      envSetupRunning: "Ya hay una instalación en curso.",
+      aiEnvMissing:
+        "El entorno de IA no está configurado (Ajustes → Entorno de IA).",
+      aiEnvOutdated:
+        "El entorno de IA está desactualizado; actualízalo (Ajustes → Entorno de IA).",
+      workerCrashLimit:
+        "La canalización de IA falló tres veces seguidas; la cola está en pausa.",
+      queueSaveFailed: "No se pudo guardar la cola",
+      toolsMissing:
+        "yt-dlp o ffmpeg no está instalado. Las descargas están desactivadas (Ajustes → Herramientas).",
+    },
   },
 };

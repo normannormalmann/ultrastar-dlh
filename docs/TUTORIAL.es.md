@@ -13,7 +13,9 @@ Este tutorial te lleva desde la instalación hasta una colección de karaoke bie
 6. [La colección: filtrar, ordenar, encontrar](#6-la-colección-filtrar-ordenar-encontrar)
 7. [Completar géneros automáticamente](#7-completar-géneros-automáticamente)
 8. [Reparar vídeos](#8-reparar-vídeos)
-9. [Solución de problemas](#9-solución-de-problemas)
+9. [Crear canciones tú mismo](#9-crear-canciones-tú-mismo)
+10. [Corregir notas: el editor de corrección](#10-corregir-notas-el-editor-de-corrección)
+11. [Solución de problemas](#11-solución-de-problemas)
 
 ---
 
@@ -88,7 +90,7 @@ Para todo lo que pase de unas pocas canciones:
    Las canciones que ya tienes o que ya están en la cola se omiten automáticamente; el contador junto a «Cola» en la barra lateral crece en consecuencia.
 2. Abre **Cola** → **«▶ Descargar N canciones»**. La aplicación recorre la lista con la simultaneidad que hayas configurado.
 3. Puedes **cancelar** en cualquier momento (tras el lote en curso) — la cola queda guardada, también entre reinicios y caídas de la aplicación. «▶» simplemente continúa más tarde.
-4. Las **descargas fallidas** van al bloque desplegable de debajo (la causa más habitual: la protección antibots de YouTube → ver [solución de problemas](#9-solución-de-problemas)). «↻ Reintentar» las devuelve a la cola; además, en la carpeta de canciones hay un `failed-downloads.xlsx` con todos los detalles.
+4. Las **descargas fallidas** van al bloque desplegable de debajo (la causa más habitual: la protección antibots de YouTube → ver [solución de problemas](#11-solución-de-problemas)). «↻ Reintentar» las devuelve a la cola; además, en la carpeta de canciones hay un `failed-downloads.xlsx` con todos los detalles.
 
 ## 6. La colección: filtrar, ordenar, encontrar
 
@@ -126,7 +128,55 @@ Cuando faltan vídeos o están dañados (descargas interrumpidas, archivos borra
 
 Aquí vale lo mismo: si los comentarios de USDB contienen una corrección de VIDEOGAP para el vídeo, la aplicación la lleva al song.txt automáticamente.
 
-## 9. Solución de problemas
+## 9. Crear canciones tú mismo
+
+¿Falta una canción en USDB? La aplicación la construye por ti, a partir de una grabación y la letra. Una IA separa la voz, reconoce lo que se canta, lo coloca en el momento justo y determina los tonos. El resultado es una carpeta de canción normal con `song.txt`, audio y carátula.
+
+**Una sola vez: preparar el entorno de IA**
+1. **Ajustes → Entorno de IA (creación de canciones) → «Configurar el entorno de IA (~8 GB)»**. La aplicación descarga Python, Torch y los modelos por sí sola y comprueba si puede usar una tarjeta gráfica. Según tu conexión tarda un rato; el progreso aparece al lado.
+2. El punto **«IA»** abajo a la izquierda de la barra lateral se pone verde cuando todo está listo. También funciona sin tarjeta gráfica, solo que mucho más despacio.
+
+**Una canción en cinco pasos**: **Crear** en la barra lateral:
+1. **Canción:** intérprete, título e idioma (obligatorios) y, si quieres, género, año y BPM. Deja el BPM vacío si no lo sabes: la canalización calcula el tempo por sí sola.
+2. **Fuente:** «Buscar en YouTube» muestra cinco resultados con duración y miniatura. También puedes pegar un enlace de YouTube o elegir un **archivo de audio local**.
+3. **Letra:** «Consultar LRCLIB» trae la letra con marcas de tiempo si existe, lo que mejora claramente la sincronización. Si no, pega la letra a mano: una línea por frase cantada, las líneas vacías separan bloques. La aplicación pregunta cuando algo no está claro (p. ej. «2x» al final de una línea o una simple referencia al estribillo).
+4. **Imagen:** carátula del álbum, imagen de YouTube, un archivo propio o, a propósito, «Sin imagen».
+5. **Revisar:** comprueba el resumen y pulsa **«A la cola»**.
+
+Las creaciones se ejecutan en la **Cola** (apartado «Creaciones»): siempre una canción a la vez, con el progreso de cada etapa (separar, reconocer, alinear, tono…). Al terminar, la flecha de la fila despliega los detalles: abrir la carpeta o ir directamente a **«Editar»** en el editor de corrección.
+
+> **Con franqueza:** una creación por IA es un buen borrador, no un resultado con la calidad de USDB. Si la aplicación avisa *«La sincronización no es fiable»*, el reconocimiento fue dudoso en varios puntos y merece la pena revisarla en el [editor de corrección](#10-corregir-notas-el-editor-de-corrección).
+
+## 10. Corregir notas: el editor de corrección
+
+El editor ajusta la sincronización, los tonos y las sílabas de una canción, tanto si la creaste como si la descargaste. Para abrirlo: **«Editar»** en una fila de **Descargadas** o en los detalles de una creación terminada.
+
+**Lo que ves:** arriba la barra de herramientas (deshacer, reproducir, zoom, GAP); en el centro las notas como barras: el tiempo de izquierda a derecha, el tono de abajo arriba y las sílabas debajo. Las líneas discontinuas son saltos de línea y la línea verde es la posición de reproducción. A la derecha están los valores de la nota seleccionada y su línea de letra completa.
+
+**Cómo corregir los errores típicos:**
+- **Desde cierto punto todo va adelantado o atrasado:** selecciona la nota; **Ctrl + Mayús + ← / →** la mueve junto con todo lo que sigue. Con el ratón: arrastra la nota manteniendo **Mayús**.
+- **Toda la canción está desplazada:** ajusta el **GAP** de arriba (en milisegundos). Mueve todas las notas a la vez.
+- **Un tono no cuadra:** **↑ / ↓** (con Mayús, una octava). Con **«Tocar los tonos de las notas»** (icono de nota o **T**) oyes los tonos sobre la grabación original al reproducir, y una nota equivocada salta a la vista enseguida.
+- **Sílaba incorrecta:** pulsa **E**, escribe y **Intro**.
+- **Nota demasiado larga o corta:** **Ctrl + ← / →**, o arrastra su borde derecho con el ratón.
+- **Dos sílabas en una nota / una sílaba en dos notas:** **S** divide, **M** une con la siguiente.
+
+Para comprobar: **P** reproduce la línea de la nota seleccionada y la **barra espaciadora** reproduce desde la posición de reproducción (un clic en un hueco la fija). Las notas con borde rojo se solapan con la anterior, casi siempre por descuido. Todos los atajos están en el editor bajo **«Atajos de teclado»**.
+
+**Guarda** con el botón o con **Ctrl + S**. Al guardar por primera vez, el editor deja la versión original en la carpeta de la canción como `song.txt.bak`; los guardados posteriores no la sobrescriben. Para volver al original, basta con renombrarla. Si el archivo cambió por otro lado mientras tanto (p. ej. al completar géneros), el editor no lo sobrescribe y te pide que vuelvas a abrir la canción.
+
+**Puntos dudosos (solo en canciones creadas):** donde el reconocimiento tuvo dudas, hay una franja naranja detrás de las notas: intensa donde la sincronización solo se estimó, tenue donde la medición fue débil. Un botón arriba indica cuántos puntos quedan. **U** salta al siguiente y **K** lo marca como revisado. Los puntos revisados desaparecen para siempre. Estas marcas solo existen en canciones creadas con esta versión o una más reciente.
+
+**Cantar encima:** selecciona una nota, pulsa **I** (o el icono del micrófono) y canta la línea. Tras una breve entrada, el editor reproduce la línea y escucha por el micrófono. Después muestra la línea que cantaste y los tonos propuestos con borde discontinuo. **Intro** los aplica de una vez, **Esc** los descarta y «Otra vez» empieza de nuevo. Conviene saber:
+- Si cantas en otro registro que el original (p. ej. una octava más grave), el editor lo compensa: cuenta la melodía, no la octava.
+- Solo cambian las notas que cantaste con claridad; el resto se queda como está.
+- Usa **auriculares**; si no, el micrófono también oye el original.
+
+**Duetos:** en canciones con dos voces (`P1`/`P2`) aparecen pestañas con los nombres de los cantantes sobre las notas; **Tab** cambia de voz. La otra voz se ve tenue al fondo.
+
+**Conviene saber:** los archivos en formato `RELATIVE` se guardan de nuevo en ese formato. Los archivos antiguos codificados en Windows-1252 se convierten a UTF-8 al guardar.
+
+## 11. Solución de problemas
 
 **«YouTube bot protection blocked the download» / muchos fallos seguidos**
 YouTube está bloqueando las descargas anónimas. La solución: en los ajustes, elige el navegador en el que hayas **iniciado sesión** en YouTube, **cierra** ese navegador y vuelve a intentarlo («↻ Reintentar» en las fallidas). Para casos tercos: coloca un `cookies.txt` (extensión de navegador «Get cookies.txt») en la carpeta de canciones.

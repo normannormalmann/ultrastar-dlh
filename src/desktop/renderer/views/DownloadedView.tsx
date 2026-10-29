@@ -1,4 +1,10 @@
-import { FolderOpen, FolderSearch, RefreshCw, Tags } from "lucide-react";
+import {
+  FolderOpen,
+  FolderSearch,
+  Pencil,
+  RefreshCw,
+  Tags,
+} from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -9,6 +15,8 @@ import type {
   GenreEnrichResult,
 } from "../../shared/ipcContract.ts";
 import CoverThumb from "../components/CoverThumb.tsx";
+import { thrownErrorText } from "../errorText.ts";
+import { useOpenEditor } from "../components/editor/openEditor.ts";
 import { useIpcEvent } from "../hooks.ts";
 import { type Katalog, useT } from "../i18n/index.tsx";
 
@@ -38,6 +46,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   entries,
 }) => {
   const t = useT();
+  const openEditor = useOpenEditor();
   const zahl = (n: number): string => n.toLocaleString(t.locale);
   const importProgress = useIpcEvent("event:archiveImportProgress", null);
   const refreshProgress = useIpcEvent("event:libraryRefreshProgress", null);
@@ -88,7 +97,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
     try {
       setImportResult(await window.ultrastar.archiveImport());
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : String(e));
+      setImportError(thrownErrorText(t, e));
     } finally {
       setImporting(false);
     }
@@ -101,7 +110,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
     try {
       setEnrichResult(await window.ultrastar.genresEnrich());
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : String(e));
+      setImportError(thrownErrorText(t, e));
     } finally {
       setEnriching(false);
     }
@@ -373,7 +382,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
                 <th>{t.downloaded.colArtist}</th>
                 <th>{t.downloaded.colTitle}</th>
                 <th>{t.downloaded.colDate}</th>
-                <th style={{ width: 120 }} />
+                <th style={{ width: 210 }} />
               </tr>
             </thead>
             <tbody>
@@ -385,7 +394,21 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
                   <td style={{ color: "var(--green)" }}>{e.artist}</td>
                   <td>{e.title}</td>
                   <td className="muted">{e.downloadedAt.slice(0, 10)}</td>
-                  <td>
+                  <td className="row" style={{ gap: 6 }}>
+                    <button
+                      className="btn small"
+                      type="button"
+                      title={t.editor.openTitle}
+                      onClick={() =>
+                        openEditor({
+                          songDir: e.songDir,
+                          heading: `${e.artist} – ${e.title}`,
+                        })
+                      }
+                    >
+                      <Pencil size={14} aria-hidden />
+                      {t.editor.open}
+                    </button>
                     <button
                       className="btn small"
                       type="button"

@@ -1,8 +1,15 @@
-import { ChevronDown, ChevronRight, FolderOpen, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  Pencil,
+  X,
+} from "lucide-react";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 import type { CreationEntry } from "../../shared/ipcContract.ts";
 import { type Katalog, useT } from "../i18n/index.tsx";
+import { useOpenEditor } from "./editor/openEditor.ts";
 
 /**
  * Stage names have two sources: creations.ts sets the German ones
@@ -19,6 +26,7 @@ const stufenText = (t: Katalog, stage?: string): string => {
 
 export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
   const t = useT();
+  const openEditor = useOpenEditor();
   const [offen, setOffen] = useState(false);
   const [cover, setCover] = useState<string | null>(null);
   const fertig = eintrag.status === "completed";
@@ -94,16 +102,36 @@ export const CreationRow: FC<{ eintrag: CreationEntry }> = ({ eintrag }) => {
                     {t.creation.lowConfidence}
                   </div>
                 )}
-                <button
-                  className="btn small"
-                  type="button"
-                  onClick={() =>
-                    void window.ultrastar.openFolder(eintrag.songDir ?? "")
-                  }
-                >
-                  <FolderOpen size={14} aria-hidden />
-                  {t.creation.openFolder}
-                </button>
+                <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                  {eintrag.songDir !== undefined && (
+                    <button
+                      className={
+                        eintrag.lowConfidence ? "btn small primary" : "btn small"
+                      }
+                      type="button"
+                      title={t.editor.openTitle}
+                      onClick={() =>
+                        openEditor({
+                          songDir: eintrag.songDir ?? "",
+                          heading: `${eintrag.artist ?? ""} – ${eintrag.title ?? ""}`,
+                        })
+                      }
+                    >
+                      <Pencil size={14} aria-hidden />
+                      {t.editor.open}
+                    </button>
+                  )}
+                  <button
+                    className="btn small"
+                    type="button"
+                    onClick={() =>
+                      void window.ultrastar.openFolder(eintrag.songDir ?? "")
+                    }
+                  >
+                    <FolderOpen size={14} aria-hidden />
+                    {t.creation.openFolder}
+                  </button>
+                </div>
               </div>
             </div>
           </td>

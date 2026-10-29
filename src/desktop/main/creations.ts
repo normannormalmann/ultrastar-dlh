@@ -124,11 +124,12 @@ export const createCreations = (deps: CreationsDeps) => {
 
   const sichere = (): void => {
     void deps.speichereQueue([...queue]).catch((e: unknown) => {
+      const detail = e instanceof Error ? e.message : String(e);
       deps.broadcast("event:error", {
         context: "erstellen",
-        message: `Queue konnte nicht gespeichert werden: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
+        code: "queueSaveFailed",
+        detail,
+        message: `Queue konnte nicht gespeichert werden: ${detail}`,
       });
     });
   };
@@ -204,6 +205,7 @@ export const createCreations = (deps: CreationsDeps) => {
       if (env.state === "missing" || env.state === "broken") {
         deps.broadcast("event:error", {
           context: "erstellen",
+          code: "aiEnvMissing",
           message:
             "KI-Umgebung ist nicht eingerichtet (Einstellungen -> KI-Umgebung).",
         });
@@ -216,6 +218,7 @@ export const createCreations = (deps: CreationsDeps) => {
         // brake pauses the queue - measured during the subproject-3 run.
         deps.broadcast("event:error", {
           context: "erstellen",
+          code: "aiEnvOutdated",
           message:
             "KI-Umgebung ist veraltet - bitte aktualisieren (Einstellungen -> KI-Umgebung).",
         });
@@ -324,6 +327,7 @@ export const createCreations = (deps: CreationsDeps) => {
               if (crashStreak >= CRASH_LIMIT) {
                 deps.broadcast("event:error", {
                   context: "erstellen",
+                  code: "workerCrashLimit",
                   message: "Drei Worker-Abstuerze in Folge - Queue pausiert.",
                 });
                 melde();

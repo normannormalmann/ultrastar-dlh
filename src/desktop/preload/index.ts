@@ -65,6 +65,8 @@ const api: UltrastarApi = {
   updateCheck: () => ipcRenderer.invoke("update:check"),
   updateDownload: () => ipcRenderer.invoke("update:download"),
   updateInstall: () => ipcRenderer.invoke("update:install"),
+  editorLoad: (songDir) => ipcRenderer.invoke("editor:load", songDir),
+  editorSave: (req) => ipcRenderer.invoke("editor:save", req),
   on,
 };
 

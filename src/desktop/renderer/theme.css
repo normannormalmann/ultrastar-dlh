@@ -16,6 +16,7 @@
   --blue: #89b4fa;
   --cyan: #89dceb;
   --neon: #e879ff; /* Neon accent for glow */
+  --peach: #fab387; /* Editor: notes the creation pipeline doubted */
 }
 
 * {
@@ -330,4 +331,194 @@ a.btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Correction editor: covers the whole window, sidebar included. */
+.editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--base);
+  outline: none;
+}
+.editor-toolbar,
+.editor-status,
+.editor-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  flex-wrap: wrap;
+}
+.editor-toolbar {
+  border-bottom: 1px solid var(--surface0);
+}
+.editor-toolbar .spacer,
+.editor-status .spacer {
+  flex: 1;
+}
+.editor-heading {
+  margin-right: 8px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--surface1);
+  margin: 0 4px;
+}
+.editor-time {
+  min-width: 70px;
+  font-variant-numeric: tabular-nums;
+}
+.editor-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.editor-gap {
+  width: 90px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.editor-confirm {
+  background: var(--surface0);
+  border-bottom: 1px solid var(--yellow);
+}
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.piano-roll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.piano-roll canvas {
+  position: absolute;
+  inset: 0 auto auto 0;
+  touch-action: none;
+}
+.editor-panel {
+  width: 300px;
+  padding: 12px 14px;
+  border-left: 1px solid var(--surface0);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.editor-panel h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  min-width: 0;
+}
+.editor-field-row .editor-field {
+  flex: 1;
+}
+.editor-overlay .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.editor-field .input {
+  padding: 5px 8px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.editor-field-row {
+  display: flex;
+  gap: 8px;
+}
+.editor-line p {
+  margin: 4px 0 0;
+  line-height: 1.8;
+}
+.editor-line .syl {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  white-space: pre;
+}
+.editor-line .syl.active {
+  color: var(--neon);
+  text-decoration: underline;
+}
+.editor-help {
+  font-size: 12px;
+  margin-top: auto;
+}
+.editor-help summary {
+  cursor: pointer;
+  color: var(--subtext);
+}
+.editor-help td {
+  padding: 2px 6px 2px 0;
+  vertical-align: top;
+}
+.editor-help kbd {
+  font-family: inherit;
+  white-space: nowrap;
+  background: var(--surface0);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.editor-status {
+  border-top: 1px solid var(--surface0);
+  font-size: 12px;
+}
+.editor-error {
+  color: var(--red);
+}
+.editor-tracks,
+.editor-sing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--surface0);
+  font-size: 13px;
+}
+.editor-sing {
+  background: var(--surface0);
+}
+.editor-sing.recording {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+.editor-sing .spacer {
+  flex: 1;
+}
+.editor-unsure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--peach);
+  background: var(--surface0);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.editor-unsure .btn {
+  align-self: flex-start;
+}
+.editor-unsure-btn {
+  color: var(--peach);
 }

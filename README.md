@@ -24,6 +24,7 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 - **KI-Pipeline im Hintergrund:** Ein Python-Sidecar trennt die Stimme ab, transkribiert sie, richtet den Text am Gesang aus und erkennt die Tonhöhen — daraus entsteht eine vollständige `song.txt` mit Noten.
 - **Eigene Warteschlange:** Erstellungen laufen neben den Downloads, mit Fortschritt, Abbruch und direktem Sprung in den fertigen Ordner.
 - **Einmalige Einrichtung:** Die KI-Umgebung (Python, Torch, Modelle) installiert die App auf Knopfdruck selbst — mit GPU-Erkennung, falls vorhanden.
+- **Korrektur-Editor:** Noten, Silben und Timing jedes Songs — selbst erstellt oder heruntergeladen — in einer Piano-Roll-Ansicht mit Wiedergabe gerade ziehen — mit markierten unsicheren Stellen bei selbst erstellten Songs, Tonhöhen-Korrektur per Einsingen ins Mikrofon und Duett-Unterstützung. Die ursprüngliche Fassung bleibt als `song.txt.bak` erhalten.
 
 ### Bibliothek
 - **Archiv-Import:** Bestehende Sammlungen (auch zehntausende Songs, auch verschachtelte Ordnerstrukturen) ohne erneute Downloads übernehmen — inklusive Metadaten aus den song.txt-Dateien.

@@ -30,7 +30,7 @@ export const en: Katalog = {
     remove: "Remove",
     openFolder: "Open folder",
     lowConfidence:
-      "The sync is uncertain — the detection was inconclusive in several places. The correction editor will straighten this out later.",
+      "The sync is uncertain — the detection was inconclusive in several places. Check the song in the correction editor.",
     stage: {
       vorbereiten: "preparing",
       starte: "pipeline starting",
@@ -394,5 +394,150 @@ export const en: Katalog = {
     coffee: "Buy me a coffee",
     later: "Later",
     never: "Don't show again",
+  },
+  editor: {
+    open: "Edit",
+    openTitle: "Edit notes and sync in the correction editor",
+    loading: "Loading song…",
+    close: "Close",
+    save: "Save",
+    saving: "Saving…",
+    saved: "Saved",
+    unsaved: "Unsaved changes",
+    discardAndClose: "Discard and close",
+    saveAndClose: "Save and close",
+    keepEditing: "Keep editing",
+    undo: "Undo (Ctrl+Z)",
+    redo: "Redo (Ctrl+Y)",
+    play: "Play (Space)",
+    pause: "Pause (Space)",
+    playLine: "Play line (P)",
+    tones: "Play note tones (T)",
+    zoomIn: "Zoom in (+)",
+    zoomOut: "Zoom out (−)",
+    gap: "GAP (ms)",
+    bpm: "BPM",
+    noAudio: "No audio file found — editing works, playback does not.",
+    converted:
+      "The file is encoded as Windows-1252 and will be converted to UTF-8 on save.",
+    backupHint:
+      "The version from before your first save stays in the folder as song.txt.bak.",
+    overlaps: (n: number) =>
+      n === 1
+        ? "1 note overlaps the one before it"
+        : `${n} notes overlap the one before them`,
+    noteCount: (n: string) => `${n} notes`,
+    noteTitle: "Note",
+    noSelection: "No note selected — click one or use ← and →.",
+    beat: "Beat",
+    length: "Length",
+    pitch: "Pitch",
+    syllable: "Syllable",
+    noteType: "Type",
+    time: "Time",
+    line: "Line",
+    type: {
+      normal: "normal",
+      golden: "golden",
+      freestyle: "freestyle",
+      rap: "rap",
+      rapGolden: "golden rap",
+    },
+    shortcutsTitle: "Keyboard shortcuts",
+    shortcuts: [
+      ["← →", "Select previous / next note"],
+      ["Shift + ← →", "Move note by one beat"],
+      ["Ctrl + ← →", "Shorten / lengthen note"],
+      ["Ctrl + Shift + ← →", "Move note and everything after it"],
+      ["↑ ↓", "Pitch up / down (with Shift: an octave)"],
+      ["Space", "Play / pause"],
+      ["P", "Play the note's line"],
+      ["E", "Edit syllable"],
+      ["S / M", "Split note / merge with the next one"],
+      ["L", "Line break after the note on / off"],
+      ["G / F / R", "Golden / freestyle / rap on / off"],
+      ["Del", "Delete note"],
+      ["T", "Note tones on / off"],
+      ["U / K", "Next uncertain spot / mark as checked"],
+      ["I", "Sing in the note's line"],
+      ["Enter / Esc", "Apply / discard the sung pitches"],
+      ["Tab", "Duets: switch voice"],
+      ["Ctrl + Z / Y / S", "Undo / redo / save"],
+    ],
+    mouseHint:
+      "Mouse: drag a note to move it (with Shift, everything after it too), drag its right edge to change the length, click empty space to set the playback position. The wheel scrolls, Ctrl + wheel zooms.",
+    error: {
+      notFound: "song.txt was not found.",
+      noNotes: "The file contains no notes.",
+      badLine: "The file contains a line that is not valid UltraStar format.",
+      badHeader: "The file contains an invalid header line.",
+      badValue: "Invalid note values — nothing was saved.",
+      changedOnDisk:
+        "The file was changed outside the editor in the meantime. Close the editor and reopen the song — otherwise those changes would be lost.",
+      writeFailed: "Saving failed. Is the song currently open in a game?",
+      outsideLibrary: "The folder is not inside your library.",
+    },
+    atLine: (n: number) => ` (line ${n})`,
+    unsureInterpolated:
+      "Uncertain: the detection only estimated the timing here.",
+    unsureLow: "Uncertain: the detection was not sure here.",
+    markChecked: "Checked (K)",
+    nextUnsure: "Jump to the next uncertain spot (U)",
+    unsureCount: (n: number) =>
+      n === 1 ? "1 uncertain spot" : `${n} uncertain spots`,
+    singIn: "Sing in the line (I) — corrects the pitches from your singing",
+    singRecording: "Sing along with the line …",
+    singHeadphones: "Headphones work best, otherwise the microphone hears the original too.",
+    singStop: "Stop",
+    singNothing:
+      "No clear singing detected. Move a little closer to the microphone and try again.",
+    singResult: (changes: number, judged: number) =>
+      changes === 0
+        ? `${judged} notes recognised — all pitches are right already.`
+        : `${changes} of ${judged} recognised notes get a different pitch (dashed).`,
+    singOctave: (shift: number) =>
+      shift < 0
+        ? `You sang ${-shift === 1 ? "an octave" : `${-shift} octaves`} lower — compensated.`
+        : `You sang ${shift === 1 ? "an octave" : `${shift} octaves`} higher — compensated.`,
+    singApply: "Apply (Enter)",
+    singRetry: "Again",
+    singDiscard: "Discard (Esc)",
+    singNoMic:
+      "No microphone available. Check that one is connected and that Windows allows access (Settings → Privacy → Microphone).",
+    voice: (marker: string) => `Voice ${marker.replace(/^P\s*/, "")}`,
+    voiceHint: "The other voice is shown faintly in the background.",
+    relativeHint: "The file is in RELATIVE format and is saved that way again.",
+  },
+  errors: {
+    context: {
+      erstellen: "Create",
+      warnung: "Notice",
+      download: "Download",
+      tracking: "Library",
+      "bulk-fetch": "Queue",
+      binaries: "Tools",
+      repair: "Repair",
+    } as Record<string, string>,
+    code: {
+      archiveImportBusy:
+        "Import is not possible while downloads, a repair or genre enrichment are running. Please wait and try again.",
+      repairBusy:
+        "Repair is not possible while the archive import or genre enrichment is running. Please wait and try again.",
+      genreEnrichRunning: "Genre enrichment is already running.",
+      genreEnrichBusy:
+        "Enrichment is not possible while downloads, an import or a repair are running.",
+      lastfmKeyMissing:
+        "Last.fm needs an API key (Settings → Genre source).",
+      envSetupRunning: "A setup is already running.",
+      aiEnvMissing:
+        "The AI environment is not set up (Settings → AI environment).",
+      aiEnvOutdated:
+        "The AI environment is outdated — please update it (Settings → AI environment).",
+      workerCrashLimit:
+        "The AI pipeline crashed three times in a row — the queue is paused.",
+      queueSaveFailed: "The queue could not be saved",
+      toolsMissing:
+        "yt-dlp or ffmpeg is not installed. Downloads are disabled (Settings → Tools).",
+    },
   },
 };

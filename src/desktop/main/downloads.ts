@@ -29,6 +29,7 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
   ) {
     broadcast("event:error", {
       context: "download",
+      code: "toolsMissing",
       message:
         "yt-dlp oder ffmpeg ist nicht installiert. Downloads sind deaktiviert (Einstellungen → Tools).",
     });
@@ -127,6 +128,7 @@ export const processQueue = async (): Promise<void> => {
   ) {
     broadcast("event:error", {
       context: "download",
+      code: "toolsMissing",
       message:
         "yt-dlp oder ffmpeg ist nicht installiert. Downloads sind deaktiviert (Einstellungen → Tools).",
     });

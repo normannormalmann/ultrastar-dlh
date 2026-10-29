@@ -21,6 +21,9 @@ import type { CreateJob } from "../../core/create/job.ts";
 import type { YoutubeVideo } from "../../core/api/youtube/search.ts";
 import type { MediaQuelle } from "../../core/create/media.ts";
 import type { CoverKandidat } from "../main/coverCandidates.ts";
+import type { SongFileError } from "../../core/edit/songFile.ts";
+import type { AppErrorCode } from "./appErrors.ts";
+import type { SongTxt } from "../../core/edit/songTxt.ts";
 
 export type {
   ArchiveImportResult,
@@ -152,7 +155,46 @@ export type RepairState = {
   result: RepairResultWire | null;
 };
 
-export type AppError = { context: string; message: string };
+export type { AppErrorCode };
+
+/**
+ * message is the German fallback; code, when set, is what the renderer
+ * shows - in the UI language, with detail appended.
+ */
+export type AppError = {
+  context: string;
+  message: string;
+  code?: AppErrorCode;
+  detail?: string;
+};
+
+export type { SongTxt };
+
+/** "outsideLibrary" is the main process refusing a folder it does not own. */
+export type EditorError = SongFileError | { code: "outsideLibrary" };
+
+export type EditorLoadResult =
+  | {
+      ok: true;
+      song: SongTxt;
+      /** Handed back on save; a mismatch means someone else changed the file. */
+      revision: string;
+      /** songmedia:// URL of the audio, null if the folder has none. */
+      mediaUrl: string | null;
+      /** The file was Windows-1252 and will be saved as UTF-8. */
+      converted: boolean;
+    }
+  | { ok: false; error: EditorError };
+
+export type EditorSaveRequest = {
+  songDir: string;
+  song: SongTxt;
+  revision: string;
+};
+
+export type EditorSaveResult =
+  | { ok: true; revision: string }
+  | { ok: false; error: EditorError };
 
 /** Renderer → main (ipcRenderer.invoke). */
 export const INVOKE_CHANNELS = [
@@ -197,6 +239,8 @@ export const INVOKE_CHANNELS = [
   "update:check",
   "update:download",
   "update:install",
+  "editor:load",
+  "editor:save",
 ] as const;
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 
@@ -315,6 +359,10 @@ export type UltrastarApi = {
   /** Quits and runs the installer. No-op unless the download finished. */
   updateInstall: () => Promise<void>;
   genresCancel: () => Promise<void>;
+  /** Opens song.txt in a library folder for the correction editor. */
+  editorLoad: (songDir: string) => Promise<EditorLoadResult>;
+  /** Writes it back; the first save keeps the original as song.txt.bak. */
+  editorSave: (req: EditorSaveRequest) => Promise<EditorSaveResult>;
   on: <C extends EventChannel>(
     channel: C,
     listener: (payload: EventPayloads[C]) => void,

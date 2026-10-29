@@ -119,7 +119,7 @@ describe("creation queue", () => {
       events.some(
         (e) =>
           e.channel === "event:error" &&
-          String((e.payload as { message: string }).message).includes("pausiert"),
+          (e.payload as { code?: string }).code === "workerCrashLimit",
       ),
     ).toBe(true);
     expect(c.alleEintraege().find((e) => e.id === "d")?.status).toBe("queued");
@@ -147,7 +147,7 @@ describe("creation queue", () => {
       events.some(
         (e) =>
           e.channel === "event:error" &&
-          String((e.payload as { message: string }).message).includes("veraltet"),
+          (e.payload as { code?: string }).code === "aiEnvOutdated",
       ),
     ).toBe(true);
     expect(c.alleEintraege()[0]?.status).toBe("queued");

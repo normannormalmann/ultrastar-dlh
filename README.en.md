@@ -24,6 +24,7 @@ Search the largest UltraStar database (USDB), download complete, ready-to-sing s
 - **AI pipeline in the background:** a Python sidecar separates the vocals, transcribes them, aligns the lyrics to the singing, and detects the pitches — the result is a complete `song.txt` with notes.
 - **Its own queue:** creations run alongside downloads, with progress, cancel, and a direct jump into the finished folder.
 - **One-time setup:** the app installs the AI environment (Python, Torch, models) at the press of a button — including GPU detection where available.
+- **Correction editor:** straighten out the notes, syllables and timing of any song — created or downloaded — in a piano-roll view with playback — with uncertain spots marked in created songs, pitch correction by singing into the microphone, and duet support. The original version is kept as `song.txt.bak`.
 
 ### Library
 - **Archive import:** bring in existing collections (even tens of thousands of songs, even nested folder structures) without re-downloading — including metadata from the song.txt files.
