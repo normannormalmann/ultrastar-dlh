@@ -13,7 +13,9 @@ Dieses Tutorial führt dich von der Installation bis zur fertig gepflegten Karao
 6. [Die Bibliothek: filtern, sortieren, finden](#6-die-bibliothek-filtern-sortieren-finden)
 7. [Genres automatisch nachtragen](#7-genres-automatisch-nachtragen)
 8. [Videos reparieren](#8-videos-reparieren)
-9. [Problemlösung](#9-problemlösung)
+9. [Songs selbst erstellen](#9-songs-selbst-erstellen)
+10. [Noten korrigieren: der Korrektur-Editor](#10-noten-korrigieren-der-korrektur-editor)
+11. [Problemlösung](#11-problemlösung)
 
 ---
 
@@ -88,7 +90,7 @@ Für alles, was mehr als ein paar Songs sind:
    Bereits vorhandene oder schon eingereihte Songs werden automatisch übersprungen; der Zähler an „Queue" in der Seitenleiste wächst entsprechend.
 2. Öffne **Queue** → **„▶ N Songs herunterladen"**. Die App arbeitet die Liste mit der eingestellten Parallelität ab.
 3. Du kannst jederzeit **abbrechen** (nach dem laufenden Schwung) — die Queue bleibt gespeichert, auch über App-Neustarts und Abstürze hinweg. „▶" macht später einfach weiter.
-4. **Fehlgeschlagene Downloads** landen im aufklappbaren Bereich darunter (häufigste Ursache: YouTube-Bot-Schutz → siehe [Problemlösung](#9-problemlösung)). „↻ Erneut" legt sie wieder in die Queue; zusätzlich liegt im Songs-Ordner eine `failed-downloads.xlsx` mit allen Details.
+4. **Fehlgeschlagene Downloads** landen im aufklappbaren Bereich darunter (häufigste Ursache: YouTube-Bot-Schutz → siehe [Problemlösung](#11-problemlösung)). „↻ Erneut" legt sie wieder in die Queue; zusätzlich liegt im Songs-Ordner eine `failed-downloads.xlsx` mit allen Details.
 
 ## 6. Die Bibliothek: filtern, sortieren, finden
 
@@ -126,7 +128,55 @@ Wenn Videos fehlen oder defekt sind (abgebrochene Downloads, gelöschte Dateien,
 
 Auch hier gilt: Steht in den USDB-Kommentaren eine VIDEOGAP-Korrektur zum Video, übernimmt die App sie automatisch in die song.txt.
 
-## 9. Problemlösung
+## 9. Songs selbst erstellen
+
+Ein Song fehlt auf USDB? Die App baut ihn dir selbst — aus einer Aufnahme und dem Liedtext. Eine KI trennt die Stimme ab, erkennt den gesungenen Text, legt ihn auf die richtigen Zeitpunkte und bestimmt die Tonhöhen. Heraus kommt ein normaler Song-Ordner mit `song.txt`, Audio und Cover.
+
+**Einmalig: die KI-Umgebung einrichten**
+1. **Einstellungen → KI-Umgebung (Song-Erstellung) → „KI-Umgebung einrichten (~8 GB)"**. Die App lädt Python, Torch und die Modelle selbst herunter und erkennt dabei, ob eine Grafikkarte genutzt werden kann. Das dauert je nach Leitung eine Weile — der Fortschritt steht daneben.
+2. Der Punkt **„KI"** unten links in der Seitenleiste wird grün, sobald alles steht. Ohne Grafikkarte funktioniert es auch, nur deutlich langsamer.
+
+**Ein Song in fünf Schritten** — **Erstellen** in der Seitenleiste:
+1. **Song:** Interpret, Titel und Sprache (Pflicht), dazu optional Genre, Jahr und BPM. BPM leer lassen, wenn du es nicht weißt — die Pipeline ermittelt das Tempo selbst.
+2. **Quelle:** „Bei YouTube suchen" zeigt fünf Treffer mit Dauer und Vorschaubild. Alternativ einen YouTube-Link einfügen oder eine **lokale Audiodatei** wählen.
+3. **Liedtext:** „Bei LRCLIB nachsehen" holt den Text samt Zeitstempeln, wenn es ihn gibt — das verbessert das Timing spürbar. Sonst den Text von Hand einfügen: eine Zeile pro gesungener Phrase, Leerzeilen trennen Blöcke. Die App fragt nach, wenn etwas unklar ist (z.B. „2x" am Zeilenende oder ein bloßer Refrain-Verweis).
+4. **Bild:** Album-Cover, YouTube-Bild, eigene Datei — oder bewusst „Kein Bild".
+5. **Prüfen:** Zusammenfassung ansehen, **„Zur Queue"**.
+
+Gestartet wird in der **Queue** (Abschnitt „Erstellungen"): Dort läuft immer nur ein Song zur Zeit, mit Fortschritt je Stufe (trennen, erkennen, ausrichten, Tonhöhe …). Ist er fertig, klappt der Pfeil an der Zeile die Details auf: Ordner öffnen oder direkt **„Bearbeiten"** im Korrektur-Editor.
+
+> **Ehrlich gesagt:** Eine KI-Erstellung ist ein guter Rohbau, kein fertiges USDB-Niveau. Meldet die App *„Der Sync ist unsicher"*, war die Erkennung an mehreren Stellen unschlüssig — dann lohnt ein Blick in den [Korrektur-Editor](#10-noten-korrigieren-der-korrektur-editor).
+
+## 10. Noten korrigieren: der Korrektur-Editor
+
+Mit dem Editor ziehst du Timing, Tonhöhen und Silben eines Songs gerade — egal ob selbst erstellt oder heruntergeladen. Öffnen: **„Bearbeiten"** an einer Zeile in **Heruntergeladen** oder in den Details einer fertigen Erstellung.
+
+**Was du siehst:** Oben die Werkzeugleiste (Rückgängig, Abspielen, Zoom, GAP), in der Mitte die Noten als Balken — links nach rechts die Zeit, unten nach oben die Tonhöhe, darunter die Silben. Gestrichelte Linien sind Zeilenumbrüche, die grüne Linie ist die Abspielposition. Rechts stehen die Werte der gewählten Note und die ganze Textzeile.
+
+**So korrigierst du typische Fehler:**
+- **Alles ab einer Stelle zu früh oder zu spät:** Note wählen, **Strg + Umschalt + ← / →** verschiebt sie und alles danach. Mit der Maus: Note mit gedrückter **Umschalt**-Taste ziehen.
+- **Der ganze Song ist versetzt:** Den **GAP** oben anpassen (in Millisekunden). Er verschiebt alle Noten gleichzeitig.
+- **Ein Ton stimmt nicht:** **↑ / ↓** (mit Umschalt um eine Oktave). Mit **„Töne mitspielen"** (Noten-Symbol oder **T**) hörst du beim Abspielen die Notentöne über dem Original — so fällt ein falscher Ton sofort auf.
+- **Silbe falsch:** **E** drücken, tippen, **Enter**.
+- **Note zu lang oder zu kurz:** **Strg + ← / →** oder die rechte Kante mit der Maus ziehen.
+- **Zwei Silben auf einer Note / eine Silbe auf zwei Noten:** **S** teilt, **M** verbindet mit der nächsten.
+
+Zum Prüfen: **P** spielt die Zeile der gewählten Note an, die **Leertaste** spielt ab der Abspielposition (Klick ins Leere setzt sie). Rot umrandete Noten überlappen ihre Vorgängerin — meist ein Versehen. Alle Tastenkürzel stehen im Editor unter **„Tastenkürzel"**.
+
+**Speichern** mit dem Knopf oder **Strg + S**. Beim ersten Speichern legt der Editor die ursprüngliche Fassung als `song.txt.bak` in den Song-Ordner; spätere Speichervorgänge überschreiben sie nicht. Willst du zurück zum Original, benennst du sie einfach zurück. Hat sich die Datei inzwischen anderweitig geändert (z.B. durch das Nachtragen von Genres), speichert der Editor nicht drüber, sondern bittet dich, den Song neu zu öffnen.
+
+**Unsichere Stellen (nur bei selbst erstellten Songs):** Wo die Erkennung gezweifelt hat, liegt ein orangefarbenes Band hinter den Noten — kräftig, wo das Timing nur geschätzt ist, blass, wo die Messung schwach war. Oben zeigt ein Knopf, wie viele Stellen offen sind. **U** springt zur nächsten, **K** hakt sie als geprüft ab. Abgehakte Stellen verschwinden dauerhaft. Diese Markierungen gibt es nur für Songs, die mit dieser oder einer neueren Version erstellt wurden.
+
+**Einsingen:** Note wählen, **I** drücken (oder das Mikrofon-Symbol) und die Zeile mitsingen. Nach einem kurzen Vorlauf spielt der Editor die Zeile ab und hört über das Mikrofon zu. Danach zeigt er deine gesungene Linie und die vorgeschlagenen Töne gestrichelt. **Enter** übernimmt sie in einem Schritt, **Esc** verwirft sie, „Nochmal“ startet neu. Gut zu wissen:
+- Singst du in einer anderen Lage als das Original (z. B. eine Oktave tiefer), gleicht der Editor das aus — die Melodie zählt, nicht die Oktave.
+- Nur Noten, die du deutlich gesungen hast, werden geändert; der Rest bleibt, wie er ist.
+- **Kopfhörer** verwenden, sonst hört das Mikrofon das Original mit.
+
+**Duette:** Bei Songs mit zwei Stimmen (`P1`/`P2`) erscheinen über den Noten Reiter mit den Sängernamen; **Tab** wechselt die Stimme. Die jeweils andere Stimme ist blass im Hintergrund zu sehen.
+
+**Gut zu wissen:** Dateien im `RELATIVE`-Format werden im selben Format zurückgeschrieben. Ältere Dateien in Windows-1252-Kodierung werden beim Speichern in UTF-8 umgewandelt.
+
+## 11. Problemlösung
 
 **„YouTube bot protection blocked the download" / viele Fehlschläge hintereinander**
 YouTube blockiert anonyme Downloads. Lösung: In den Einstellungen den Browser wählen, in dem du bei YouTube **eingeloggt** bist, den Browser **schließen**, dann erneut versuchen (Fehlgeschlagene per „↻ Erneut"). Hartnäckige Fälle: eine `cookies.txt` (Browser-Erweiterung „Get cookies.txt") in den Songs-Ordner legen.

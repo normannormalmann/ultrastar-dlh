@@ -24,6 +24,7 @@ Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de cancio
 - **Canalización de IA en segundo plano:** un proceso auxiliar en Python separa la voz, la transcribe, alinea la letra con el canto y detecta los tonos — el resultado es un `song.txt` completo con sus notas.
 - **Cola propia:** las creaciones se ejecutan junto a las descargas, con progreso, cancelación y acceso directo a la carpeta terminada.
 - **Configuración única:** la aplicación instala por sí sola el entorno de IA (Python, Torch, modelos) con solo pulsar un botón — incluida la detección de GPU si la hay.
+- **Editor de corrección:** ajusta las notas, sílabas y sincronización de cualquier canción —creada o descargada— en una vista de piano roll con reproducción, con los puntos dudosos marcados en las canciones creadas, corrección de tonos cantando al micrófono y soporte para duetos. La versión original se conserva como `song.txt.bak`.
 
 ### Biblioteca
 - **Importación de archivos existentes:** incorpora colecciones ya montadas (incluso decenas de miles de canciones y estructuras de carpetas anidadas) sin volver a descargar nada — incluidos los metadatos de los archivos song.txt.

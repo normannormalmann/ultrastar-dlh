@@ -13,7 +13,9 @@ This tutorial takes you from installing the app to a fully tended karaoke librar
 6. [The library: filter, sort, find](#6-the-library-filter-sort-find)
 7. [Filling in genres automatically](#7-filling-in-genres-automatically)
 8. [Repairing videos](#8-repairing-videos)
-9. [Troubleshooting](#9-troubleshooting)
+9. [Creating songs yourself](#9-creating-songs-yourself)
+10. [Fixing notes: the correction editor](#10-fixing-notes-the-correction-editor)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
@@ -88,7 +90,7 @@ For anything beyond a handful of songs:
    Songs you already own or already queued are skipped automatically; the counter next to "Queue" in the sidebar grows accordingly.
 2. Open **Queue** → **"▶ Download N songs"**. The app works through the list at the parallelism you set.
 3. You can **cancel** at any time (after the batch in flight) — the queue is saved, across app restarts and crashes alike. "▶" simply carries on later.
-4. **Failed downloads** land in the collapsible area below (most common cause: YouTube bot protection → see [troubleshooting](#9-troubleshooting)). "↻ Retry" puts them back in the queue; there is also a `failed-downloads.xlsx` in the songs folder with all the details.
+4. **Failed downloads** land in the collapsible area below (most common cause: YouTube bot protection → see [troubleshooting](#11-troubleshooting)). "↻ Retry" puts them back in the queue; there is also a `failed-downloads.xlsx` in the songs folder with all the details.
 
 ## 6. The library: filter, sort, find
 
@@ -126,7 +128,55 @@ When videos are missing or broken (aborted downloads, deleted files, imported co
 
 The same applies here: if the USDB comments hold a VIDEOGAP correction for the video, the app carries it into the song.txt automatically.
 
-## 9. Troubleshooting
+## 9. Creating songs yourself
+
+A song is missing from USDB? The app builds it for you — from a recording and the lyrics. An AI separates the vocals, recognises the sung words, places them at the right moments and determines the pitches. The result is an ordinary song folder with `song.txt`, audio and cover.
+
+**Once: set up the AI environment**
+1. **Settings → AI environment (song creation) → "Set up the AI environment (~8 GB)"**. The app downloads Python, Torch and the models itself and checks whether a graphics card can be used. Depending on your connection this takes a while — progress is shown next to it.
+2. The **"AI"** dot at the bottom left of the sidebar turns green once everything is in place. It also works without a graphics card, just much more slowly.
+
+**A song in five steps** — **Create** in the sidebar:
+1. **Song:** artist, title and language (required), plus genre, year and BPM if you like. Leave BPM empty if you don't know it — the pipeline works out the tempo itself.
+2. **Source:** "Search YouTube" shows five hits with duration and thumbnail. Alternatively paste a YouTube link or pick a **local audio file**.
+3. **Lyrics:** "Look on LRCLIB" fetches the lyrics with timestamps if they exist — that noticeably improves the timing. Otherwise paste the lyrics by hand: one line per sung phrase, blank lines separate blocks. The app asks when something is unclear (e.g. "2x" at the end of a line or a bare chorus reference).
+4. **Image:** album cover, YouTube image, your own file — or deliberately "No image".
+5. **Review:** check the summary, **"Add to queue"**.
+
+Creations run in the **Queue** (section "Creations"): only one song at a time, with progress per stage (separate, recognise, align, pitch …). Once finished, the arrow on the row opens the details: open the folder, or go straight to **"Edit"** in the correction editor.
+
+> **To be honest:** an AI creation is a good first draft, not finished USDB quality. If the app says *"The sync is uncertain"*, the detection was inconclusive in several places — then it is worth a look in the [correction editor](#10-fixing-notes-the-correction-editor).
+
+## 10. Fixing notes: the correction editor
+
+The editor straightens out the timing, pitches and syllables of a song — whether you created it or downloaded it. To open it: **"Edit"** on a row in **Downloaded**, or in the details of a finished creation.
+
+**What you see:** the toolbar at the top (undo, play, zoom, GAP), the notes as bars in the middle — time from left to right, pitch from bottom to top, syllables underneath. Dashed lines are line breaks, the green line is the playback position. On the right are the values of the selected note and its whole lyric line.
+
+**How to fix typical mistakes:**
+- **Everything from some point on is early or late:** select the note, **Ctrl + Shift + ← / →** moves it and everything after it. With the mouse: drag the note while holding **Shift**.
+- **The whole song is off:** adjust the **GAP** at the top (in milliseconds). It moves all notes at once.
+- **A pitch is wrong:** **↑ / ↓** (with Shift by an octave). With **"Play note tones"** (note icon or **T**) you hear the note pitches on top of the original during playback — a wrong one stands out immediately.
+- **Wrong syllable:** press **E**, type, **Enter**.
+- **Note too long or too short:** **Ctrl + ← / →**, or drag its right edge with the mouse.
+- **Two syllables on one note / one syllable on two notes:** **S** splits, **M** merges with the next one.
+
+To check: **P** plays the line of the selected note, **Space** plays from the playback position (a click on empty space sets it). Notes outlined in red overlap the one before — usually a slip. All shortcuts are listed in the editor under **"Keyboard shortcuts"**.
+
+**Save** with the button or **Ctrl + S**. On the first save the editor puts the original version into the song folder as `song.txt.bak`; later saves do not overwrite it. To go back to the original, just rename it back. If the file was changed elsewhere in the meantime (e.g. by filling in genres), the editor does not overwrite it but asks you to reopen the song.
+
+**Uncertain spots (created songs only):** where the detection had doubts, an orange band lies behind the notes — strong where the timing was only estimated, faint where the measurement was weak. A button at the top shows how many spots are left. **U** jumps to the next one, **K** marks it as checked. Checked spots are gone for good. These markers only exist for songs created with this version or a newer one.
+
+**Singing in:** select a note, press **I** (or the microphone icon) and sing along with the line. After a short lead-in the editor plays the line and listens through the microphone. Afterwards it shows the line you sang and the suggested pitches as dashed outlines. **Enter** applies them in one step, **Esc** discards them, "Again" starts over. Good to know:
+- If you sing in a different register than the original (e.g. an octave lower), the editor compensates — the melody counts, not the octave.
+- Only notes you sang clearly are changed; the rest stays as it is.
+- Use **headphones**, otherwise the microphone hears the original too.
+
+**Duets:** songs with two voices (`P1`/`P2`) get tabs with the singers' names above the notes; **Tab** switches voice. The other voice is shown faintly in the background.
+
+**Good to know:** files in `RELATIVE` format are written back in the same format. Older files encoded as Windows-1252 are converted to UTF-8 on save.
+
+## 11. Troubleshooting
 
 **"YouTube bot protection blocked the download" / many failures in a row**
 YouTube is blocking anonymous downloads. The fix: in the settings, pick the browser you are **signed in** to YouTube with, **close** that browser, then try again ("↻ Retry" on the failed ones). For stubborn cases: put a `cookies.txt` (browser extension "Get cookies.txt") into the songs folder.
