@@ -57,6 +57,7 @@ export const SingBar: FC<SingBarProps> = ({ state, onStop, onApply, onRetry, onD
           ? t.editor.singNothing
           : t.editor.singResult(aenderungen, suggestion.judged)}
         {suggestion.octaveShift !== 0 && ` ${t.editor.singOctave(suggestion.octaveShift)}`}
+        {suggestion.offsetMs !== 0 && ` ${t.editor.singOffset(suggestion.offsetMs)}`}
       </span>
       <span className="spacer" />
       <button

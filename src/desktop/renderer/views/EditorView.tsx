@@ -212,12 +212,12 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
     return review.frames.map((f) => ({ beat: msToBeat(timing, f.ms), pitch: f.midi - versatz }));
   }, [review, timing]);
 
-  const speichern = async (danachSchliessen: boolean) => {
+  const speichern = async (danachSchliessen: boolean, revision = geladen.revision) => {
     if (speichert) return;
     setSpeichert(true);
     setFehler(null);
     const stand = history.present;
-    const r = await window.ultrastar.editorSave({ songDir, song: stand, revision: geladen.revision });
+    const r = await window.ultrastar.editorSave({ songDir, song: stand, revision });
     setSpeichert(false);
     if (!r.ok) {
       setFehler(r.error);
@@ -237,6 +237,33 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
   const schliessen = () => {
     if (dirty) setSchliessenFragen(true);
     else onClose();
+  };
+
+  // The file changed under us (another program, a second window). Two ways
+  // out, both explicit: take the disk version and drop our edits, or write
+  // our version over the newer file. Reopening the editor by hand, which
+  // the error used to ask for, lost either the edits or the time.
+  const konflikt = fehler?.code === "changedOnDisk";
+  const vonPlatteNeuLaden = async () => {
+    const r = await window.ultrastar.editorLoad(songDir);
+    if (!r.ok) {
+      setFehler(r.error);
+      return;
+    }
+    setGeladen({ revision: r.revision, mediaUrl: r.mediaUrl, converted: r.converted });
+    setHistory(startHistory(r.song));
+    setSelected(null);
+    setFehler(null);
+  };
+  const trotzdemUeberschreiben = async () => {
+    // The newer file's revision is the ticket to overwrite it; everything
+    // else about it is deliberately ignored.
+    const r = await window.ultrastar.editorLoad(songDir);
+    if (!r.ok) {
+      setFehler(r.error);
+      return;
+    }
+    await speichern(false, r.revision);
   };
 
   const zoom = (neu: number, anker: number) => {
@@ -327,6 +354,21 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
         onClose={schliessen}
       />
 
+      {konflikt && (
+        <div className="editor-confirm">
+          <span>{t.editor.error.changedOnDisk}</span>
+          <button className="btn primary" type="button" onClick={() => void vonPlatteNeuLaden()}>
+            {t.editor.conflictReload}
+          </button>
+          <button className="btn danger" type="button" onClick={() => void trotzdemUeberschreiben()}>
+            {t.editor.conflictOverwrite}
+          </button>
+          <button className="btn" type="button" onClick={() => setFehler(null)}>
+            {t.editor.keepEditing}
+          </button>
+        </div>
+      )}
+
       {schliessenFragen && (
         <div className="editor-confirm">
           <span>{t.editor.unsaved}</span>
@@ -390,7 +432,7 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
         {!playback.available && <span className="muted">{t.editor.noAudio}</span>}
         {geladen.converted && <span className="muted">{t.editor.converted}</span>}
         {song.relative && <span className="muted">{t.editor.relativeHint}</span>}
-        {fehler && <span className="editor-error">{fehlerText(t, fehler)}</span>}
+        {fehler && !konflikt && <span className="editor-error">{fehlerText(t, fehler)}</span>}
         <span className="spacer" />
         <span className="muted">{t.editor.backupHint}</span>
       </div>

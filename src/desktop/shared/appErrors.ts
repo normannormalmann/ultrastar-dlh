@@ -14,6 +14,12 @@ export const APP_ERROR_CODES = [
   "workerCrashLimit",
   "queueSaveFailed",
   "toolsMissing",
+  // Warnings from core/: the package was built or the song downloaded, but
+  // without the piece named here.
+  "coverChosenMissing",
+  "coverNotFound",
+  "coverDownloadFailed",
+  "trackingFailed",
 ] as const;
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

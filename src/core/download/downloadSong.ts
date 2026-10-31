@@ -20,7 +20,8 @@ export type DownloadSongParams = {
   baseDir?: string; // defaults to CWD/songs
   cookiesBrowser?: string; // e.g. "edge", "chrome", "firefox"
   onProgress?: (p: number) => void; // 0..1
-  onWarning?: (warnings: string[]) => void; // For optional failures (e.g., cover)
+  /** Optional parts that failed (the cover); the download itself went through. */
+  onWarning?: (warnings: DownloadWarning[]) => void;
   folderLayout?: FolderLayout;
   videoQuality?: VideoQuality;
 };
@@ -29,6 +30,13 @@ export type DownloadSongResult = {
   dirName: string;
   songDir: string;
 };
+
+/**
+ * A download warning as code plus a plain sentence: the desktop renderer
+ * translates the code into the UI language, the terminal UI prints the
+ * sentence.
+ */
+export type DownloadWarning = { code: "coverDownloadFailed"; message: string };
 
 export const downloadSong = (
   params: DownloadSongParams,
@@ -91,7 +99,7 @@ export const downloadSong = (
     let coverProgress = 0;
     let lyricsProgress = 0;
     let videoProgress = 0;
-    const warnings: string[] = []; // Collect warnings for optional failures
+    const warnings: DownloadWarning[] = []; // Collect warnings for optional failures
 
     const updateOverallProgress = () => {
       // Weighted progress calculation
@@ -117,7 +125,10 @@ export const downloadSong = (
         });
       } else {
         // Cover failed, but it's optional - just add a warning
-        warnings.push(`Cover could not be downloaded for "${song.title}"`);
+        warnings.push({
+          code: "coverDownloadFailed",
+          message: `Cover could not be downloaded for "${song.title}"`,
+        });
         coverProgress = 1;
         updateOverallProgress();
       }

@@ -409,6 +409,8 @@ export const es: Katalog = {
     discardAndClose: "Descartar y cerrar",
     saveAndClose: "Guardar y cerrar",
     keepEditing: "Seguir editando",
+    conflictReload: "Recargar desde el disco",
+    conflictOverwrite: "Sobrescribir de todos modos",
     undo: "Deshacer (Ctrl+Z)",
     redo: "Rehacer (Ctrl+Y)",
     play: "Reproducir (Espacio)",
@@ -477,7 +479,7 @@ export const es: Katalog = {
       badHeader: "El archivo contiene una línea de cabecera no válida.",
       badValue: "Valores de nota no válidos — no se ha guardado nada.",
       changedOnDisk:
-        "El archivo se modificó fuera del editor mientras tanto. Cierra el editor y vuelve a abrir la canción; si no, esos cambios se perderían.",
+        "El archivo se modificó fuera del editor mientras tanto.",
       writeFailed: "No se pudo guardar. ¿Está la canción abierta en un juego?",
       outsideLibrary: "La carpeta no está dentro de tu biblioteca.",
     },
@@ -503,6 +505,8 @@ export const es: Katalog = {
       desplazamiento < 0
         ? `Cantaste ${-desplazamiento === 1 ? "una octava" : `${-desplazamiento} octavas`} más grave; compensado.`
         : `Cantaste ${desplazamiento === 1 ? "una octava" : `${desplazamiento} octavas`} más agudo; compensado.`,
+    singOffset: (ms: number) =>
+      `Ibas ${Math.abs(ms)} ms ${ms > 0 ? "por detrás de" : "por delante de"} la música; compensado.`,
     singApply: "Aplicar (Intro)",
     singRetry: "Otra vez",
     singDiscard: "Descartar (Esc)",
@@ -542,6 +546,10 @@ export const es: Katalog = {
       queueSaveFailed: "No se pudo guardar la cola",
       toolsMissing:
         "yt-dlp o ffmpeg no está instalado. Las descargas están desactivadas (Ajustes → Herramientas).",
+      coverChosenMissing: "La imagen elegida ya no existe; paquete sin portada.",
+      coverNotFound: "No se encontró portada; paquete sin portada.",
+      coverDownloadFailed: "No se pudo descargar la portada",
+      trackingFailed: "Descarga correcta, pero no se pudo guardar la entrada en la biblioteca",
     },
   },
 };

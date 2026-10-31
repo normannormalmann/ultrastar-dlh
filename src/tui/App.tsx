@@ -320,7 +320,7 @@ export const App: FC = () => {
               ),
             onWarning: (warnings) => {
               // Collect warnings from download
-              downloadWarnings.push(...warnings);
+              downloadWarnings.push(...warnings.map((w) => w.message));
             },
           }),
         );

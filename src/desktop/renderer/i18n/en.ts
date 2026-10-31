@@ -407,6 +407,8 @@ export const en: Katalog = {
     discardAndClose: "Discard and close",
     saveAndClose: "Save and close",
     keepEditing: "Keep editing",
+    conflictReload: "Reload from disk",
+    conflictOverwrite: "Overwrite anyway",
     undo: "Undo (Ctrl+Z)",
     redo: "Redo (Ctrl+Y)",
     play: "Play (Space)",
@@ -473,7 +475,7 @@ export const en: Katalog = {
       badHeader: "The file contains an invalid header line.",
       badValue: "Invalid note values — nothing was saved.",
       changedOnDisk:
-        "The file was changed outside the editor in the meantime. Close the editor and reopen the song — otherwise those changes would be lost.",
+        "The file was changed outside the editor in the meantime.",
       writeFailed: "Saving failed. Is the song currently open in a game?",
       outsideLibrary: "The folder is not inside your library.",
     },
@@ -499,6 +501,8 @@ export const en: Katalog = {
       shift < 0
         ? `You sang ${-shift === 1 ? "an octave" : `${-shift} octaves`} lower — compensated.`
         : `You sang ${shift === 1 ? "an octave" : `${shift} octaves`} higher — compensated.`,
+    singOffset: (ms: number) =>
+      `You were ${Math.abs(ms)} ms ${ms > 0 ? "behind" : "ahead of"} the music — compensated.`,
     singApply: "Apply (Enter)",
     singRetry: "Again",
     singDiscard: "Discard (Esc)",
@@ -538,6 +542,10 @@ export const en: Katalog = {
       queueSaveFailed: "The queue could not be saved",
       toolsMissing:
         "yt-dlp or ffmpeg is not installed. Downloads are disabled (Settings → Tools).",
+      coverChosenMissing: "The chosen image no longer exists — package without a cover.",
+      coverNotFound: "No cover found — package without a cover.",
+      coverDownloadFailed: "Cover could not be downloaded",
+      trackingFailed: "Download ok, but the library entry could not be saved",
     },
   },
 };
