@@ -53,7 +53,10 @@ const createWindow = (): BrowserWindow => {
       ? {}
       : { icon: join(import.meta.dirname, "../../resources/icon.ico") }),
     webPreferences: {
-      preload: join(import.meta.dirname, "../preload/index.js"),
+      // electron-vite 6 emits the preload as ESM (index.mjs); the old
+      // index.js name made Electron skip the preload silently and the
+      // renderer came up without window.ultrastar (v1.5.0).
+      preload: join(import.meta.dirname, "../preload/index.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false, // ESM preload requires sandbox:false
