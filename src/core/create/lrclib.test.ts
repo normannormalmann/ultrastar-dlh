@@ -142,3 +142,57 @@ describe("fetchSyncedLyrics: Suchfallback", () => {
     expect(text).toBeNull();
   });
 });
+
+describe("fetchSyncedLyrics: Ueberlast", () => {
+  // Gemessen 31.10.2026: lrclib.net antwortet auf /api/search in Serie mit
+  // 503 ServerOverloaded, ein zweiter Versuch Sekunden spaeter trifft.
+  const ueberlastet = (): Response =>
+    ({ ok: false, status: 503, json: async () => ({ name: "ServerOverloaded" }) }) as unknown as Response;
+
+  it("versucht es bei 503 nach einer Wartezeit erneut", async () => {
+    let aufrufe = 0;
+    const wartezeiten: number[] = [];
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => {
+        aufrufe++;
+        return aufrufe < 3 ? ueberlastet() : antwort({ syncedLyrics: "[00:01.00]da" });
+      }),
+      warteFn: async (ms) => {
+        wartezeiten.push(ms);
+      },
+    });
+    expect(text).toBe("[00:01.00]da");
+    expect(aufrufe).toBe(3);
+    expect(wartezeiten).toHaveLength(2);
+    expect(wartezeiten[1]).toBeGreaterThan(wartezeiten[0] ?? 0);
+  });
+
+  it("gibt nach drei Fehlversuchen je Endpunkt auf", async () => {
+    let aufrufe = 0;
+    const text = await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => {
+        aufrufe++;
+        return ueberlastet();
+      }),
+      warteFn: async () => {},
+    });
+    expect(text).toBeNull();
+    // get und search je dreimal
+    expect(aufrufe).toBe(6);
+  });
+
+  it("wiederholt 404 nicht: kein Treffer ist eine Antwort", async () => {
+    let aufrufe = 0;
+    await fetchSyncedLyrics({
+      ...anfrage,
+      fetchFn: fake(async () => {
+        aufrufe++;
+        return antwort({}, false);
+      }),
+      warteFn: async () => {},
+    });
+    expect(aufrufe).toBe(2);
+  });
+});
