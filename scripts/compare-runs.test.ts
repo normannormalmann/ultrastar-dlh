@@ -135,6 +135,21 @@ describe("vergleicheLaeufe: Gueltigkeitswaechter", () => {
     expect(formatiereBericht(ergebnis, basis, arm, optionen)).toContain("lrc 0 -> 1");
   });
 
+  it("prueft nur die angegebenen Waechter, wenn ein Arm das Alignment selbst veraendert", () => {
+    // Ein LRC-Arm aendert Zeitmetriken und lrc-Flag absichtlich; dann sind
+    // nur Paarung und Notenzahl noch Waechter.
+    const basis = lauf([{ ...zeile("A", { anteilUnter50ms: 0.3 }), lrc: false }]);
+    const arm = lauf([{ ...zeile("A", { anteilUnter50ms: 0.4 }), lrc: true }]);
+
+    const ergebnis = vergleicheLaeufe(basis, arm, {
+      ...optionen,
+      waechter: ["anteilGepaart", "notenzahlDifferenz"],
+    });
+
+    expect(ergebnis.waechterVerletzungen).toEqual([]);
+    expect(ergebnis.entscheidung).not.toBe("ungueltig");
+  });
+
   it("bleibt gueltig, wenn die Waechter gleich sind und nur die Tonhoehe sich aendert", () => {
     const basis = lauf([zeile("A", { anteilPitchExakt: 0.3 })]);
     const arm = lauf([zeile("A", { anteilPitchExakt: 0.5, medianPitchOffset: 1 })]);

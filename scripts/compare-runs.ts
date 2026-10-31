@@ -34,12 +34,18 @@ export const WAECHTER = [
   "notenzahlDifferenz",
 ] as const satisfies readonly (keyof Metrics)[];
 
+export type WaechterName = (typeof WAECHTER)[number] | "lrc";
+
 export type Optionen = {
   ausschluss: string[];
   primaer: keyof Metrics;
   schwellePunkte: number;
   seed: number;
   ziehungen: number;
+  /** Welche Waechter gelten. Standard: alle Zeitmetriken und das lrc-Flag
+   * (passend fuer einen Arm, der nur die Tonhoehe tauscht). Ein Arm, der das
+   * Alignment selbst veraendert, nennt hier nur Paarung und Notenzahl. */
+  waechter?: readonly WaechterName[];
 };
 
 export type Differenz = { name: string; basis: number; arm: number; punkte: number };
@@ -49,7 +55,7 @@ export type WaechterVerletzung = {
   /** Eine der Zeitmetriken aus WAECHTER oder "lrc": ob fuer den Song ein
    * LRC als Anker vorlag (0/1). Weicht das ab, hat LRCLIB in einem der
    * Laeufe nicht geantwortet, und das Alignment ist ein anderes. */
-  metrik: (typeof WAECHTER)[number] | "lrc";
+  metrik: WaechterName;
   basis: number;
   arm: number;
 };
@@ -155,11 +161,12 @@ export const vergleicheLaeufe = (basis: Lauf, arm: Lauf, optionen: Optionen): Ve
       arm: armWert,
       punkte: punkte(armWert) - punkte(basisWert),
     });
-    if (b.lrc !== a.lrc) {
+    const aktiv = optionen.waechter ?? [...WAECHTER, "lrc"];
+    if (aktiv.includes("lrc") && b.lrc !== a.lrc) {
       waechterVerletzungen.push({ name, metrik: "lrc", basis: Number(b.lrc), arm: Number(a.lrc) });
     }
     for (const metrik of WAECHTER) {
-      if (b.m[metrik] !== a.m[metrik]) {
+      if (aktiv.includes(metrik) && b.m[metrik] !== a.m[metrik]) {
         waechterVerletzungen.push({ name, metrik, basis: b.m[metrik], arm: a.m[metrik] });
       }
     }
@@ -311,7 +318,7 @@ const main = async (): Promise<void> => {
     console.error(
       "Aufruf: bun run scripts/compare-runs.ts --basis <block.json>... --arm <block.json>...\n" +
         "        [--ausschluss <liste.json>] [--primaer anteilPitchExakt] [--schwelle 5]\n" +
-        "        [--seed 42] [--ziehungen 10000]\n" +
+        "        [--seed 42] [--ziehungen 10000] [--waechter anteilGepaart,notenzahlDifferenz]\n" +
         "Die Ausschlussliste ist ein JSON-Array von Songnamen (\"Artist - Titel\").",
     );
     process.exit(2);
@@ -327,6 +334,7 @@ const main = async (): Promise<void> => {
     schwellePunkte: Number(liesWert(argv, "--schwelle") ?? 5),
     seed: Number(liesWert(argv, "--seed") ?? 42),
     ziehungen: Number(liesWert(argv, "--ziehungen") ?? 10000),
+    waechter: liesWert(argv, "--waechter")?.split(",") as WaechterName[] | undefined,
   };
   const [basis, arm] = await Promise.all([lade(basisPfade), lade(armPfade)]);
   const ergebnis = vergleicheLaeufe(basis, arm, optionen);
