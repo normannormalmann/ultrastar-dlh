@@ -7,7 +7,7 @@ import {
 } from "./provider.ts";
 
 const USER_AGENT =
-  "ultrastar-dlh/1.6.0 (https://github.com/normannormalmann/ultrastar-dlh)";
+  "ultrastar-dlh/1.6.1 (https://github.com/normannormalmann/ultrastar-dlh)";
 
 type MbSearch = {
   recordings?: Array<{
