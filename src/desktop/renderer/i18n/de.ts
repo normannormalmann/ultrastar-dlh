@@ -408,6 +408,8 @@ export const de = {
     discardAndClose: "Verwerfen und schließen",
     saveAndClose: "Speichern und schließen",
     keepEditing: "Weiter bearbeiten",
+    conflictReload: "Von der Festplatte neu laden",
+    conflictOverwrite: "Trotzdem überschreiben",
     undo: "Rückgängig (Strg+Z)",
     redo: "Wiederholen (Strg+Y)",
     play: "Abspielen (Leertaste)",
@@ -475,7 +477,7 @@ export const de = {
       badHeader: "Die Datei enthält eine ungültige Kopfzeile.",
       badValue: "Ungültige Notenwerte — es wurde nichts gespeichert.",
       changedOnDisk:
-        "Die Datei wurde inzwischen außerhalb des Editors geändert. Schließe den Editor und öffne den Song neu — sonst gingen diese Änderungen verloren.",
+        "Die Datei wurde inzwischen außerhalb des Editors geändert.",
       writeFailed:
         "Speichern fehlgeschlagen. Ist der Song gerade in einem Spiel geöffnet?",
       outsideLibrary: "Der Ordner liegt nicht in deiner Bibliothek.",
@@ -502,6 +504,8 @@ export const de = {
       verschiebung < 0
         ? `Du hast ${-verschiebung === 1 ? "eine Oktave" : `${-verschiebung} Oktaven`} tiefer gesungen — ausgeglichen.`
         : `Du hast ${verschiebung === 1 ? "eine Oktave" : `${verschiebung} Oktaven`} höher gesungen — ausgeglichen.`,
+    singOffset: (ms: number) =>
+      `Dein Einsatz lag ${Math.abs(ms)} ms ${ms > 0 ? "hinter" : "vor"} der Musik — ausgeglichen.`,
     singApply: "Übernehmen (Enter)",
     singRetry: "Nochmal",
     singDiscard: "Verwerfen (Esc)",
@@ -541,6 +545,10 @@ export const de = {
       queueSaveFailed: "Die Queue konnte nicht gespeichert werden",
       toolsMissing:
         "yt-dlp oder ffmpeg ist nicht installiert. Downloads sind deaktiviert (Einstellungen → Tools).",
+      coverChosenMissing: "Das gewählte Bild ist nicht mehr vorhanden — Paket ohne Cover.",
+      coverNotFound: "Kein Cover gefunden — Paket ohne Cover.",
+      coverDownloadFailed: "Cover konnte nicht geladen werden",
+      trackingFailed: "Download ok, aber der Bibliothekseintrag konnte nicht gespeichert werden",
     },
   },
 };

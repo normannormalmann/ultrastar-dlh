@@ -61,10 +61,14 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
         onProgress: (p) =>
           state.patchActiveDownload(song.apiId, { progress: p }),
         onWarning: (warnings) => {
-          broadcast("event:error", {
-            context: "warnung",
-            message: `"${song.title}": ${warnings.join(" | ")}`,
-          });
+          for (const w of warnings) {
+            broadcast("event:error", {
+              context: "warnung",
+              code: w.code,
+              detail: song.title,
+              message: w.message,
+            });
+          }
         },
       }),
     );
@@ -83,9 +87,12 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
       ...entryMetadata(headers),
     };
     await Effect.runPromise(appendDownloadedEntry(entry)).catch((e) => {
+      const detail = e instanceof Error ? e.message : String(e);
       broadcast("event:error", {
         context: "tracking",
-        message: `Download ok, Tracking fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`,
+        code: "trackingFailed",
+        detail,
+        message: `Download ok, tracking failed: ${detail}`,
       });
     });
     state.upsertDownloaded(entry);

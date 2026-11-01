@@ -112,14 +112,22 @@ export const verschiebeStandard = async (
   await rm(von, { recursive: true, force: true });
 };
 
+/**
+ * What the package lacks, as a code: the caller (the desktop main process)
+ * does not know the UI language, the renderer turns the code into a
+ * sentence. "coverChosenMissing": the user picked an image that is gone;
+ * "coverNotFound": no candidate at all.
+ */
+export type PackageWarning = "coverChosenMissing" | "coverNotFound";
+
 export const assemblePackage = (
   opts: PackageOptions,
 ): Effect.Effect<
-  { songDir: string; dirName: string; warnungen: string[] },
+  { songDir: string; dirName: string; warnungen: PackageWarning[] },
   PackageError
 > =>
   Effect.gen(function* () {
-    const warnungen: string[] = [];
+    const warnungen: PackageWarning[] = [];
     const findCoverFn = opts.deps?.findCoverFn ?? findCover;
     const verschiebe = opts.deps?.verschiebe ?? verschiebeStandard;
     const rohbau = join(opts.jobDir, "paket");
@@ -131,7 +139,7 @@ export const assemblePackage = (
     const wahl = opts.coverWahl;
     const gewaehltFehlt = typeof wahl === "object" && !existsSync(wahl.pfad);
     if (gewaehltFehlt) {
-      warnungen.push("Gewaehltes Bild nicht mehr vorhanden - Paket ohne Bild.");
+      warnungen.push("coverChosenMissing");
     }
     const gewaehlterPfad =
       typeof wahl === "object" && !gewaehltFehlt ? wahl.pfad : null;
@@ -147,7 +155,7 @@ export const assemblePackage = (
     const hatCover =
       gewaehlterPfad !== null || gefunden !== null || kandidat !== null;
     if (!hatCover && wahl === undefined) {
-      warnungen.push("Kein Cover gefunden - Paket ohne Bild.");
+      warnungen.push("coverNotFound");
     }
 
     const mediendatei = opts.medien.videoPath

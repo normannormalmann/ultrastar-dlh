@@ -210,7 +210,7 @@ describe("assemblePackage", () => {
     const ergebnis = await Effect.runPromise(
       assemblePackage(basis(library, jobDir)),
     );
-    expect(ergebnis.warnungen.some((w) => w.includes("Cover"))).toBe(true);
+    expect(ergebnis.warnungen).toContain("coverNotFound");
     const txt = await readFile(join(ergebnis.songDir, "song.txt"), "utf8");
     expect(txt).not.toContain("#COVER");
   });
@@ -320,7 +320,7 @@ describe("assemblePackage", () => {
     );
     // Deliberately not just "ohne Bild": the old "Kein Cover gefunden"
     // warning ends in those words too, so this test would pass unimplemented.
-    expect(ergebnis.warnungen.join(" ")).toContain("Gewaehltes Bild");
+    expect(ergebnis.warnungen).toContain("coverChosenMissing");
     expect(await readdir(ergebnis.songDir)).not.toContain("cover.jpg");
   });
 

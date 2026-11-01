@@ -51,6 +51,9 @@ const SONG = [
 ].join("\n");
 
 const UNSICHER = SONG.replace("#TITLE:Testlied", "#TITLE:Unsicher");
+const KONFLIKT = SONG.replace("#TITLE:Testlied", "#TITLE:Konflikt");
+/** What "someone else" writes while the editor is open: a fourth note. */
+const KONFLIKT_VIER = KONFLIKT.replace(": 12 6 9  Welt\n", ": 12 6 9  Welt\n: 20 4 9 da\n");
 
 const DUETT = [
   "#TITLE:Duett",
@@ -113,6 +116,7 @@ test.beforeAll(async () => {
     await songAnlegen("Unsicher", UNSICHER),
     await songAnlegen("Duett", DUETT),
     await songAnlegen("Einsingen", EINSINGEN),
+    await songAnlegen("Konflikt", KONFLIKT),
   ];
   await writeFile(
     join(ordner("Unsicher"), "sync-hints.json"),
@@ -142,6 +146,7 @@ const starte = (): Promise<ElectronApplication> =>
     args: [
       "out/main/index.js",
       "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
       `--use-file-for-fake-audio-capture=${mikroWav}`,
     ],
     env: { ...process.env, ULTRASTAR_APP_NAME: APP_NAME },
@@ -270,7 +275,11 @@ test("singing a line in corrects its pitches", async () => {
   const window = await oeffne(app, "Einsingen");
   const songDir = ordner("Einsingen");
 
+  // The heading shows before the notes and the key handler are ready; an
+  // early ArrowRight selects nothing and "i" then does nothing either.
+  await expect(window.getByText("3 Noten")).toBeVisible();
   await window.keyboard.press("ArrowRight");
+  await expect(window.getByRole("button", { name: /Zeile einsingen/ })).toBeEnabled();
   await window.keyboard.press("i");
   await expect(window.getByText("Sing die Zeile mit …")).toBeVisible();
   // The fake microphone holds D4 throughout: every note should become 2.
@@ -282,6 +291,43 @@ test("singing a line in corrects its pitches", async () => {
   await expect(window.getByText("Gespeichert", { exact: true })).toBeVisible();
   const txt = await readFile(join(songDir, "song.txt"), "utf8");
   expect(txt).toContain(": 0 8 2 La\n: 8 8 2 le\n: 16 8 2 lu\n");
+
+  await app.close();
+});
+
+test("a file changed on disk offers reloading it or overwriting it", async () => {
+  const app = await starte();
+  const window = await oeffne(app, "Konflikt");
+  const songDir = ordner("Konflikt");
+  await expect(window.getByText("3 Noten")).toBeVisible();
+
+  // Our own edit: first note one semitone up.
+  await window.keyboard.press("ArrowRight");
+  await window.keyboard.press("ArrowUp");
+  await expect(window.getByText("Ungespeicherte Änderungen")).toBeVisible();
+
+  // Meanwhile someone else saves a version with a fourth note.
+  await writeFile(join(songDir, "song.txt"), KONFLIKT_VIER);
+  await window.keyboard.press("Control+s");
+  await expect(window.getByText(/außerhalb des Editors geändert/)).toBeVisible();
+
+  // Reloading takes the version from disk and drops our edit.
+  await window.getByRole("button", { name: "Von der Festplatte neu laden" }).click();
+  await expect(window.getByText("4 Noten")).toBeVisible();
+  await expect(window.getByText("Ungespeicherte Änderungen")).toHaveCount(0);
+  await expect(window.getByText(/außerhalb des Editors geändert/)).toHaveCount(0);
+
+  // Edit again, the disk changes again - this time we overwrite.
+  await window.keyboard.press("ArrowRight");
+  await window.keyboard.press("ArrowUp");
+  await writeFile(join(songDir, "song.txt"), KONFLIKT);
+  await window.keyboard.press("Control+s");
+  await window.getByRole("button", { name: "Trotzdem überschreiben" }).click();
+  await expect(window.getByText("Gespeichert", { exact: true })).toBeVisible();
+
+  const gespeichert = await readFile(join(songDir, "song.txt"), "utf8");
+  expect(gespeichert).toContain(": 0 4 6 Hal");
+  expect(gespeichert).toContain(": 20 4 9 da");
 
   await app.close();
 });

@@ -746,3 +746,28 @@ describe("creation queue", () => {
     expect(fehler.join(" ")).toContain("Platte voll");
   });
 });
+
+describe("Warnungen aus dem Paketbau", () => {
+  it("gehen als Code an die UI, nicht als fertiger Satz", async () => {
+    // Der Main-Prozess kennt die UI-Sprache nicht; ein deutscher Satz aus
+    // core/ stuende in der englischen Oberflaeche. Der Renderer uebersetzt
+    // den Code.
+    const { deps, events } = fakeDeps();
+    (deps as { assemble: unknown }).assemble = async () => ({
+      songDir: "C:/library/Interpret - Titel",
+      dirName: "Interpret - Titel",
+      warnungen: ["coverNotFound"],
+      lowConfidence: false,
+    });
+    const c = createCreations(deps);
+    c.queueAdd([job("a")]);
+    await c.start();
+    const warnung = events.find(
+      (e) =>
+        e.channel === "event:error" &&
+        (e.payload as { context?: string }).context === "warnung",
+    );
+    expect(warnung).toBeDefined();
+    expect((warnung?.payload as { code?: string }).code).toBe("coverNotFound");
+  });
+});

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import type { NoteSeq } from "../../../../core/edit/songTxt.ts";
 import { detectPitch, hzToMidi } from "./pitchDetect.ts";
-import { type SungFrame, suggestPitches } from "./singAlong.ts";
+import { estimateOffsetMs, type SungFrame, suggestPitches } from "./singAlong.ts";
 
 const RATE = 48000;
 
@@ -89,5 +89,60 @@ describe("suggestPitches", () => {
   it("nimmt den Median, nicht einen Ausreisser", () => {
     const frames = gesungen(0, 400, 62).map((f, i) => (i % 7 === 0 ? { ...f, midi: 74 } : f));
     expect(suggestPitches(spur, 0, 0, timing, frames).pitches.get(0)).toBe(2);
+  });
+});
+
+describe("estimateOffsetMs", () => {
+  // 300 BPM: 50 ms per beat. Four notes of 8 beats = 400 ms each, a melody
+  // with enough shape that a shift stands out.
+  const timing = { bpm: 300, gap: 0 };
+  const melodie: NoteSeq = {
+    notes: [
+      { type: ":", beat: 0, length: 8, pitch: 0, syllable: "a" },
+      { type: ":", beat: 8, length: 8, pitch: 4, syllable: "b" },
+      { type: ":", beat: 16, length: 8, pitch: 7, syllable: "c" },
+      { type: ":", beat: 24, length: 8, pitch: 2, syllable: "d" },
+    ],
+  };
+  const gesungen = (vonMs: number, bisMs: number, midi: number): SungFrame[] => {
+    const frames: SungFrame[] = [];
+    for (let ms = vonMs; ms < bisMs; ms += 1000 / 60) frames.push({ ms, midi });
+    return frames;
+  };
+  /** The melody sung correctly, every reading `spaet` ms after its note. */
+  const take = (spaet: number, oktave = 0): SungFrame[] =>
+    melodie.notes.flatMap((n) =>
+      gesungen(n.beat * 50 + spaet, (n.beat + n.length) * 50 + spaet, 60 + n.pitch + oktave * 12),
+    );
+
+  it("meldet 0, wenn auf den Punkt gesungen wurde", () => {
+    expect(Math.abs(estimateOffsetMs(melodie, 0, 3, timing, take(0)))).toBeLessThanOrEqual(10);
+  });
+
+  it("findet, um wie viel zu spaet gesungen wurde", () => {
+    const r = estimateOffsetMs(melodie, 0, 3, timing, take(150));
+    expect(Math.abs(r - 150)).toBeLessThanOrEqual(10);
+  });
+
+  it("ist unabhaengig von der gesungenen Oktave", () => {
+    const r = estimateOffsetMs(melodie, 0, 3, timing, take(150, -1));
+    expect(Math.abs(r - 150)).toBeLessThanOrEqual(10);
+  });
+
+  it("bleibt bei 0, wenn der Gesang zu nichts passt", () => {
+    expect(estimateOffsetMs(melodie, 0, 3, timing, gesungen(0, 1600, 90))).toBe(0);
+    expect(estimateOffsetMs(melodie, 0, 3, timing, [])).toBe(0);
+  });
+
+  it("suggestPitches gleicht den Versatz aus und nennt ihn", () => {
+    // Sung 150 ms late with one wrong note (c a semitone flat). Without the
+    // offset, a third of every note's readings would belong to its
+    // neighbour and the suggestion would smear.
+    const frames = take(150).map((f) =>
+      f.ms >= 800 + 150 && f.ms < 1200 + 150 ? { ...f, midi: 66 } : f,
+    );
+    const r = suggestPitches(melodie, 0, 3, timing, frames);
+    expect(Math.abs(r.offsetMs - 150)).toBeLessThanOrEqual(10);
+    expect([...r.pitches]).toEqual([[2, 6]]);
   });
 });

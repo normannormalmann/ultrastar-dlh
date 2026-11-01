@@ -13,6 +13,11 @@ export type SingSuggestion = {
   octaveShift: number;
   /** Notes in the stretch that were sung clearly enough to judge. */
   judged: number;
+  /**
+   * How late the take arrived relative to the notes, in ms, as measured
+   * from the take itself (positive: late). Already compensated in pitches.
+   */
+  offsetMs: number;
 };
 
 /** UltraStar pitch 0 is C4, MIDI 60. */
@@ -34,6 +39,73 @@ const median = (werte: number[]): number => {
 
 /** Frames per second the sampling loop delivers - used to judge coverage. */
 export const FRAME_RATE_HINT = 60;
+
+/** The offset search: this far in both directions, in steps of this size. */
+const OFFSET_RANGE_MS = 300;
+const OFFSET_STEP_MS = 10;
+/** A reading matches a note when its pitch class sits within this of the note's. */
+const PITCH_MATCH_TOLERANCE = 0.75;
+/** The best offset must beat "no offset" by this share, or it is noise. */
+const OFFSET_MIN_GAIN = 1.1;
+
+/** Smallest distance between two pitch classes, octaves ignored. */
+const pitchClassDistance = (a: number, b: number): number => {
+  const d = Math.abs(a - b) % 12;
+  return Math.min(d, 12 - d);
+};
+
+/**
+ * Measures the take's latency from the take itself: the shift of the sung
+ * line, in ms, that makes the most readings sit inside a note of the same
+ * pitch class. Device estimates (microphone buffer, output latency) are
+ * rough, and the singer's own reaction time is not in them at all; both
+ * are constant over one take and show up as one offset. Octaves are
+ * ignored on purpose - the register is settled later, per take.
+ *
+ * Returns 0 when nothing fits (silence, a different melody) or when the
+ * best shift is not clearly better than none: a short stretch of a few
+ * notes gives the search little to hold on to, and a wrong shift would
+ * be worse than the raw device estimate.
+ */
+export const estimateOffsetMs = (
+  seq: NoteSeq,
+  from: number,
+  to: number,
+  timing: Timing,
+  frames: SungFrame[],
+): number => {
+  const noten: { von: number; bis: number; pitch: number }[] = [];
+  for (let i = Math.max(0, from); i <= Math.min(to, seq.notes.length - 1); i += 1) {
+    const n = seq.notes[i] as EditNote;
+    if (n.type === "F" || n.length <= 0) continue;
+    noten.push({ von: beatToMs(timing, n.beat), bis: beatToMs(timing, n.beat + n.length), pitch: n.pitch });
+  }
+  if (noten.length === 0 || frames.length < MIN_FRAMES) return 0;
+
+  const treffer = (offset: number): number => {
+    let zahl = 0;
+    for (const f of frames) {
+      const ms = f.ms - offset;
+      const note = noten.find((n) => ms >= n.von && ms < n.bis);
+      if (note && pitchClassDistance(f.midi - MIDI_OFFSET, note.pitch) <= PITCH_MATCH_TOLERANCE) zahl += 1;
+    }
+    return zahl;
+  };
+
+  const ohne = treffer(0);
+  let bester = 0;
+  let besteZahl = ohne;
+  for (let offset = -OFFSET_RANGE_MS; offset <= OFFSET_RANGE_MS; offset += OFFSET_STEP_MS) {
+    const zahl = treffer(offset);
+    // Strictly better, or equally good but closer to zero.
+    if (zahl > besteZahl || (zahl === besteZahl && Math.abs(offset) < Math.abs(bester))) {
+      bester = offset;
+      besteZahl = zahl;
+    }
+  }
+  if (besteZahl < MIN_FRAMES || besteZahl < ohne * OFFSET_MIN_GAIN) return 0;
+  return bester;
+};
 
 const gesungenFuer = (
   n: EditNote,
@@ -66,14 +138,18 @@ export const suggestPitches = (
   timing: Timing,
   frames: SungFrame[],
 ): SingSuggestion => {
+  // The take's own latency first: readings are moved back by it, so each
+  // note is judged by what was sung for it, not for its neighbour.
+  const offsetMs = estimateOffsetMs(seq, from, to, timing, frames);
+  const ausgerichtet = offsetMs === 0 ? frames : frames.map((f) => ({ ms: f.ms - offsetMs, midi: f.midi }));
   const gesungen = new Map<number, number>();
   for (let i = Math.max(0, from); i <= Math.min(to, seq.notes.length - 1); i += 1) {
     const n = seq.notes[i] as EditNote;
     if (n.type === "F" || n.length <= 0) continue;
-    const midi = gesungenFuer(n, timing, frames);
+    const midi = gesungenFuer(n, timing, ausgerichtet);
     if (midi !== null) gesungen.set(i, midi - MIDI_OFFSET);
   }
-  if (gesungen.size === 0) return { pitches: new Map(), octaveShift: 0, judged: 0 };
+  if (gesungen.size === 0) return { pitches: new Map(), octaveShift: 0, judged: 0, offsetMs };
 
   const abstaende = [...gesungen].map(([i, p]) => p - (seq.notes[i] as EditNote).pitch);
   const octaveShift = Math.round(median(abstaende) / 12);
@@ -83,5 +159,5 @@ export const suggestPitches = (
     const ziel = Math.round(p - octaveShift * 12);
     if (ziel !== (seq.notes[i] as EditNote).pitch) pitches.set(i, ziel);
   }
-  return { pitches, octaveShift, judged: gesungen.size };
+  return { pitches, octaveShift, judged: gesungen.size, offsetMs };
 };

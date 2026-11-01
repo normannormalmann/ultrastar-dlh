@@ -5,6 +5,7 @@
 // lives in ipc.ts, where electron imports belong.
 import { join } from "node:path";
 import type { SidecarWorker, WorkerJob } from "../../core/create/worker.ts";
+import type { PackageWarning } from "../../core/create/packageSong.ts";
 import type { EnvironmentStatus } from "../../core/create/environment.ts";
 import type { AcquiredMedia } from "../../core/create/media.ts";
 import type { FolderLayout } from "../../core/download/naming.ts";
@@ -57,7 +58,7 @@ export type CreationsDeps = {
   ) => Promise<{
     songDir: string;
     dirName: string;
-    warnungen: string[];
+    warnungen: PackageWarning[];
     lowConfidence: boolean;
   }>;
   /** The waiting jobs of the previous run - see initialisiere(). */
@@ -286,7 +287,9 @@ export const createCreations = (deps: CreationsDeps) => {
           melde();
           const paket = await deps.assemble(jobDef, medien, jobDir);
           for (const w of paket.warnungen) {
-            deps.broadcast("event:error", { context: "warnung", message: w });
+            // message carries the code too: the renderer translates the
+            // code, the TUI and the log at least see what it was.
+            deps.broadcast("event:error", { context: "warnung", code: w, message: w });
           }
           eintrag.songDir = paket.songDir;
           eintrag.dirName = paket.dirName;
