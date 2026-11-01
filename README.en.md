@@ -4,6 +4,8 @@
 
 **The desktop app that builds, maintains, and makes your UltraStar karaoke collection searchable.**
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
+
 Search the largest UltraStar database (USDB), download complete, ready-to-sing song folders — lyrics, cover, and video in one go — and manage tens of thousands of songs with real filters. No manual assembling, no broken folders. Search, download, sing.
 
 ➡️ **New here? [Go to the step-by-step tutorial](docs/TUTORIAL.en.md)**
@@ -137,6 +139,12 @@ Python audits check base and model dependencies separately for Python 3.12, incl
 - **Genre run stops:** Just start it again — already-enriched songs are skipped. For persistent issues, switch the source (Settings → Genre source).
 
 More in the **[Tutorial → Troubleshooting](docs/TUTORIAL.en.md#11-troubleshooting)**.
+
+## ☕ Support
+
+The app is free and a spare-time project. A ⭐ on GitHub helps others find it, and a coffee keeps development going:
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
 
 ## 🔗 Links & Credits
 
