@@ -54,6 +54,45 @@ jobs:
       - name: Run tests
         run: bun run test
 
+  # The main bundle must not only build, it must load: v1.5.0 shipped a
+  # bundle that threw on startup (a named ESM import of a CommonJS module
+  # after electron-vite started externalizing dependencies) and no job
+  # here would have noticed. This one starts the built app under Xvfb.
+  desktop-smoke:
+    name: Desktop smoke (built app starts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      # With lifecycle scripts: Electron's postinstall fetches the binary.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install a virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Build the desktop app
+        run: bun run desktop:build
+      - name: Start the built app
+        run: xvfb-run -a bunx playwright test e2e/app.spec.ts --reporter=list
+        env:
+          # The spec checks German labels; the runner's locale is not German.
+          LANG: de_DE.UTF-8
+          LC_ALL: de_DE.UTF-8
+      # What the window actually showed - the only way to debug a failure
+      # that happened on a headless runner.
+      - name: Show what the page rendered
+        if: failure()
+        run: |
+          for f in test-results/*/error-context.md; do
+            echo "=== $f"; sed -n '/Page Snapshot/,$p' "$f" | head -80
+          done
+
   python-test:
     name: Sidecar tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

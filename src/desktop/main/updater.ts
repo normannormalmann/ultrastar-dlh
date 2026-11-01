@@ -4,9 +4,16 @@
 // and creations run for minutes here, so a self-triggered restart would be a
 // good way to destroy someone's work.
 import { app } from "electron";
-import { autoUpdater } from "electron-updater";
+// Default import on purpose: electron-updater is CommonJS and exposes its
+// exports through getters, which Node's ESM loader cannot see as named
+// exports. Since electron-vite 6 leaves dependencies external, the main
+// bundle is loaded as ESM and a named import throws at startup - the app
+// then never opens a window (v1.5.0 shipped like that).
+import electronUpdater from "electron-updater";
 import type { UpdateState } from "../shared/ipcContract.ts";
 import { broadcast } from "./state.ts";
+
+const { autoUpdater } = electronUpdater;
 
 let current: UpdateState = { phase: "idle" };
 

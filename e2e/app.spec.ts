@@ -1,7 +1,38 @@
-import { _electron as electron, expect, test } from "@playwright/test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { type ElectronApplication, _electron as electron, expect, test } from "@playwright/test";
+import envPaths from "env-paths";
+
+// An app name of its own: the test never touches the real config, and the
+// UI language is pinned to German - the labels below are German, and a CI
+// runner's locale is not.
+const APP_NAME = `ultrastar-e2e-app-${process.pid}`;
+const datenDir = () => envPaths(APP_NAME, { suffix: "" }).cache;
+let bibliothek: string;
+
+test.beforeAll(async () => {
+  bibliothek = await mkdtemp(join(tmpdir(), "us-e2e-app-"));
+  await mkdir(datenDir(), { recursive: true });
+  await writeFile(
+    join(datenDir(), "config.json"),
+    JSON.stringify({ downloadDir: bibliothek, browser: "none", uiLanguage: "de" }),
+  );
+});
+
+test.afterAll(async () => {
+  await rm(bibliothek, { recursive: true, force: true });
+  await rm(dirname(datenDir()), { recursive: true, force: true });
+});
+
+const starte = (): Promise<ElectronApplication> =>
+  electron.launch({
+    args: ["out/main/index.js"],
+    env: { ...process.env, ULTRASTAR_APP_NAME: APP_NAME },
+  });
 
 test("app boots and shows the search view", async () => {
-  const app = await electron.launch({ args: ["out/main/index.js"] });
+  const app = await starte();
   const window = await app.firstWindow();
 
   await expect(window).toHaveTitle("UltraStar - Dirty Little Helper");
@@ -22,7 +53,7 @@ test("app boots and shows the search view", async () => {
 });
 
 test("the creation wizard reaches step 2", async () => {
-  const app = await electron.launch({ args: ["out/main/index.js"] });
+  const app = await starte();
   const window = await app.firstWindow();
 
   await window.getByRole("button", { name: "Erstellen", exact: true }).click();
