@@ -8,6 +8,17 @@ Search the largest UltraStar database (USDB), download complete, ready-to-sing s
 
 ➡️ **New here? [Go to the step-by-step tutorial](docs/TUTORIAL.en.md)**
 
+
+![Search with library matching](docs/screenshots/en/search.png)
+
+| Correction editor | Create a song |
+| :---: | :---: |
+| ![Correction editor](docs/screenshots/en/editor.png) | ![Create a song](docs/screenshots/en/create-source.png) |
+| **Library** | **Queue with creations** |
+| ![Library](docs/screenshots/en/library.png) | ![Queue with creations](docs/screenshots/en/queue-creations.png) |
+
+<sub>The pictures show a demo library with made-up artists and titles.</sub>
+
 ---
 
 ## ✨ Features
@@ -24,7 +35,7 @@ Search the largest UltraStar database (USDB), download complete, ready-to-sing s
 - **AI pipeline in the background:** a Python sidecar separates the vocals, transcribes them, aligns the lyrics to the singing, and detects the pitches — the result is a complete `song.txt` with notes.
 - **Its own queue:** creations run alongside downloads, with progress, cancel, and a direct jump into the finished folder.
 - **One-time setup:** the app installs the AI environment (Python, Torch, models) at the press of a button — including GPU detection where available.
-- **Correction editor:** straighten out the notes, syllables and timing of any song — created or downloaded — in a piano-roll view with playback — with uncertain spots marked in created songs, pitch correction by singing into the microphone, and duet support. The original version is kept as `song.txt.bak`.
+- **Correction editor:** straighten out the notes, syllables and timing of any song — created or downloaded — in a piano-roll view with playback — with uncertain spots marked in created songs, pitch correction by singing into the microphone (the editor measures the delay of microphone and timing itself and compensates for it), and duet support. The original version is kept as `song.txt.bak`; if another program changes the file while the editor is open, you choose between reloading and overwriting.
 
 ### Library
 - **Archive import:** bring in existing collections (even tens of thousands of songs, even nested folder structures) without re-downloading — including metadata from the song.txt files.
@@ -36,6 +47,7 @@ Search the largest UltraStar database (USDB), download complete, ready-to-sing s
 - **Everything automatic:** the app sets up your USDB account, yt-dlp, and ffmpeg itself — no manual setup needed.
 - **Configurable:** folder structure for new downloads (flat, by artist, by first letter), download concurrency (1–5), maximum video quality (720p/1080p/best), YouTube cookie browser.
 - **Automatic updates:** the app reports new versions itself and installs them at the press of a button — no more manual downloading.
+- **Three languages:** interface in German, English or Spanish — switchable in the settings.
 - **Duplicate protection across sessions**, failed-download log as an Excel file, dark theme.
 
 ---
@@ -100,6 +112,7 @@ bun run start          # TUI in dev mode
 bun run desktop:dev    # Desktop app with hot reload
 bun run test           # Unit tests
 bun run test:e2e       # Playwright smoke test (builds first)
+bun run docs:screenshots  # Regenerate the README and tutorial screenshots (all three languages)
 bun run desktop:dist   # Build the installer for the current platform (dist/)
 bun run desktop:dist:win     # Force-build the Windows installer
 bun run desktop:dist:linux   # Force-build the Linux AppImage
@@ -123,7 +136,7 @@ Python audits check base and model dependencies separately for Python 3.12, incl
 - **Songs don't show up in the library:** First run "Import archive" (picks up existing collections); click "Refresh" if folders were externally deleted/changed.
 - **Genre run stops:** Just start it again — already-enriched songs are skipped. For persistent issues, switch the source (Settings → Genre source).
 
-More in the **[Tutorial → Troubleshooting](docs/TUTORIAL.en.md#9-troubleshooting)**.
+More in the **[Tutorial → Troubleshooting](docs/TUTORIAL.en.md#11-troubleshooting)**.
 
 ## 🔗 Links & Credits
 
