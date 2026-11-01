@@ -594,9 +594,11 @@ for (const sprache of Object.keys(KATALOGE) as Sprache[]) {
 
     const app = await starte();
     const page = await app.firstWindow();
-    // Not by label yet: the first render can come up in the system language,
-    // the reload below brings the configured one.
-    await expect(page.locator("nav.sidebar")).toBeVisible();
+    await expect(
+      page
+        .locator("nav.sidebar")
+        .getByRole("button", { name: t.nav.search, exact: true }),
+    ).toBeVisible();
     // The real start-up (failed placeholder login, tool check) has to be
     // over before the demo state is painted on, or it paints over it.
     await page.waitForTimeout(6000);

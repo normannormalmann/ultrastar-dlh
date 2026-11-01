@@ -11,7 +11,7 @@ import {
   registerIpcHandlers,
 } from "./ipc.ts";
 import { MEDIA_SCHEME, serveMedia } from "./editorMedia.ts";
-import { broadcast, initializeState, state } from "./state.ts";
+import { broadcast, initializeState, loadStartConfig, state } from "./state.ts";
 import { initUpdater } from "./updater.ts";
 
 // Must happen before "ready". stream lets <audio> seek through range
@@ -103,6 +103,8 @@ void app.whenReady().then(async () => {
   // Orphans from a session that fetched candidates but never queued the job.
   // Swallowed: a cache sweep must not keep the window from opening.
   await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
+  // Also before the window: it carries the UI language (see loadStartConfig).
+  await loadStartConfig();
   createWindow();
   void initializeState().then(() => {
     // Spec: missing tools are installed automatically on first launch

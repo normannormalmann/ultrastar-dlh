@@ -1,7 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type ElectronApplication, _electron as electron, expect, test } from "@playwright/test";
+import {
+  type ElectronApplication,
+  _electron as electron,
+  expect,
+  test,
+} from "@playwright/test";
 import envPaths from "env-paths";
 
 // An app name of its own: the test never touches the real config, and the
@@ -16,7 +21,11 @@ test.beforeAll(async () => {
   await mkdir(datenDir(), { recursive: true });
   await writeFile(
     join(datenDir(), "config.json"),
-    JSON.stringify({ downloadDir: bibliothek, browser: "none", uiLanguage: "de" }),
+    JSON.stringify({
+      downloadDir: bibliothek,
+      browser: "none",
+      uiLanguage: "de",
+    }),
   );
 });
 
@@ -50,6 +59,43 @@ test("app boots and shows the search view", async () => {
   await expect(window.getByPlaceholder("Interpret…")).toBeVisible();
 
   await app.close();
+});
+
+test("the configured UI language wins over the system language from the first render", async () => {
+  // Spanish is neither the developer's system language nor the CI
+  // runner's. A profile of its own, with placeholder credentials so the
+  // start-up login does not register a USDB account; it fails, and it is
+  // exactly that slow network round trip the config load used to wait on.
+  const name = `ultrastar-e2e-lang-${process.pid}`;
+  const dir = envPaths(name, { suffix: "" }).cache;
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "config.json"),
+    JSON.stringify({
+      downloadDir: bibliothek,
+      browser: "none",
+      uiLanguage: "es",
+    }),
+  );
+  await writeFile(
+    join(dir, "credentials.json"),
+    JSON.stringify({ user: "e2e-lang", pass: "e2e-lang-only" }),
+  );
+  const app = await electron.launch({
+    args: ["out/main/index.js"],
+    env: { ...process.env, ULTRASTAR_APP_NAME: name },
+  });
+  try {
+    const window = await app.firstWindow();
+    await expect(
+      window
+        .locator("nav.sidebar")
+        .getByRole("button", { name: "Buscar", exact: true }),
+    ).toBeVisible();
+  } finally {
+    await app.close();
+    await rm(dirname(dir), { recursive: true, force: true });
+  }
 });
 
 test("the creation wizard reaches step 2", async () => {
