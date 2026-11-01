@@ -275,7 +275,11 @@ test("singing a line in corrects its pitches", async () => {
   const window = await oeffne(app, "Einsingen");
   const songDir = ordner("Einsingen");
 
+  // The heading shows before the notes and the key handler are ready; an
+  // early ArrowRight selects nothing and "i" then does nothing either.
+  await expect(window.getByText("3 Noten")).toBeVisible();
   await window.keyboard.press("ArrowRight");
+  await expect(window.getByRole("button", { name: /Zeile einsingen/ })).toBeEnabled();
   await window.keyboard.press("i");
   await expect(window.getByText("Sing die Zeile mit …")).toBeVisible();
   // The fake microphone holds D4 throughout: every note should become 2.
