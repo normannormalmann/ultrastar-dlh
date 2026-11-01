@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   _electron as electron,
@@ -8,10 +8,10 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import envPaths from "env-paths";
 import { de } from "../src/desktop/renderer/i18n/de.ts";
 import { en } from "../src/desktop/renderer/i18n/en.ts";
 import { es } from "../src/desktop/renderer/i18n/es.ts";
+import { datenOrdner, profilOrdner } from "./testProfile.ts";
 
 /**
  * The screenshots in docs/screenshots/<lang>/, one set per UI language.
@@ -383,7 +383,7 @@ const LRC = [
 // --- Plumbing --------------------------------------------------------------
 
 const APP_NAME = `ultrastar-docs-shots-${process.pid}`;
-const datenDir = () => envPaths(APP_NAME, { suffix: "" }).cache;
+const datenDir = () => datenOrdner(APP_NAME);
 const AUSGABE = join(import.meta.dirname, "..", "docs", "screenshots");
 let bibliothek: string;
 let mikroWav: string;
@@ -569,7 +569,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await rm(bibliothek, { recursive: true, force: true });
-  await rm(dirname(datenDir()), { recursive: true, force: true });
+  await rm(profilOrdner(APP_NAME), { recursive: true, force: true });
 });
 
 // --- The shots ---------------------------------------------------------------

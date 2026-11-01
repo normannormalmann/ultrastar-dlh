@@ -1,19 +1,19 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   _electron as electron,
   expect,
   test,
 } from "@playwright/test";
-import envPaths from "env-paths";
+import { datenOrdner, profilOrdner } from "./testProfile.ts";
 
 // An app name of its own: the test never touches the real config, and the
 // UI language is pinned to German - the labels below are German, and a CI
 // runner's locale is not.
 const APP_NAME = `ultrastar-e2e-app-${process.pid}`;
-const datenDir = () => envPaths(APP_NAME, { suffix: "" }).cache;
+const datenDir = () => datenOrdner(APP_NAME);
 let bibliothek: string;
 
 test.beforeAll(async () => {
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await rm(bibliothek, { recursive: true, force: true });
-  await rm(dirname(datenDir()), { recursive: true, force: true });
+  await rm(profilOrdner(APP_NAME), { recursive: true, force: true });
 });
 
 const starte = (): Promise<ElectronApplication> =>
@@ -67,7 +67,7 @@ test("the configured UI language wins over the system language from the first re
   // start-up login does not register a USDB account; it fails, and it is
   // exactly that slow network round trip the config load used to wait on.
   const name = `ultrastar-e2e-lang-${process.pid}`;
-  const dir = envPaths(name, { suffix: "" }).cache;
+  const dir = datenOrdner(name);
   await mkdir(dir, { recursive: true });
   await writeFile(
     join(dir, "config.json"),
@@ -94,7 +94,7 @@ test("the configured UI language wins over the system language from the first re
     ).toBeVisible();
   } finally {
     await app.close();
-    await rm(dirname(dir), { recursive: true, force: true });
+    await rm(profilOrdner(name), { recursive: true, force: true });
   }
 });
 
