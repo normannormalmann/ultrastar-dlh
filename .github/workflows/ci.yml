@@ -80,6 +80,18 @@ jobs:
         run: bun run desktop:build
       - name: Start the built app
         run: xvfb-run -a bunx playwright test e2e/app.spec.ts --reporter=list
+        env:
+          # The spec checks German labels; the runner's locale is not German.
+          LANG: de_DE.UTF-8
+          LC_ALL: de_DE.UTF-8
+      # What the window actually showed - the only way to debug a failure
+      # that happened on a headless runner.
+      - name: Show what the page rendered
+        if: failure()
+        run: |
+          for f in test-results/*/error-context.md; do
+            echo "=== $f"; sed -n '/Page Snapshot/,$p' "$f" | head -80
+          done
 
   python-test:
     name: Sidecar tests (${{ matrix.os }})
