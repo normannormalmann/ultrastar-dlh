@@ -17,7 +17,12 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { compareToReference, type Metrics, parseReferenceTxt } from "../src/core/create/evaluate.ts";
+import {
+  compareToReference,
+  DRIFT_GRENZE_MS_PRO_S,
+  type Metrics,
+  parseReferenceTxt,
+} from "../src/core/create/evaluate.ts";
 import { runPipeline } from "../src/core/create/pipeline.ts";
 import { renderSongTxt } from "../src/core/create/writeSongTxt.ts";
 import { fetchSyncedLyrics } from "../src/core/create/lrclib.ts";
@@ -107,8 +112,19 @@ export const findeAudio = async (dir: string, referenzTxt: string): Promise<stri
  * Silbenfolge 1:1 mit der Referenz und der Vergleich ist wohldefiniert.
  */
 export const lyricsAusReferenz = (referenzTxt: string): string[] => {
-  const zeilen: string[] = [];
+  // Jede Zeile traegt den Beat ihrer ersten Silbe: bei Duetten stehen die
+  // Stimmen als Bloecke in der Datei (P1, dann P2), parseReferenceTxt
+  // vergleicht aber in Zeitreihenfolge. Die Pipeline muss dieselbe Folge
+  // sehen, sonst richtet sie Text in einer Reihenfolge aus, in der er nie
+  // gesungen wird, und der Vergleich misst Alignment-Fehler, die keine sind.
+  const zeilen: { beat: number; text: string }[] = [];
   let laufend = "";
+  let beat = 0;
+  let duett = false;
+  const abschliessen = (): void => {
+    if (laufend.trim()) zeilen.push({ beat, text: laufend.trim() });
+    laufend = "";
+  };
   for (const roh of referenzTxt.split("\n")) {
     // Nur das Windows-Zeilenende kappen, nicht trimEnd(): die letzte Silbe
     // eines Worts traegt hier ihr Leerzeichen als Trennzeichen zum naechsten
@@ -116,18 +132,23 @@ export const lyricsAusReferenz = (referenzTxt: string): string[] => {
     // Woerter einer Zeile zu einer Silbe verschmelzen (gemessen: 1,09 statt
     // 4,49 Woerter/Zeile ueber 60 Referenzsongs).
     const z = roh.replace(/\r$/, "");
-    const note = /^[:*FR]\s+-?\d+\s+\d+\s+-?\d+\s?(.*)$/.exec(z);
+    const note = /^[:*FR]\s+(-?\d+)\s+\d+\s+-?\d+\s?(.*)$/.exec(z);
     if (note) {
-      laufend += note[1] ?? "";
+      if (!laufend) beat = Number.parseInt(note[1] ?? "0", 10);
+      laufend += note[2] ?? "";
       continue;
     }
-    if (z.startsWith("- ") && laufend.trim()) {
-      zeilen.push(laufend.trim());
-      laufend = "";
+    if (/^P\s*\d/.test(z)) {
+      // Stimmenwechsel ist immer auch ein Zeilenende.
+      duett = true;
+      abschliessen();
+      continue;
     }
+    if (z.startsWith("- ")) abschliessen();
   }
-  if (laufend.trim()) zeilen.push(laufend.trim());
-  return zeilen;
+  abschliessen();
+  if (duett) zeilen.sort((a, b) => a.beat - b.beat);
+  return zeilen.map((z) => z.text);
 };
 
 const execFileAsync = promisify(execFile);
@@ -344,6 +365,14 @@ const main = async (): Promise<void> => {
     if (Math.abs(m.medianVersatzMs) > 2000) {
       console.log(
         "  Hinweis: |Versatz| > 2 s - Referenz passt vermutlich nicht zur Audio-Edition.",
+      );
+    }
+    // Waechst der Versatz linear, laeuft das Audio in anderem Tempo als das
+    // der Referenz (29.10.2026: +3,6 ms/s = +0,9 s uebers Lied, vom 2-s-Check
+    // unbemerkt). Auch das ist eine Editionsfrage, kein Alignment-Problem.
+    if (Math.abs(m.driftMsProSekunde) > DRIFT_GRENZE_MS_PRO_S) {
+      console.log(
+        `  Hinweis: Drift ${m.driftMsProSekunde.toFixed(1)} ms/s - Audio laeuft in anderem Tempo als die Referenz-Edition.`,
       );
     }
   }

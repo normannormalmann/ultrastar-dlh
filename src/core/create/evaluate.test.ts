@@ -281,3 +281,60 @@ describe("compareToReference - inhaltliche Paarung", () => {
     expect(m.p90AbweichungMs).toBe(10);
   });
 });
+
+describe("parseReferenceTxt: Duette", () => {
+  it("ordnet die Silben eines Duetts nach Zeit, nicht nach Dateireihenfolge", () => {
+    // Im Duett stehen die Stimmen als Bloecke (P1, dann P2) in der Datei,
+    // singen aber zeitlich verschraenkt. Unsere Ausgabe ist eine zeitlich
+    // geordnete Stimme; eine Paarung in Dateireihenfolge springt sonst um
+    // Minuten (gemessen 29.10.2026: +114 s bei einem Duett).
+    const duett = [
+      "#BPM:120",
+      "#GAP:0",
+      "P1",
+      ": 0 4 5 Eins ",
+      ": 8 4 5 Drei ",
+      "P2",
+      ": 4 4 5 Zwei ",
+      "E",
+      "",
+    ].join("\n");
+
+    const r = parseReferenceTxt(duett);
+
+    expect(r.syllables.map((s) => s.syllable)).toEqual(["Eins ", "Zwei ", "Drei "]);
+  });
+
+  it("laesst die Reihenfolge ohne Stimmenmarker unangetastet", () => {
+    const r = parseReferenceTxt(txt);
+    expect(r.syllables.map((s) => s.syllable)).toEqual(["Hal", "lo", "Welt"]);
+  });
+});
+
+describe("compareToReference: Tempo-Drift", () => {
+  const song = (onsets: number[]) => ({
+    bpm: 120,
+    gap: 0,
+    syllables: onsets.map((onsetMs, i) => ({ syllable: `s${i} `, onsetMs, pitch: 0 })),
+  });
+  const referenz = song(Array.from({ length: 101 }, (_, i) => i * 1000));
+
+  it("meldet 0 ms/s bei konstantem Versatz", () => {
+    const unser = song(referenz.syllables.map((s) => s.onsetMs + 300));
+    expect(compareToReference(unser, referenz).driftMsProSekunde).toBeCloseTo(0, 6);
+  });
+
+  it("misst die Steigung des Versatzes ueber die Songzeit in ms je Sekunde", () => {
+    // Audio laeuft 0,4 % schneller als die Referenz: der Versatz waechst
+    // um 4 ms je Sekunde (Onkelz am 29.10.: +3,6 ms/s, +0,9 s uebers Lied).
+    const unser = song(referenz.syllables.map((s) => s.onsetMs * 1.004));
+    expect(compareToReference(unser, referenz).driftMsProSekunde).toBeCloseTo(4, 3);
+  });
+
+  it("laesst grobe Ausreisser nicht in die Steigung eingehen", () => {
+    const onsets = referenz.syllables.map((s) => s.onsetMs + 100);
+    onsets[90] = (onsets[90] ?? 0) + 30_000; // ein Grobfehler von 30 s
+    const unser = song(onsets);
+    expect(Math.abs(compareToReference(unser, referenz).driftMsProSekunde)).toBeLessThan(0.1);
+  });
+});

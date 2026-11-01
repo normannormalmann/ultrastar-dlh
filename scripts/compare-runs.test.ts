@@ -23,6 +23,7 @@ const basisMetrik: Metrics = {
   anteilGepaart: 0.9,
   anteilUnter50msKalibriert: 0.37,
   anteilUnter100msKalibriert: 0.6,
+  driftMsProSekunde: 0,
 };
 
 /** Eine Ergebniszeile mit erfundenem Song; nur die genannten Metriken weichen ab. */
@@ -254,7 +255,21 @@ describe("vergleicheLaeufe: Sekundaeres und Hinweise", () => {
 
     const ergebnis = vergleicheLaeufe(basis, arm, { ...optionen, ausschluss: ["Raus"] });
 
-    expect(ergebnis.editionsHinweise).toEqual([{ name: "FalscheEdition", medianVersatzMs: -2300 }]);
+    expect(ergebnis.editionsHinweise).toEqual([
+      { name: "FalscheEdition", medianVersatzMs: -2300, driftMsProSekunde: 0 },
+    ]);
+  });
+
+  it("weist auch auf Tempo-Drift ueber 2 ms/s hin: das Audio ist eine andere Edition", () => {
+    const basis = lauf([zeile("Ok", { driftMsProSekunde: 0.5 }), zeile("Schneller", { driftMsProSekunde: 3.6 })]);
+    const arm = lauf(basis.songs.map((z) => ({ ...z })));
+
+    const ergebnis = vergleicheLaeufe(basis, arm, optionen);
+
+    expect(ergebnis.editionsHinweise).toEqual([
+      { name: "Schneller", medianVersatzMs: 30, driftMsProSekunde: 3.6 },
+    ]);
+    expect(formatiereBericht(ergebnis, basis, arm, optionen)).toContain("3.6 ms/s");
   });
 });
 
