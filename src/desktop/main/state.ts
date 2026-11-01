@@ -203,7 +203,17 @@ export const reloadDownloadedEntries = async (
   }
 };
 
-/** On app start: session, config, queue, history, tool checks. */
+/**
+ * Before the first window: the renderer takes the UI language from
+ * app:getInitialState the moment it mounts. Loaded inside initializeState,
+ * after the USDB login, the config was still null by then and the app came
+ * up in the system language instead of the configured one.
+ */
+export const loadStartConfig = async (): Promise<void> => {
+  state.config = await Effect.runPromise(loadConfig).catch(() => null);
+};
+
+/** On app start: session, queue, history, tool checks (config: loadStartConfig). */
 export const initializeState = async (): Promise<void> => {
   try {
     const session = await Effect.runPromise(ensureSession);
@@ -213,8 +223,6 @@ export const initializeState = async (): Promise<void> => {
     console.error("USDB session failed:", e);
     state.setStatus({ loggedIn: false });
   }
-
-  state.config = await Effect.runPromise(loadConfig).catch(() => null);
 
   const savedQueue = await Effect.runPromise(loadQueue).catch(
     () => [] as Song[],
