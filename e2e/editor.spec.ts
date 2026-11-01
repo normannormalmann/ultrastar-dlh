@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   type ElectronApplication,
   _electron as electron,
@@ -9,7 +9,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import envPaths from "env-paths";
+import { datenOrdner, profilOrdner } from "./testProfile.ts";
 
 /** 8-bit mono PCM: either silence or a steady sine tone. */
 const wav = (sekunden: number, hz?: number): Buffer => {
@@ -88,7 +88,7 @@ const EINSINGEN = [
 
 // An app name of its own: the test never touches the real library or config.
 const APP_NAME = `ultrastar-e2e-editor-${process.pid}`;
-const datenDir = () => envPaths(APP_NAME, { suffix: "" }).cache;
+const datenDir = () => datenOrdner(APP_NAME);
 let bibliothek: string;
 let mikroWav: string;
 const ordner = (titel: string) => join(bibliothek, `Testband - ${titel}`);
@@ -138,7 +138,7 @@ test.afterAll(async () => {
   await rm(bibliothek, { recursive: true, force: true });
   // The app folder itself, not just its Cache child - otherwise every run
   // leaves an empty "ultrastar-e2e-editor-<pid>" behind in LOCALAPPDATA.
-  await rm(dirname(datenDir()), { recursive: true, force: true });
+  await rm(profilOrdner(APP_NAME), { recursive: true, force: true });
 });
 
 const starte = (): Promise<ElectronApplication> =>
