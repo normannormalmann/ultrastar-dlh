@@ -4,6 +4,8 @@
 
 **Die Desktop-App, die deine UltraStar-Karaoke-Sammlung aufbaut, pflegt und durchsuchbar macht.**
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
+
 Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singbare Song-Ordner — Text, Cover und Video in einem Rutsch — und verwalte zehntausende Songs mit echten Filtern. Kein manuelles Zusammensuchen, keine kaputten Ordner. Suchen, laden, singen.
 
 ➡️ **Neu hier? [Zum Schritt-für-Schritt-Tutorial](docs/TUTORIAL.md)**
@@ -136,6 +138,12 @@ Der Python-Audit prüft Basis- und Modellabhängigkeiten getrennt für Python 3.
 - **Genre-Lauf bricht ab:** Einfach erneut starten — bereits angereicherte Songs werden übersprungen. Für hartnäckige Fälle die Quelle wechseln (Einstellungen → Genre-Quelle).
 
 Mehr im **[Tutorial → Problemlösung](docs/TUTORIAL.md#11-problemlösung)**.
+
+## ☕ Unterstützen
+
+Die App ist kostenlos und ein Freizeitprojekt. Ein ⭐ auf GitHub hilft anderen, sie zu finden, und ein Kaffee hält die Entwicklung am Laufen:
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
 
 ## 🔗 Links & Credits
 

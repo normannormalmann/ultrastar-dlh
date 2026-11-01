@@ -4,6 +4,8 @@
 
 **La aplicación de escritorio que crea, mantiene y hace buscable tu colección de karaoke UltraStar.**
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
+
 Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de canciones completas y listas para cantar —letra, carátula y vídeo de una sola vez— y administra decenas de miles de canciones con filtros de verdad. Sin montajes manuales, sin carpetas rotas. Buscar, descargar, cantar.
 
 ➡️ **¿Es tu primera vez? [Ve al tutorial paso a paso](docs/TUTORIAL.es.md)**
@@ -131,6 +133,12 @@ Arquitectura: `src/core/` (núcleo compartido: API de USDB, descargas, almacenam
 - **El enriquecimiento de géneros se detiene:** vuelve a iniciarlo — las canciones ya enriquecidas se omiten. Si el problema persiste, cambia de fuente (Ajustes → Fuente de géneros).
 
 Hay más en el **[Tutorial → Solución de problemas](docs/TUTORIAL.es.md#11-solución-de-problemas)**.
+
+## ☕ Apoyar
+
+La aplicación es gratuita y un proyecto de tiempo libre. Una ⭐ en GitHub ayuda a que otros la encuentren, y un café mantiene vivo el desarrollo:
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
 
 ## 🔗 Enlaces y créditos
 
