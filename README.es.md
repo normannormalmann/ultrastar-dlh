@@ -8,6 +8,17 @@ Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de cancio
 
 ➡️ **¿Es tu primera vez? [Ve al tutorial paso a paso](docs/TUTORIAL.es.md)**
 
+
+![Búsqueda con cotejo de la colección](docs/screenshots/es/search.png)
+
+| Editor de corrección | Crear una canción |
+| :---: | :---: |
+| ![Editor de corrección](docs/screenshots/es/editor.png) | ![Crear una canción](docs/screenshots/es/create-source.png) |
+| **Colección** | **Cola con creaciones** |
+| ![Colección](docs/screenshots/es/library.png) | ![Cola con creaciones](docs/screenshots/es/queue-creations.png) |
+
+<sub>Las imágenes muestran una colección de demostración con intérpretes y títulos inventados.</sub>
+
 ---
 
 ## ✨ Funciones
@@ -24,7 +35,7 @@ Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de cancio
 - **Canalización de IA en segundo plano:** un proceso auxiliar en Python separa la voz, la transcribe, alinea la letra con el canto y detecta los tonos — el resultado es un `song.txt` completo con sus notas.
 - **Cola propia:** las creaciones se ejecutan junto a las descargas, con progreso, cancelación y acceso directo a la carpeta terminada.
 - **Configuración única:** la aplicación instala por sí sola el entorno de IA (Python, Torch, modelos) con solo pulsar un botón — incluida la detección de GPU si la hay.
-- **Editor de corrección:** ajusta las notas, sílabas y sincronización de cualquier canción —creada o descargada— en una vista de piano roll con reproducción, con los puntos dudosos marcados en las canciones creadas, corrección de tonos cantando al micrófono y soporte para duetos. La versión original se conserva como `song.txt.bak`.
+- **Editor de corrección:** ajusta las notas, sílabas y sincronización de cualquier canción —creada o descargada— en una vista de piano roll con reproducción, con los puntos dudosos marcados en las canciones creadas, corrección de tonos cantando al micrófono (el editor mide por sí solo el retardo del micrófono y de tu entrada y lo compensa) y soporte para duetos. La versión original se conserva como `song.txt.bak`; si otro programa cambia el archivo con el editor abierto, eliges entre recargar y sobrescribir.
 
 ### Biblioteca
 - **Importación de archivos existentes:** incorpora colecciones ya montadas (incluso decenas de miles de canciones y estructuras de carpetas anidadas) sin volver a descargar nada — incluidos los metadatos de los archivos song.txt.
@@ -36,6 +47,7 @@ Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de cancio
 - **Todo automático:** la aplicación configura por sí misma tu cuenta de USDB, yt-dlp y ffmpeg — no hace falta ninguna instalación manual.
 - **Configurable:** estructura de carpetas para las descargas nuevas (plana, por intérprete, por letra inicial), descargas simultáneas (1–5), calidad máxima de vídeo (720p/1080p/la mejor) y navegador para las cookies de YouTube.
 - **Actualizaciones automáticas:** la aplicación avisa por sí sola de las versiones nuevas y las instala con un botón — se acabó descargarlas a mano.
+- **Tres idiomas:** interfaz en alemán, inglés o español — se cambia en los ajustes.
 - **Protección contra duplicados entre sesiones**, registro de descargas fallidas en un archivo de Excel y tema oscuro.
 
 ---
@@ -100,6 +112,7 @@ bun run start          # TUI en modo desarrollo
 bun run desktop:dev    # Aplicación de escritorio con recarga en caliente
 bun run test           # Pruebas unitarias
 bun run test:e2e       # Prueba de humo con Playwright (compila primero)
+bun run docs:screenshots  # Regenerar las capturas del README y del tutorial (los tres idiomas)
 bun run desktop:dist   # Compilar el instalador de la plataforma actual (dist/)
 bun run desktop:dist:win     # Forzar la compilación del instalador de Windows
 bun run desktop:dist:linux   # Forzar la compilación del AppImage de Linux
@@ -117,7 +130,7 @@ Arquitectura: `src/core/` (núcleo compartido: API de USDB, descargas, almacenam
 - **Las canciones no aparecen en la biblioteca:** ejecuta primero «Importar colección» (recoge los archivos existentes); pulsa «Actualizar» si se han borrado o cambiado carpetas desde fuera.
 - **El enriquecimiento de géneros se detiene:** vuelve a iniciarlo — las canciones ya enriquecidas se omiten. Si el problema persiste, cambia de fuente (Ajustes → Fuente de géneros).
 
-Hay más en el **[Tutorial → Solución de problemas](docs/TUTORIAL.es.md#9-solución-de-problemas)**.
+Hay más en el **[Tutorial → Solución de problemas](docs/TUTORIAL.es.md#11-solución-de-problemas)**.
 
 ## 🔗 Enlaces y créditos
 

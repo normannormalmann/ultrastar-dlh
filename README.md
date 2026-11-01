@@ -8,6 +8,16 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 
 ➡️ **Neu hier? [Zum Schritt-für-Schritt-Tutorial](docs/TUTORIAL.md)**
 
+![Suche mit Bestands-Abgleich](docs/screenshots/de/search.png)
+
+| Korrektur-Editor | Song erstellen |
+| :---: | :---: |
+| ![Korrektur-Editor](docs/screenshots/de/editor.png) | ![Song erstellen](docs/screenshots/de/create-source.png) |
+| **Bibliothek** | **Queue mit Erstellungen** |
+| ![Bibliothek](docs/screenshots/de/library.png) | ![Queue](docs/screenshots/de/queue-creations.png) |
+
+<sub>Die Bilder zeigen eine Demo-Bibliothek mit erfundenen Interpreten und Titeln.</sub>
+
 ---
 
 ## ✨ Funktionen
@@ -24,7 +34,7 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 - **KI-Pipeline im Hintergrund:** Ein Python-Sidecar trennt die Stimme ab, transkribiert sie, richtet den Text am Gesang aus und erkennt die Tonhöhen — daraus entsteht eine vollständige `song.txt` mit Noten.
 - **Eigene Warteschlange:** Erstellungen laufen neben den Downloads, mit Fortschritt, Abbruch und direktem Sprung in den fertigen Ordner.
 - **Einmalige Einrichtung:** Die KI-Umgebung (Python, Torch, Modelle) installiert die App auf Knopfdruck selbst — mit GPU-Erkennung, falls vorhanden.
-- **Korrektur-Editor:** Noten, Silben und Timing jedes Songs — selbst erstellt oder heruntergeladen — in einer Piano-Roll-Ansicht mit Wiedergabe gerade ziehen — mit markierten unsicheren Stellen bei selbst erstellten Songs, Tonhöhen-Korrektur per Einsingen ins Mikrofon und Duett-Unterstützung. Die ursprüngliche Fassung bleibt als `song.txt.bak` erhalten.
+- **Korrektur-Editor:** Noten, Silben und Timing jedes Songs — selbst erstellt oder heruntergeladen — in einer Piano-Roll-Ansicht mit Wiedergabe gerade ziehen — mit markierten unsicheren Stellen bei selbst erstellten Songs, Tonhöhen-Korrektur per Einsingen ins Mikrofon (die Verzögerung von Mikrofon und Einsatz misst der Editor selbst und gleicht sie aus) und Duett-Unterstützung. Die ursprüngliche Fassung bleibt als `song.txt.bak` erhalten; ändert ein anderes Programm die Datei, während der Editor offen ist, wählst du zwischen Neu laden und Überschreiben.
 
 ### Bibliothek
 - **Archiv-Import:** Bestehende Sammlungen (auch zehntausende Songs, auch verschachtelte Ordnerstrukturen) ohne erneute Downloads übernehmen — inklusive Metadaten aus den song.txt-Dateien.
@@ -36,6 +46,7 @@ Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singb
 - **Alles automatisch:** USDB-Konto, yt-dlp und ffmpeg richtet die App selbst ein — kein manuelles Setup nötig.
 - **Konfigurierbar:** Ordnerstruktur neuer Downloads (flach, nach Interpret, nach Anfangsbuchstabe), Download-Parallelität (1–5), maximale Video-Qualität (720p/1080p/beste), YouTube-Cookie-Browser.
 - **Automatische Updates:** Die App meldet neue Versionen selbst und installiert sie auf Knopfdruck — kein manuelles Nachladen mehr.
+- **Drei Sprachen:** Oberfläche auf Deutsch, Englisch oder Spanisch — umschaltbar in den Einstellungen.
 - **Duplikatschutz über Sitzungen hinweg**, Fehl-Download-Protokoll als Excel-Datei, dunkles Design.
 
 ---
@@ -100,6 +111,7 @@ bun run start          # TUI im Dev-Modus
 bun run desktop:dev    # Desktop-App mit Hot Reload
 bun run test           # Unit-Tests
 bun run test:e2e       # Playwright-Smoke-Test (baut vorher)
+bun run docs:screenshots  # Screenshots für README und Tutorial neu erzeugen (alle drei Sprachen)
 bun run desktop:dist   # Installer für die aktuelle Plattform bauen (dist/)
 bun run desktop:dist:win     # Windows-Installer erzwingen
 bun run desktop:dist:linux   # Linux-AppImage erzwingen
@@ -123,7 +135,7 @@ Der Python-Audit prüft Basis- und Modellabhängigkeiten getrennt für Python 3.
 - **Songs erscheinen nicht in der Bibliothek:** Erst „Archiv importieren" (übernimmt Bestände), bei extern gelöschten/geänderten Ordnern „Aktualisieren" klicken.
 - **Genre-Lauf bricht ab:** Einfach erneut starten — bereits angereicherte Songs werden übersprungen. Für hartnäckige Fälle die Quelle wechseln (Einstellungen → Genre-Quelle).
 
-Mehr im **[Tutorial → Problemlösung](docs/TUTORIAL.md#9-problemlösung)**.
+Mehr im **[Tutorial → Problemlösung](docs/TUTORIAL.md#11-problemlösung)**.
 
 ## 🔗 Links & Credits
 
