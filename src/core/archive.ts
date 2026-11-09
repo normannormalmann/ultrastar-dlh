@@ -137,8 +137,8 @@ const stageArchive = (zip: ZipFile, staging: string): Promise<StagedEntry[]> =>
       reject(new UnsafeZipEntryError("archive", "entry limit exceeded"));
       return;
     }
-    let entries: StagedEntry[] = [];
-    let names: ReadonlySet<string> = new Set();
+    const entries: StagedEntry[] = [];
+    const names = new Set<string>();
     let bytes = 0;
     let pending: Promise<unknown> = Promise.resolve();
     let failed = false;
@@ -166,9 +166,9 @@ const stageArchive = (zip: ZipFile, staging: string): Promise<StagedEntry[]> =>
             "extraction limit exceeded",
           );
         }
-        names = new Set([...names, key]);
+        names.add(key);
         bytes += entry.uncompressedSize;
-        entries = [...entries, await stageEntry(zip, entry, staging)];
+        entries.push(await stageEntry(zip, entry, staging));
         if (!failed) zip.readEntry();
       })();
       void pending.catch(fail);

@@ -2,9 +2,16 @@
 // Drawing for the piano roll, layer by layer: background, doubt bands, the
 // other duet voice, notes, a sung take, the playhead. Kept apart from the
 // component so that one is about state and the mouse, this one about pixels.
-import type { EditNote, Track } from "../../../../core/edit/songTxt.ts";
+import {
+  beatToMs,
+  type Timing,
+  type EditNote,
+  type Track,
+} from "../../../../core/edit/songTxt.ts";
 
 export const LYRIC_LANE = 24;
+export const KEYBOARD_WIDTH = 58;
+export const TIMELINE_HEIGHT = 32;
 
 export type Farben = {
   bg: string;
@@ -23,7 +30,8 @@ export type Farben = {
 
 export const leseFarben = (): Farben => {
   const css = getComputedStyle(document.documentElement);
-  const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  const v = (name: string, fallback: string) =>
+    css.getPropertyValue(name).trim() || fallback;
   return {
     bg: v("--mantle", "#181825"),
     row: v("--base", "#1e1e2e"),
@@ -41,9 +49,12 @@ export const leseFarben = (): Farben => {
 };
 
 /** A point of a sung take, already in beats and UltraStar pitch. */
-export type SungPoint = { beat: number; pitch: number };
+export type SungPoint = { beat: number; pitch: number; breakBefore?: boolean };
 
 export type Szene = {
+  reference?: SungPoint[];
+  timing?: Timing | null;
+  midiOffset?: number;
   w: number;
   h: number;
   scrollBeat: number;
@@ -70,12 +81,12 @@ export type Geometrie = {
 
 export const geometrie = (s: Szene): Geometrie => {
   const rollH = s.h - LYRIC_LANE;
-  const rowH = rollH / (s.maxPitch - s.minPitch + 1);
+  const rowH = (rollH - TIMELINE_HEIGHT) / (s.maxPitch - s.minPitch + 1);
   return {
     rollH,
     rowH,
-    xVon: (beat) => (beat - s.scrollBeat) * s.pxPerBeat,
-    yVon: (pitch) => (s.maxPitch - pitch) * rowH,
+    xVon: (beat) => KEYBOARD_WIDTH + (beat - s.scrollBeat) * s.pxPerBeat,
+    yVon: (pitch) => TIMELINE_HEIGHT + (s.maxPitch - pitch) * rowH,
   };
 };
 
@@ -85,13 +96,19 @@ const notenFarbe = (n: EditNote, f: Farben): string => {
   return f.note;
 };
 
-const sichtbar = (x: number, w: number, s: Szene): boolean => x + w >= 0 && x <= s.w;
+const sichtbar = (x: number, w: number, s: Szene): boolean =>
+  x + w >= 0 && x <= s.w;
 
-const hintergrund = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben) => {
+const hintergrund = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  g: Geometrie,
+  f: Farben,
+) => {
   ctx.fillStyle = f.bg;
   ctx.fillRect(0, 0, s.w, s.h);
   for (let pitch = s.minPitch; pitch <= s.maxPitch; pitch += 1) {
-    if (pitch % 2 === 0) {
+    if ([1, 3, 6, 8, 10].includes(((pitch % 12) + 12) % 12)) {
       ctx.fillStyle = f.row;
       ctx.fillRect(0, g.yVon(pitch), s.w, g.rowH);
     }
@@ -102,11 +119,16 @@ const hintergrund = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: F
       ctx.globalAlpha = 1;
     }
   }
-  // Beat grid: every 4 beats, every 16 a little stronger.
-  if (s.pxPerBeat * 4 < 6) return;
+  // Keep a readable grid when the export timebase uses many ticks.
+  let step = 4;
+  while (s.pxPerBeat * step < 6) step *= 2;
   const letzter = s.scrollBeat + s.w / s.pxPerBeat;
-  for (let b = Math.floor(s.scrollBeat / 4) * 4; b <= letzter; b += 4) {
-    ctx.globalAlpha = b % 16 === 0 ? 0.35 : 0.15;
+  for (
+    let b = Math.floor(s.scrollBeat / step) * step;
+    b <= letzter;
+    b += step
+  ) {
+    ctx.globalAlpha = b % (step * 4) === 0 ? 0.35 : 0.15;
     ctx.fillStyle = f.grid;
     ctx.fillRect(Math.round(g.xVon(b)), 0, 1, g.rollH);
   }
@@ -118,7 +140,12 @@ const hintergrund = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: F
  * between its notes are covered too - the toolbar counts runs, the picture
  * should show the same number. Guessed timing is drawn stronger than weak.
  */
-const zweifel = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben) => {
+const zweifel = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  g: Geometrie,
+  f: Farben,
+) => {
   ctx.fillStyle = f.unsure;
   const notes = s.track.notes;
   let i = 0;
@@ -144,20 +171,31 @@ const zweifel = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farbe
   ctx.globalAlpha = 1;
 };
 
-const geister = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben) => {
+const geister = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  g: Geometrie,
+  f: Farben,
+) => {
   ctx.fillStyle = f.grid;
   ctx.globalAlpha = 0.3;
   for (const spur of s.ghosts) {
     for (const n of spur.notes) {
       const x = g.xVon(n.beat);
       const w = Math.max(2, n.length * s.pxPerBeat - 1);
-      if (sichtbar(x, w, s)) ctx.fillRect(x, g.yVon(n.pitch) + 1, w, Math.max(3, g.rowH - 2));
+      if (sichtbar(x, w, s))
+        ctx.fillRect(x, g.yVon(n.pitch) + 1, w, Math.max(3, g.rowH - 2));
     }
   }
   ctx.globalAlpha = 1;
 };
 
-const noten = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben) => {
+const noten = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  g: Geometrie,
+  f: Farben,
+) => {
   ctx.font = "12px system-ui, sans-serif";
   ctx.textBaseline = "middle";
   s.track.notes.forEach((n, i) => {
@@ -167,12 +205,12 @@ const noten = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben)
     const y = g.yVon(n.pitch) + 1;
     const h = Math.max(3, g.rowH - 2);
     const gewaehlt = i === s.selected;
-    ctx.fillStyle = gewaehlt ? f.selected : notenFarbe(n, f);
+    ctx.fillStyle = notenFarbe(n, f);
     ctx.globalAlpha = n.type === "F" && !gewaehlt ? 0.35 : 0.9;
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = 1;
     if (gewaehlt || s.overlaps.has(i)) {
-      ctx.strokeStyle = gewaehlt ? f.text : f.bad;
+      ctx.strokeStyle = s.overlaps.has(i) ? f.bad : f.selected;
       ctx.lineWidth = 2;
       ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
     }
@@ -196,7 +234,12 @@ const noten = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben)
 };
 
 /** The sung line as dots, the suggested pitches as dashed outlines. */
-const gesang = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben) => {
+const gesang = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  g: Geometrie,
+  f: Farben,
+) => {
   ctx.fillStyle = f.sung;
   for (const p of s.sung) {
     const x = g.xVon(p.beat);
@@ -211,20 +254,105 @@ const gesang = (ctx: CanvasRenderingContext2D, s: Szene, g: Geometrie, f: Farben
     if (!n) continue;
     const x = g.xVon(n.beat);
     const w = Math.max(2, n.length * s.pxPerBeat - 1);
-    if (sichtbar(x, w, s)) ctx.strokeRect(x, g.yVon(pitch) + 1, w, Math.max(3, g.rowH - 2));
+    if (sichtbar(x, w, s))
+      ctx.strokeRect(x, g.yVon(pitch) + 1, w, Math.max(3, g.rowH - 2));
   }
   ctx.setLineDash([]);
 };
 
-export const zeichne = (ctx: CanvasRenderingContext2D, s: Szene, f: Farben): void => {
+export const zeichne = (
+  ctx: CanvasRenderingContext2D,
+  s: Szene,
+  f: Farben,
+): void => {
   const g = geometrie(s);
   hintergrund(ctx, s, g, f);
   zweifel(ctx, s, g, f);
   geister(ctx, s, g, f);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(
+    KEYBOARD_WIDTH,
+    TIMELINE_HEIGHT,
+    s.w - KEYBOARD_WIDTH,
+    g.rollH - TIMELINE_HEIGHT,
+  );
+  ctx.clip();
+  ctx.strokeStyle = f.rap;
+  ctx.globalAlpha = 0.75;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  let previous: SungPoint | undefined;
+  for (const point of s.reference ?? []) {
+    const x = g.xVon(point.beat);
+    const y = g.yVon(point.pitch) + g.rowH / 2;
+    if (!previous || point.breakBefore) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+    previous = point;
+  }
+  ctx.stroke();
+  ctx.restore();
   noten(ctx, s, g, f);
   gesang(ctx, s, g, f);
   if (s.playheadBeat !== null) {
     ctx.fillStyle = f.playhead;
-    ctx.fillRect(Math.round(g.xVon(s.playheadBeat)), 0, 2, s.h);
+    ctx.fillRect(
+      Math.round(g.xVon(s.playheadBeat)),
+      TIMELINE_HEIGHT,
+      2,
+      s.h - TIMELINE_HEIGHT,
+    );
+  }
+  // Fixed axes are painted last so scrolled notes never cover their labels.
+  ctx.fillStyle = f.bg;
+  ctx.fillRect(0, 0, s.w, TIMELINE_HEIGHT);
+  ctx.fillRect(0, 0, KEYBOARD_WIDTH, s.h);
+  ctx.font = "10px system-ui";
+  ctx.textBaseline = "middle";
+  const names = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "H",
+  ];
+  for (let pitch = s.minPitch; pitch <= s.maxPitch; pitch++) {
+    const midi = pitch + (s.midiOffset ?? 60);
+    const pc = ((midi % 12) + 12) % 12;
+    const black = [1, 3, 6, 8, 10].includes(pc);
+    ctx.fillStyle = black ? "#252536" : "#e6e6ed";
+    ctx.fillRect(0, g.yVon(pitch), KEYBOARD_WIDTH - 2, g.rowH - 1);
+    ctx.fillStyle = black ? "#eeeeff" : "#242438";
+    if (g.rowH >= 10)
+      ctx.fillText(
+        names[pc] + String(Math.floor(midi / 12) - 1),
+        5,
+        g.yVon(pitch) + g.rowH / 2,
+      );
+  }
+  ctx.fillStyle = f.text;
+  ctx.fillText("Beat", 4, 8);
+  ctx.fillText("Zeit", 4, 22);
+  const step =
+    4 * 2 ** Math.max(0, Math.ceil(Math.log2(80 / (4 * s.pxPerBeat))));
+  ctx.fillStyle = f.text;
+  for (
+    let beat = Math.ceil(s.scrollBeat / step) * step;
+    beat < s.scrollBeat + (s.w - KEYBOARD_WIDTH) / s.pxPerBeat;
+    beat += step
+  ) {
+    const x = g.xVon(beat);
+    const seconds = s.timing
+      ? `${(beatToMs(s.timing, beat) / 1000).toFixed(1)} s`
+      : "";
+    ctx.fillText(String(beat), x + 3, 8);
+    ctx.fillText(seconds, x + 3, 22);
   }
 };

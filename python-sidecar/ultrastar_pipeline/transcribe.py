@@ -6,6 +6,7 @@ die der bekannte Liedtext ausgerichtet werden kann.
 """
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from .errors import LanguageUnsupported
 from . import modellwahl
 from .progress import emit_progress
 
-STAGE_VERSION = "3"
+STAGE_VERSION = "5"
 MODELL = modellwahl.ASR
 
 
@@ -36,7 +37,7 @@ def transcribe(
     """Gehoerte Woerter mit Zeitstempeln."""
     # Die Identitaet der separate-Stufe geht in den Schluessel ein: ein
     # Transkript des alten Stems beschriebe Audio, das es nie gesehen hat.
-    # Der Aligner ebenso: Pass 1 laeuft hier (whisperx.align weiter unten),
+    # Der Aligner ebenso: Pass 1 laeuft hier (backend.align weiter unten),
     # seine Zeiten stecken also im gecachten Ergebnis.
     ziel = stage_path(
         work_dir,
@@ -58,7 +59,8 @@ def transcribe(
         return [TranskriptWort(**w) for w in gespeichert]
 
     emit_progress("transcribe", 0.0)
-    import whisperx
+    from importlib import import_module
+    backend = import_module("ultrastar_pipeline.modelBackend")
 
     try:
         # language wird zusaetzlich zur Erkennung uebergeben: ohne sie faellt
@@ -90,12 +92,13 @@ def transcribe(
             # Handler in __main__ gibt dafuer den richtigen Rat.
             raise
         raise LanguageUnsupported(sprache, stufe="transcribe") from exc  # kein Alignment-Modell fuer diese Sprache
-    ausgerichtet = whisperx.align(
+    ausgerichtet = backend.align(
         ergebnis.get("segments", []),
         align_modell,
         metadaten,
         str(vocals),
         device,
+        interpolate_method="ignore",
         return_char_alignments=False,
     )
 
@@ -109,12 +112,19 @@ def transcribe(
             text = str(wort.get("word", "")).strip()
             if not text:
                 continue
+            start, end = float(wort["start"]), float(wort["end"])
+            score = float(wort.get("score", 0.0))
+            # Only measured, ordered intervals can become anchors for known lyrics.
+            if (not all(math.isfinite(v) for v in (start, end, score))
+                    or start < 0 or end <= start or not 0 <= score <= 1
+                    or (woerter and start < woerter[-1].ende)):
+                continue
             woerter.append(
                 TranskriptWort(
                     text=text,
-                    start=float(wort["start"]),
-                    ende=float(wort["end"]),
-                    score=float(wort.get("score", 0.0)),
+                    start=start,
+                    ende=end,
+                    score=score,
                 )
             )
 

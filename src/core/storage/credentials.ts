@@ -1,4 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { protectSecret } from "./protectSecret.ts";
+import { readFile } from "node:fs/promises";
+import { writeJson } from "./atomicFile.ts";
 import { Effect } from "effect";
 import { resolveDataFilePath } from "./paths.ts";
 
@@ -9,18 +11,19 @@ export type StoredCredentials = {
 
 const FILE_NAME = "credentials.json";
 
-const readJsonFile = (
-  path: string,
-): Effect.Effect<StoredCredentials | null, Error> =>
-  Effect.catchAll(
-    Effect.tryPromise({
-      try: async () =>
-        JSON.parse(await readFile(path, "utf8")) as StoredCredentials,
-      catch: (e) =>
-        e instanceof Error ? e : new Error("Failed to read credentials"),
-    }),
-    () => Effect.succeed<StoredCredentials | null>(null),
-  );
+const readJsonFile = (path: string): Effect.Effect<unknown, Error> =>
+  Effect.tryPromise({
+    try: async () => {
+      try {
+        return JSON.parse(await readFile(path, "utf8")) as unknown;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      }
+    },
+    catch: () =>
+      new Error("Could not read stored credentials; refusing to replace them"),
+  });
 
 const writeJsonFile = (
   path: string,
@@ -28,7 +31,14 @@ const writeJsonFile = (
 ): Effect.Effect<true, Error> =>
   Effect.tryPromise({
     try: async () => {
-      await writeFile(path, JSON.stringify(data, null, 2), "utf8");
+      const stored =
+        process.platform === "win32"
+          ? {
+              protection: "dpapi",
+              data: await protectSecret(JSON.stringify(data)),
+            }
+          : data;
+      await writeJson(path, stored);
       return true as const;
     },
     catch: (e) => (e instanceof Error ? e : new Error("Failed to write file")),
@@ -53,7 +63,7 @@ const validateCredentials = (data: unknown): data is StoredCredentials => {
 
   // Trim whitespace
   const user = creds.user.trim();
-  const pass = creds.pass.trim();
+  const pass = creds.pass;
 
   // Validate lengths (prevent DoS with very long strings)
   const MIN_LENGTH = 1;
@@ -78,13 +88,38 @@ const validateCredentials = (data: unknown): data is StoredCredentials => {
 export const loadCredentials: Effect.Effect<StoredCredentials | null, Error> =
   Effect.gen(function* () {
     const path = yield* resolveDataFilePath(FILE_NAME);
-    const data = yield* readJsonFile(path);
+    let data: unknown = yield* readJsonFile(path);
+    if (data && typeof data === "object" && "protection" in data) {
+      const envelope = data as { protection: unknown; data?: unknown };
+      if (
+        envelope.protection !== "dpapi" ||
+        typeof envelope.data !== "string" ||
+        process.platform !== "win32"
+      )
+        return yield* Effect.fail(
+          new Error("Credentials require the Windows account that saved them"),
+        );
+      const ciphertext = envelope.data;
+      data = yield* Effect.tryPromise({
+        try: async () => JSON.parse(await protectSecret(ciphertext, true)),
+        catch: () =>
+          new Error(
+            "Could not decrypt stored credentials; refusing to replace them",
+          ),
+      });
+    } else if (process.platform === "win32" && validateCredentials(data)) {
+      yield* writeJsonFile(path, data);
+    }
 
     // Use runtime validation instead of type assertion
     if (validateCredentials(data)) {
       return data; // Now type-safe due to validateCredentials type guard
     }
 
+    if (data !== null)
+      return yield* Effect.fail(
+        new Error("Invalid stored credentials; refusing to replace them"),
+      );
     return null;
   });
 

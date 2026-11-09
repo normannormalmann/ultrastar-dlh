@@ -20,7 +20,10 @@ export type TxtHeaderInput = {
  * Komma (deutsche Bestandsdateien), neu erzeugte Dateien sollen aber die
  * eindeutige Variante nutzen.
  */
-export const renderSongTxt = (data: SongData, headers: TxtHeaderInput): string => {
+export const renderSongTxt = (
+  data: SongData,
+  headers: TxtHeaderInput,
+): string => {
   const zeilen: string[] = [
     `#TITLE:${headers.title}`,
     `#ARTIST:${headers.artist}`,
@@ -47,7 +50,7 @@ export const renderSongTxt = (data: SongData, headers: TxtHeaderInput): string =
 
   data.notes.forEach((note, i) => {
     zeilen.push(
-      `: ${Math.round(note.beat)} ${Math.round(note.length)} ${Math.round(note.pitch)} ${note.syllable}`,
+      `${note.pitchStatus === "missing" ? "F" : ":"} ${Math.round(note.beat)} ${Math.round(note.length)} ${note.pitchStatus === "missing" ? 0 : Math.round(note.pitch)} ${note.syllable}`,
     );
     const umbruch = umbruchNach.get(i);
     // Kein Umbruch nach der letzten Note: dort folgt direkt das E.

@@ -7,7 +7,12 @@
 // is split or deleted, and the file must still make sense to a reader who
 // edited song.txt by hand in between.
 import type { SongData } from "../create/songData.ts";
-import { type EditNote, type NoteSeq, UNSURE_KINDS, type UnsureKind } from "./songTxt.ts";
+import {
+  type EditNote,
+  type NoteSeq,
+  UNSURE_KINDS,
+  type UnsureKind,
+} from "./songTxt.ts";
 
 export const SYNC_HINTS_FILE = "sync-hints.json";
 const VERSION = 1;
@@ -64,11 +69,22 @@ export const buildSyncHints = (data: SongData): SyncHint[] => {
   const interpoliert = new Set<number>();
   for (const s of data.sections) {
     if (s.confidence > 0) continue;
-    for (let i = s.fromNoteIndex; i < s.toNoteIndex; i += 1) interpoliert.add(i);
+    for (let i = s.fromNoteIndex; i < s.toNoteIndex; i += 1)
+      interpoliert.add(i);
   }
   return zuBereichen(data.notes, (n, i) => {
+    if (n.pitchStatus === "missing") {
+      const timing = n.timingConfidence ?? n.confidence;
+      return interpoliert.has(i) ||
+        timing === undefined ||
+        timing < UNSURE_BELOW
+        ? "pitchAndTiming"
+        : "pitch";
+    }
     if (interpoliert.has(i)) return "interpolated";
-    return n.confidence !== undefined && n.confidence < UNSURE_BELOW ? "low" : undefined;
+    return n.confidence !== undefined && n.confidence < UNSURE_BELOW
+      ? "low"
+      : undefined;
   });
 };
 
@@ -95,7 +111,10 @@ export const parseSyncHints = (input: unknown): SyncHint[] => {
 };
 
 /** Marks every note that starts inside a range. */
-export const applySyncHints = <T extends NoteSeq>(seq: T, hints: SyncHint[]): T => {
+export const applySyncHints = <T extends NoteSeq>(
+  seq: T,
+  hints: SyncHint[],
+): T => {
   if (hints.length === 0) return seq;
   return {
     ...seq,

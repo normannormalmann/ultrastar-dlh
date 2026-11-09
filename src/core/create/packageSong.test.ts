@@ -58,6 +58,25 @@ const basis = (library: string, jobDir: string) => ({
   deps: { findCoverFn: () => Effect.succeed(null) },
 });
 
+it("ships the measured pitch curve and separated vocals with a created song", async () => {
+  const { library, jobDir } = await aufbau();
+  const trace = JSON.stringify({
+    midiOffset: 48,
+    points: [{ ms: 100, pitch: 12 }],
+  });
+  await writeFile(join(jobDir, "originalPitch.json"), trace);
+  await writeFile(join(jobDir, "vocals.wav"), "synthetic vocals");
+  const result = await Effect.runPromise(
+    assemblePackage(basis(library, jobDir)),
+  );
+  expect(
+    await readFile(join(result.songDir, "originalPitch.json"), "utf8"),
+  ).toBe(trace);
+  expect(await readFile(join(result.songDir, "vocals.wav"), "utf8")).toBe(
+    "synthetic vocals",
+  );
+});
+
 describe("freierZielpfad", () => {
   it("haengt ein Suffix an, statt einen bestehenden Ordner anzufassen", async () => {
     const { library } = await aufbau();
@@ -186,8 +205,13 @@ describe("assemblePackage", () => {
     const ergebnis = await Effect.runPromise(
       assemblePackage({ ...basis(library, jobDir), songData: unsicher }),
     );
-    const datei = JSON.parse(await readFile(join(ergebnis.songDir, "sync-hints.json"), "utf8"));
-    expect(datei).toEqual({ version: 1, hints: [{ fromBeat: 4, toBeat: 8, kind: "low" }] });
+    const datei = JSON.parse(
+      await readFile(join(ergebnis.songDir, "sync-hints.json"), "utf8"),
+    );
+    expect(datei).toEqual({
+      version: 1,
+      hints: [{ fromBeat: 4, toBeat: 8, kind: "low" }],
+    });
   });
 
   it("schreibt das Cover und setzt den Header", async () => {

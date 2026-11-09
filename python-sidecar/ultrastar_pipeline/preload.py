@@ -46,7 +46,8 @@ def preload(sprache: str, device: str, out: Path) -> None:
     emit_progress("preload:align", 1.0)
 
     emit_progress("preload:pitch", 0.0)
-    modelle.hole_swiftf0()
+    from .pitch import preload_pitch
+    preload_pitch(device)
     emit_progress("preload:pitch", 1.0)
 
     # Fuenfter Probe-Schritt: pyphen ueberlebte einmal einen fertigen

@@ -1,10 +1,18 @@
+import { atomicWrite } from "../storage/atomicFile.ts";
 // src/core/edit/songFile.ts
 // Disk side of the editor: read a song.txt for editing, write it back.
 // Two promises are kept here. A file someone changed meanwhile (a repair, a
 // genre patch, another editor) is never overwritten blindly, and the version
 // from before the first editor save survives as song.txt.bak.
-import { createHash } from "node:crypto";
-import { access, copyFile, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  access,
+  copyFile,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Effect } from "effect";
 import {
@@ -85,7 +93,10 @@ export const decodeSongBytes = (
  * The header value comes from a downloaded file: "#MP3:..\..\x" must not
  * point the media protocol anywhere outside the song folder.
  */
-export const mediaInside = (songDir: string, name: string | undefined): string | null => {
+export const mediaInside = (
+  songDir: string,
+  name: string | undefined,
+): string | null => {
   const sauber = name?.trim();
   if (!sauber) return null;
   const ziel = resolve(songDir, sauber);
@@ -99,12 +110,19 @@ export const mediaInside = (songDir: string, name: string | undefined): string |
  * way to tell which track a range belongs to. Never fails - without the
  * file the song simply has no markers.
  */
-const mitHinweisen = async (songDir: string, song: SongTxt): Promise<SongTxt> => {
+const mitHinweisen = async (
+  songDir: string,
+  song: SongTxt,
+): Promise<SongTxt> => {
   const spur = song.tracks[0];
   if (song.tracks.length !== 1 || !spur) return song;
   try {
     const roh = await readFile(join(songDir, SYNC_HINTS_FILE), "utf8");
-    return withTrack(song, 0, applySyncHints(spur, parseSyncHints(JSON.parse(roh))));
+    return withTrack(
+      song,
+      0,
+      applySyncHints(spur, parseSyncHints(JSON.parse(roh))),
+    );
   } catch {
     return song;
   }
@@ -114,12 +132,15 @@ const mitHinweisen = async (songDir: string, song: SongTxt): Promise<SongTxt> =>
  * The hints as they stand after editing. Nothing left - everything checked -
  * removes the file, so the folder is as clean as a downloaded song's.
  */
-const schreibeHinweise = async (songDir: string, song: SongTxt): Promise<void> => {
+const schreibeHinweise = async (
+  songDir: string,
+  song: SongTxt,
+): Promise<void> => {
   const pfad = join(songDir, SYNC_HINTS_FILE);
   const spur = song.tracks[0];
   const hints = song.tracks.length === 1 && spur ? collectSyncHints(spur) : [];
   if (hints.length > 0) {
-    await writeFile(pfad, serializeSyncHints(hints), "utf8");
+    await atomicWrite(pfad, serializeSyncHints(hints));
   } else if (await vorhanden(pfad)) {
     await rm(pfad, { force: true });
   }
@@ -189,7 +210,7 @@ export const saveEditedSong = (
     // A converted file gets a BOM: without it, games that guess the
     // encoding may keep reading it as Windows-1252.
     const neu = Buffer.from((bom || converted ? BOM : "") + text, "utf8");
-    const tmp = `${pfad}.tmp`;
+    const tmp = `${pfad}.${randomUUID()}.tmp`;
     yield* Effect.tryPromise({
       try: async () => {
         // Only the first save backs up. Overwriting it each time would leave
@@ -210,6 +231,8 @@ export const saveEditedSong = (
     });
     // After song.txt, and never failing the save: the song is what counts,
     // a lost marker file only costs the markers.
-    yield* Effect.promise(() => schreibeHinweise(songDir, song).catch(() => {}));
+    yield* Effect.promise(() =>
+      schreibeHinweise(songDir, song).catch(() => {}),
+    );
     return { revision: hash(neu) };
   });

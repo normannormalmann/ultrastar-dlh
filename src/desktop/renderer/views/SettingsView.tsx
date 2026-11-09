@@ -1,13 +1,6 @@
 import type { FC } from "react";
 import { useEffect, useState } from "react";
-import {
-  Check,
-  Coffee,
-  Download,
-  RefreshCw,
-  Star,
-  Trash2,
-} from "lucide-react";
+import { Check, Coffee, Download, RefreshCw, Star, Trash2 } from "lucide-react";
 import type {
   AppConfig,
   BinariesStatus,
@@ -37,7 +30,10 @@ const BROWSERS = [
   "vivaldi",
 ] as const;
 
-const sourceLabel = (t: Katalog, s: "system" | "managed" | "missing"): string =>
+const sourceLabel = (
+  t: Katalog,
+  s: "system" | "managed" | "missing",
+): string =>
   s === "system"
     ? t.settings.sourceSystem
     : s === "managed"
@@ -47,7 +43,7 @@ const sourceLabel = (t: Katalog, s: "system" | "managed" | "missing"): string =>
 const envLabel = (t: Katalog, s: EnvironmentStatus): string =>
   s.state === "ready"
     ? t.settings.envReady(
-        s.torchVariante === "cu128" ? "GPU" : "CPU",
+        s.torchVariante?.startsWith("cu") ? "GPU" : "CPU",
         s.pythonVersion ?? "?",
       )
     : s.state === "outdated"
@@ -315,8 +311,8 @@ export const SettingsView: FC<{
       ) : (
         <>
           <p>
-            yt-dlp: <strong>{sourceLabel(t, binaries.ytDlp)}</strong> ·{" "}
-            ffmpeg: <strong>{sourceLabel(t, binaries.ffmpeg)}</strong>
+            yt-dlp: <strong>{sourceLabel(t, binaries.ytDlp)}</strong> · ffmpeg:{" "}
+            <strong>{sourceLabel(t, binaries.ffmpeg)}</strong>
           </p>
           <div className="row" style={{ marginBottom: 8 }}>
             <button
@@ -377,8 +373,8 @@ export const SettingsView: FC<{
           {anythingMissing && (
             <p className="muted">
               {t.settings.manualBefore}
-              <a href="https://github.com/yt-dlp/yt-dlp#installation">yt-dlp</a> ·{" "}
-              <a href="https://www.gyan.dev/ffmpeg/builds/">ffmpeg</a>
+              <a href="https://github.com/yt-dlp/yt-dlp#installation">yt-dlp</a>{" "}
+              · <a href="https://www.gyan.dev/ffmpeg/builds/">ffmpeg</a>
               {t.settings.manualAfter}
             </p>
           )}
@@ -465,7 +461,9 @@ export const SettingsView: FC<{
                 <div className="progress-track">
                   <div
                     className="progress-fill"
-                    style={{ width: `${Math.round(envProgress.prozent * 100)}%` }}
+                    style={{
+                      width: `${Math.round(envProgress.prozent * 100)}%`,
+                    }}
                   />
                 </div>
               )}

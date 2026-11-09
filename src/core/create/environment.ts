@@ -1,16 +1,31 @@
+import { fetchChecksum, verifyFileChecksum } from "../checksum.ts";
+import { killProcessTree } from "./processTree.ts";
 // Managed Python environment for the sidecar (subproject 2). Pure logic:
 // status is derived from a manifest file, installation runs through
 // injectable runners so tests never touch uv, the network, or a GPU.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+  stat,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { extractZipSafely } from "../archive.ts";
 
 export type EnvironmentState = "missing" | "broken" | "outdated" | "ready";
-export type InstallStep = "uv" | "venv" | "gpu" | "torch" | "sidecar" | "preload";
+export type InstallStep =
+  | "uv"
+  | "venv"
+  | "gpu"
+  | "torch"
+  | "sidecar"
+  | "preload";
 
 export type InstallProgress = {
   schritt: InstallStep;
@@ -22,7 +37,7 @@ export type InstallProgress = {
 export type EnvironmentStatus = {
   state: EnvironmentState;
   pythonVersion?: string;
-  torchVariante?: "cu128" | "cpu";
+  torchVariante?: "cu132" | "cu128" | "cpu";
   /** Present when state is "broken": which step failed, with the stderr tail. */
   fehler?: { schritt: InstallStep; detail: string };
 };
@@ -32,13 +47,18 @@ export type EnvironmentManifest = {
   /** Content hash of the sidecar sources this environment was built from. */
   sidecarFingerprint: string;
   pythonVersion: string;
-  torchVariante: "cu128" | "cpu";
+  torchVariante: "cu132" | "cu128" | "cpu";
   preload: { ok: boolean; device: string; datum: string };
   fehler?: { schritt: InstallStep; detail: string };
 };
 
-export const envPythonBin = (envDir: string): string =>
-  join(envDir, "Scripts", "python.exe");
+export const envPythonBin = (
+  envDir: string,
+  platform = process.platform,
+): string =>
+  platform === "win32"
+    ? join(envDir, "Scripts", "python.exe")
+    : join(envDir, "bin", "python");
 
 /**
  * Interpreter resolution for runPipeline: explicit wins, then the managed
@@ -57,7 +77,8 @@ export const resolvePythonBin = (
   return "python";
 };
 
-export const manifestPath = (envDir: string): string => join(envDir, "env.json");
+export const manifestPath = (envDir: string): string =>
+  join(envDir, "env.json");
 
 /**
  * Freshness reference for "outdated": a hash over the sidecar sources.
@@ -69,9 +90,17 @@ export const manifestPath = (envDir: string): string => join(envDir, "env.json")
  * "ready" while running month-old code. Hashing the sources needs no
  * discipline at all.
  */
-export const sidecarFingerprint = async (sidecarDir: string): Promise<string> => {
+export const sidecarFingerprint = async (
+  sidecarDir: string,
+): Promise<string> => {
   const paketDir = join(sidecarDir, "ultrastar_pipeline");
-  const dateien: string[] = ["pyproject.toml"];
+  const dateien: string[] = [
+    "pyproject.toml",
+    "requirementsModelsWindows.txt",
+    "requirementsModelsLinux.txt",
+    "requirementsCudaWindows.txt",
+    "requirementsCudaLinux.txt",
+  ];
   try {
     for (const eintrag of await readdir(paketDir, { recursive: true })) {
       const name = String(eintrag).replaceAll("\\", "/");
@@ -100,7 +129,13 @@ export const readManifest = async (
 ): Promise<EnvironmentManifest | null> => {
   try {
     const raw = JSON.parse(await readFile(manifestPath(envDir), "utf8"));
-    if (raw?.schemaVersion !== 1) return null;
+    if (
+      raw?.schemaVersion !== 1 ||
+      !raw.preload ||
+      typeof raw.preload.ok !== "boolean" ||
+      typeof raw.sidecarFingerprint !== "string"
+    )
+      return null;
     return raw as EnvironmentManifest;
   } catch {
     return null;
@@ -112,13 +147,16 @@ export const writeManifest = async (
   manifest: EnvironmentManifest,
 ): Promise<void> => {
   await mkdir(envDir, { recursive: true });
-  await writeFile(manifestPath(envDir), JSON.stringify(manifest, null, 2), "utf8");
+  await writeFile(
+    manifestPath(envDir),
+    JSON.stringify(manifest, null, 2),
+    "utf8",
+  );
 };
 
 const fileExists = async (p: string): Promise<boolean> => {
   try {
-    await readFile(p);
-    return true;
+    return (await stat(p)).isFile();
   } catch {
     return false;
   }
@@ -129,38 +167,44 @@ const fileExists = async (p: string): Promise<boolean> => {
  * or unreadable manifest degrades to "missing" so the UI simply offers the
  * install button instead of crashing on corrupted state.
  */
+const readEnvironmentStatus = async (
+  envDir: string,
+  bundledFingerprint: string,
+  platform = process.platform,
+): Promise<EnvironmentStatus> => {
+  const manifest = await readManifest(envDir);
+  const pythonPresent = await fileExists(envPythonBin(envDir, platform));
+  if (!manifest || !pythonPresent) return { state: "missing" };
+  if (manifest.fehler || !manifest.preload.ok) {
+    return {
+      state: "broken",
+      pythonVersion: manifest.pythonVersion,
+      torchVariante: manifest.torchVariante,
+      fehler: manifest.fehler ?? {
+        schritt: "preload",
+        detail: "Probelauf nicht abgeschlossen.",
+      },
+    };
+  }
+  if (manifest.sidecarFingerprint !== bundledFingerprint) {
+    return {
+      state: "outdated",
+      pythonVersion: manifest.pythonVersion,
+      torchVariante: manifest.torchVariante,
+    };
+  }
+  return {
+    state: "ready",
+    pythonVersion: manifest.pythonVersion,
+    torchVariante: manifest.torchVariante,
+  };
+};
+
 export const environmentStatus = (
   envDir: string,
   bundledFingerprint: string,
 ): Effect.Effect<EnvironmentStatus, never> =>
-  Effect.promise(async (): Promise<EnvironmentStatus> => {
-    const manifest = await readManifest(envDir);
-    const pythonPresent = await fileExists(envPythonBin(envDir));
-    if (!manifest || !pythonPresent) return { state: "missing" };
-    if (manifest.fehler || !manifest.preload.ok) {
-      return {
-        state: "broken",
-        pythonVersion: manifest.pythonVersion,
-        torchVariante: manifest.torchVariante,
-        fehler: manifest.fehler ?? {
-          schritt: "preload",
-          detail: "Probelauf nicht abgeschlossen.",
-        },
-      };
-    }
-    if (manifest.sidecarFingerprint !== bundledFingerprint) {
-      return {
-        state: "outdated",
-        pythonVersion: manifest.pythonVersion,
-        torchVariante: manifest.torchVariante,
-      };
-    }
-    return {
-      state: "ready",
-      pythonVersion: manifest.pythonVersion,
-      torchVariante: manifest.torchVariante,
-    };
-  });
+  Effect.promise(() => readEnvironmentStatus(envDir, bundledFingerprint));
 
 export type CommandResult = { code: number; stdout: string; stderr: string };
 
@@ -190,19 +234,20 @@ export type InstallOptions = {
   signal?: AbortSignal;
 };
 
-export const uvBin = (binDir: string): string => join(binDir, "uv.exe");
+export const uvBin = (binDir: string, platform = process.platform): string =>
+  join(binDir, platform === "win32" ? "uv.exe" : "uv");
 
 const UV_ZIP_URL =
   "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip";
 const TORCH_INDEX = {
-  cu128: "https://download.pytorch.org/whl/cu128",
+  cu132: "https://download.pytorch.org/whl/cu132",
   cpu: "https://download.pytorch.org/whl/cpu",
 } as const;
 // Pinned on purpose: an unpinned torch silently degrades to a CPU build
 // (measured both here and in the USKMaker reference project).
 const TORCH_PINS = {
-  cu128: ["torch==2.8.0+cu128", "torchaudio==2.8.0+cu128"],
-  cpu: ["torch==2.8.0+cpu", "torchaudio==2.8.0+cpu"],
+  cu132: ["torch==2.15.0+cu132"],
+  cpu: ["torch==2.15.0+cpu"],
 } as const;
 const MIN_FREE_BYTES = 12_000_000_000;
 
@@ -214,12 +259,16 @@ export const defaultRunner = (signal?: AbortSignal): InstallRunner => ({
   runCommand: (cmd, args, onLine) =>
     new Promise((resolve) => {
       // Line-streamed spawn so @@PROGRESS from the preload probe reaches the
-      // UI; the abort signal lets the user cancel a running step (Node then
-      // kills the child process tree for us).
+      // UI; cancellation explicitly terminates descendants as well.
       const child = spawn(cmd, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        signal,
+        detached: process.platform !== "win32",
+        windowsHide: true,
       });
+      const abort = () => killProcessTree(child);
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      child.once("close", () => signal?.removeEventListener("abort", abort));
       let stdout = "";
       let stderr = "";
       let rest = "";
@@ -266,21 +315,21 @@ export const installEnvironment = (
         throw { schritt: "uv", detail: "Eine Einrichtung laeuft bereits." };
       }
       installRunning = true;
-      const runner: InstallRunner = { ...defaultRunner(opts.signal), ...opts.runner };
+      const runner: InstallRunner = {
+        ...defaultRunner(opts.signal),
+        ...opts.runner,
+      };
       const melde = (p: InstallProgress): void => opts.onProgress?.(p);
       const sprache = opts.language ?? "de";
-      let torchVariante: "cu128" | "cpu" = "cpu";
+      let torchVariante: "cu132" | "cpu" = "cpu";
       let schritt: InstallStep = "uv";
       const pruefeAbbruch = (): void => {
         if (opts.signal?.aborted) throw { schritt, detail: "Abgebrochen." };
       };
       try {
         pruefeAbbruch();
-        if (runner.platform !== "win32") {
-          throw new Error(
-            "Automatische Einrichtung gibt es nur unter Windows. Bitte die Umgebung manuell aufsetzen (siehe python-sidecar/pyproject.toml).",
-          );
-        }
+        if (runner.platform !== "win32" && runner.platform !== "linux")
+          throw new Error("Managed setup supports Windows and Linux only");
         if (opts.force) {
           await rm(opts.envDir, { recursive: true, force: true });
         }
@@ -308,12 +357,11 @@ export const installEnvironment = (
         });
         const uv = await ensureUv(opts.binDir, runner, melde);
 
-        // Step 2: venv with a self-provisioned Python 3.12 (WhisperX cannot
-        // run on current Python versions, so we never rely on the system one).
+        // Use the Python version covered by the CPU/CUDA dependency locks.
         schritt = "venv";
         pruefeAbbruch();
         melde({ schritt, prozent: null });
-        const python = envPythonBin(opts.envDir);
+        const python = envPythonBin(opts.envDir, runner.platform);
         if (opts.force || !(await fileExists(python))) {
           await mussGelingen(
             runner.runCommand(uv, ["venv", "--python", "3.12", opts.envDir]),
@@ -326,11 +374,14 @@ export const installEnvironment = (
         pruefeAbbruch();
         melde({ schritt, prozent: null });
         const nvidia = await runner.runCommand("nvidia-smi", []);
-        torchVariante = nvidia.code === 0 ? "cu128" : "cpu";
+        torchVariante = nvidia.code === 0 ? "cu132" : "cpu";
         melde({
           schritt,
           prozent: 1,
-          detail: torchVariante === "cu128" ? "NVIDIA-GPU erkannt" : "Keine NVIDIA-GPU - CPU-Variante (deutlich langsamer)",
+          detail:
+            torchVariante === "cu132"
+              ? "NVIDIA-GPU erkannt"
+              : "Keine NVIDIA-GPU - CPU-Variante (deutlich langsamer)",
         });
 
         // Step 4: pinned torch from the matching index.
@@ -339,11 +390,36 @@ export const installEnvironment = (
         melde({ schritt, prozent: null });
         await mussGelingen(
           runner.runCommand(uv, [
-            "pip", "install", "--python", python,
+            "pip",
+            "install",
+            "--python",
+            python,
             ...TORCH_PINS[torchVariante],
-            "--index-url", TORCH_INDEX[torchVariante],
+            "--index-url",
+            TORCH_INDEX[torchVariante],
           ]),
           schritt,
+        );
+
+        // Both indexes are official, with every runtime version constrained below.
+        // Synchronize the entire managed environment, removing obsolete vulnerable packages.
+        const constraints = join(
+          opts.sidecarDir,
+          `requirements${torchVariante === "cpu" ? "Models" : "Cuda"}${runner.platform === "win32" ? "Windows" : "Linux"}.txt`,
+        );
+        await mussGelingen(
+          runner.runCommand(uv, [
+            "pip",
+            "sync",
+            "--python",
+            python,
+            constraints,
+            "--extra-index-url",
+            TORCH_INDEX[torchVariante],
+            "--index-strategy",
+            "unsafe-best-match",
+          ]),
+          "sidecar",
         );
 
         // Step 5: the bundled sidecar package with its model extras.
@@ -352,7 +428,17 @@ export const installEnvironment = (
         melde({ schritt, prozent: null });
         await mussGelingen(
           runner.runCommand(uv, [
-            "pip", "install", "--python", python, `${opts.sidecarDir}[models]`,
+            "pip",
+            "install",
+            "--python",
+            python,
+            `${opts.sidecarDir}[${torchVariante === "cpu" ? "models" : "models,cuda"}]`,
+            "--constraint",
+            constraints,
+            "--extra-index-url",
+            TORCH_INDEX[torchVariante],
+            "--index-strategy",
+            "unsafe-best-match",
           ]),
           schritt,
         );
@@ -366,12 +452,24 @@ export const installEnvironment = (
         await mussGelingen(
           runner.runCommand(
             python,
-            ["-m", "ultrastar_pipeline", "--preload", "--language", sprache, "--out", preloadOut],
+            [
+              "-m",
+              "ultrastar_pipeline",
+              "--preload",
+              "--language",
+              sprache,
+              "--out",
+              preloadOut,
+            ],
             (line) => {
               if (!line.startsWith("@@PROGRESS ")) return;
               try {
                 const p = JSON.parse(line.slice("@@PROGRESS ".length));
-                melde({ schritt: "preload", prozent: Number(p.percent), detail: String(p.stage) });
+                melde({
+                  schritt: "preload",
+                  prozent: Number(p.percent),
+                  detail: String(p.stage),
+                });
               } catch {
                 // a garbled progress line is not a reason to abort
               }
@@ -386,10 +484,16 @@ export const installEnvironment = (
           sidecarFingerprint: opts.bundledFingerprint,
           pythonVersion: "3.12",
           torchVariante,
-          preload: { ok: true, device: String(preload.device), datum: new Date().toISOString().slice(0, 10) },
+          preload: {
+            ok: true,
+            device: String(preload.device),
+            datum: new Date().toISOString().slice(0, 10),
+          },
         });
-        return await Effect.runPromise(
-          environmentStatus(opts.envDir, opts.bundledFingerprint),
+        return await readEnvironmentStatus(
+          opts.envDir,
+          opts.bundledFingerprint,
+          runner.platform,
         );
       } catch (fehler) {
         const detail =
@@ -401,7 +505,7 @@ export const installEnvironment = (
         const kaputt: EnvironmentError = {
           schritt:
             typeof fehler === "object" && fehler !== null && "schritt" in fehler
-              ? ((fehler as { schritt: InstallStep }).schritt)
+              ? (fehler as { schritt: InstallStep }).schritt
               : schritt,
           detail,
         };
@@ -411,7 +515,11 @@ export const installEnvironment = (
           sidecarFingerprint: opts.bundledFingerprint,
           pythonVersion: "3.12",
           torchVariante,
-          preload: { ok: false, device: "unbekannt", datum: new Date().toISOString().slice(0, 10) },
+          preload: {
+            ok: false,
+            device: "unbekannt",
+            datum: new Date().toISOString().slice(0, 10),
+          },
           fehler: kaputt,
         }).catch(() => {});
         throw kaputt;
@@ -422,7 +530,10 @@ export const installEnvironment = (
     catch: (fehler): EnvironmentError =>
       typeof fehler === "object" && fehler !== null && "schritt" in fehler
         ? (fehler as EnvironmentError)
-        : { schritt: "uv", detail: fehler instanceof Error ? fehler.message : String(fehler) },
+        : {
+            schritt: "uv",
+            detail: fehler instanceof Error ? fehler.message : String(fehler),
+          },
   });
 
 const mussGelingen = async (
@@ -446,13 +557,23 @@ const ensureUv = async (
   runner: InstallRunner,
   melde: (p: InstallProgress) => void,
 ): Promise<string> => {
-  const managed = uvBin(binDir);
+  const managed = uvBin(binDir, runner.platform);
   if (await fileExists(managed)) return managed;
   if ((await runner.runCommand("uv", ["--version"])).code === 0) return "uv";
 
-  const antwort = await runner.fetchFn(UV_ZIP_URL, { redirect: "follow" });
+  if (runner.platform !== "win32")
+    throw new Error(
+      "Bitte uv im PATH installieren und die Einrichtung erneut starten.",
+    );
+  const antwort = await runner.fetchFn(UV_ZIP_URL, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(120_000),
+  });
   if (!antwort.ok || !antwort.body) {
-    throw { schritt: "uv", detail: `uv-Download fehlgeschlagen: ${antwort.status}` };
+    throw {
+      schritt: "uv",
+      detail: `uv-Download fehlgeschlagen: ${antwort.status}`,
+    };
   }
   await mkdir(binDir, { recursive: true });
   const zipPath = join(binDir, "uv-download.zip");
@@ -466,14 +587,28 @@ const ensureUv = async (
     if (value) {
       chunks.push(value);
       empfangen += value.byteLength;
-      if (gesamt > 0) melde({ schritt: "uv", prozent: Math.min(1, empfangen / gesamt) });
+      if (empfangen > 100_000_000) {
+        await reader.cancel();
+        throw new Error("uv download too large");
+      }
+      if (gesamt > 0)
+        melde({ schritt: "uv", prozent: Math.min(1, empfangen / gesamt) });
     }
   }
   await writeFile(zipPath, Buffer.concat(chunks));
+  const checksum = await fetchChecksum(
+    `${UV_ZIP_URL}.sha256`,
+    "uv-x86_64-pc-windows-msvc.zip",
+    runner.fetchFn,
+  );
+  await verifyFileChecksum(zipPath, checksum);
   await extractZipSafely(zipPath, binDir);
   await rm(zipPath, { force: true });
   if (!(await fileExists(managed))) {
-    throw { schritt: "uv", detail: "uv.exe nach dem Entpacken nicht gefunden." };
+    throw {
+      schritt: "uv",
+      detail: "uv.exe nach dem Entpacken nicht gefunden.",
+    };
   }
   return managed;
 };

@@ -1,25 +1,49 @@
-import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, protocol, screen, shell } from "electron";
+import { mkdirSync } from "node:fs";
+import { shutdownVocalAnalysis } from "./vocalAnalysis.ts";
+import { flushWrites } from "../../core/storage/atomicFile.ts";
+import { join, resolve } from "node:path";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  protocol,
+  screen,
+  shell,
+  dialog,
+} from "electron";
 import {
   installMissingBinaries,
   prependManagedBinToPath,
   resolvePlatformBinaries,
 } from "./binaries.ts";
-import {
-  creations,
-  raeumeCoverWaisen,
-  registerIpcHandlers,
-} from "./ipc.ts";
+import { creations, raeumeCoverWaisen, registerIpcHandlers } from "./ipc.ts";
 import { MEDIA_SCHEME, serveMedia } from "./editorMedia.ts";
 import { broadcast, initializeState, loadStartConfig, state } from "./state.ts";
 import { initUpdater } from "./updater.ts";
+
+if (process.env.ULTRASTAR_DATA_ROOT) {
+  const name = process.env.ULTRASTAR_APP_NAME ?? "ultrastar-cli";
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Invalid profile name");
+  const profile = join(
+    resolve(process.env.ULTRASTAR_DATA_ROOT),
+    name,
+    "desktop",
+  );
+  mkdirSync(profile, { recursive: true });
+  app.setPath("userData", profile);
+}
 
 // Must happen before "ready". stream lets <audio> seek through range
 // requests; without it Chromium buffers the whole file first.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: MEDIA_SCHEME,
-    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
   },
 ]);
 
@@ -53,27 +77,36 @@ const createWindow = (): BrowserWindow => {
       ? {}
       : { icon: join(import.meta.dirname, "../../resources/icon.ico") }),
     webPreferences: {
-      // electron-vite 6 emits the preload as ESM (index.mjs); the old
-      // index.js name made Electron skip the preload silently and the
-      // renderer came up without window.ultrastar (v1.5.0).
-      preload: join(import.meta.dirname, "../preload/index.mjs"),
+      preload: join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false, // ESM preload requires sandbox:false
+      sandbox: true,
     },
+  });
+
+  win.webContents.on("will-prevent-unload", (event) => {
+    const answer = dialog.showMessageBoxSync(win, {
+      type: "question",
+      buttons: ["Weiter bearbeiten", "Verwerfen und schlie\u00dfen"],
+      defaultId: 0,
+      cancelId: 0,
+      message: "Ungespeicherte Noten verwerfen?",
+    });
+    if (answer === 1) event.preventDefault();
+    else quitting = false;
   });
 
   if (platz) win.once("ready-to-show", () => win.showInactive());
 
   // Open external links in the system browser, not in the app window
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (/^https?:$/.test(new URL(url).protocol)) void shell.openExternal(url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
     // Plain <a href> clicks: prevent navigation, open externally instead
+    event.preventDefault();
     if (url.startsWith("http")) {
-      event.preventDefault();
       void shell.openExternal(url);
     }
   });
@@ -86,45 +119,57 @@ const createWindow = (): BrowserWindow => {
   return win;
 };
 
-void app.whenReady().then(async () => {
-  registerIpcHandlers(ipcMain);
-  protocol.handle(MEDIA_SCHEME, serveMedia);
-  // Wires the auto-updater and kicks off one background check.
-  initUpdater();
-  prependManagedBinToPath();
-  // Before the first window on purpose: app:getInitialState carries the
-  // restored creations, and the renderer asks for it the moment it mounts.
-  await creations.initialisiere().catch((err: unknown) => {
-    broadcast("event:error", {
-      context: "erstellen",
-      message: err instanceof Error ? err.message : String(err),
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+app.on("second-instance", () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+
+if (primaryInstance)
+  void app.whenReady().then(async () => {
+    registerIpcHandlers(ipcMain);
+    protocol.handle(MEDIA_SCHEME, serveMedia);
+    // Wires the auto-updater and kicks off one background check.
+    if (process.env.ULTRASTAR_OFFLINE !== "1") initUpdater();
+    prependManagedBinToPath();
+    // Before the first window on purpose: app:getInitialState carries the
+    // restored creations, and the renderer asks for it the moment it mounts.
+    await creations.initialisiere().catch((err: unknown) => {
+      broadcast("event:error", {
+        context: "erstellen",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+    // Orphans from a session that fetched candidates but never queued the job.
+    // Swallowed: a cache sweep must not keep the window from opening.
+    await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
+    // Also before the window: it carries the UI language (see loadStartConfig).
+    await loadStartConfig();
+    createWindow();
+    void initializeState().then(() => {
+      // Spec: missing tools are installed automatically on first launch
+      const { ytDlpAvailable, ffmpegAvailable } = state.status;
+      if (
+        process.env.ULTRASTAR_OFFLINE !== "1" &&
+        resolvePlatformBinaries(process.platform) !== undefined &&
+        (ytDlpAvailable === false || ffmpegAvailable === false)
+      ) {
+        void installMissingBinaries().catch((err) => {
+          broadcast("event:error", {
+            context: "binaries",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    });
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
-  // Orphans from a session that fetched candidates but never queued the job.
-  // Swallowed: a cache sweep must not keep the window from opening.
-  await raeumeCoverWaisen(creations.wartendeIds()).catch(() => {});
-  // Also before the window: it carries the UI language (see loadStartConfig).
-  await loadStartConfig();
-  createWindow();
-  void initializeState().then(() => {
-    // Spec: missing tools are installed automatically on first launch
-    const { ytDlpAvailable, ffmpegAvailable } = state.status;
-    if (
-      resolvePlatformBinaries(process.platform) !== undefined &&
-      (ytDlpAvailable === false || ffmpegAvailable === false)
-    ) {
-      void installMissingBinaries().catch((err) => {
-        broadcast("event:error", {
-          context: "binaries",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }
-  });
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -132,6 +177,18 @@ app.on("window-all-closed", () => {
 
 // No orphaned python worker: it would keep holding gigabytes of VRAM
 // after the app window is gone.
-app.on("will-quit", () => {
-  void creations.shutdown();
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  event.preventDefault();
+  void (async () => {
+    await state.flushQueue();
+    await creations.shutdown();
+    await shutdownVocalAnalysis();
+    await flushWrites();
+    quitting = true;
+    app.quit();
+  })().catch((error) => {
+    console.error("Shutdown failed", error);
+  });
 });

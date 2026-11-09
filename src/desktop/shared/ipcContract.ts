@@ -1,3 +1,6 @@
+import type { UsdbUpdate } from "../../core/library/usdbUpdates.ts";
+import type { OriginalPitch } from "../../core/edit/originalVocal.ts";
+import type { LibraryReport } from "../../core/library/inspect.ts";
 import type { Page, Song, SearchOrder } from "../../core/api/usdb/search.ts";
 import type {
   RepairErrorType,
@@ -181,6 +184,8 @@ export type EditorLoadResult =
       revision: string;
       /** songmedia:// URL of the audio, null if the folder has none. */
       mediaUrl: string | null;
+      vocalUrl?: string | null;
+      originalPitch?: OriginalPitch | null;
       /** The file was Windows-1252 and will be saved as UTF-8. */
       converted: boolean;
     }
@@ -199,6 +204,11 @@ export type EditorSaveResult =
 /** Renderer → main (ipcRenderer.invoke). */
 export const INVOKE_CHANNELS = [
   "app:getInitialState",
+  "app:getEventState",
+  "library:inspect",
+  "library:usdbCheck",
+  "library:usdbApply",
+  "search:preview",
   "usdb:search",
   "download:single",
   "downloads:failedList",
@@ -241,6 +251,8 @@ export const INVOKE_CHANNELS = [
   "update:install",
   "editor:load",
   "editor:save",
+  "editor:analyze",
+  "editor:cancelAnalysis",
 ] as const;
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 
@@ -261,6 +273,7 @@ export type UpdateState =
 
 export const EVENT_CHANNELS = [
   "event:status",
+  "event:config",
   "event:queueChanged",
   "event:activeDownloads",
   "event:downloadedChanged",
@@ -277,12 +290,19 @@ export const EVENT_CHANNELS = [
   "event:error",
   "event:genreEnrichProgress",
   "event:update",
+  "event:vocalAnalysis",
 ] as const;
 export type EventChannel = (typeof EVENT_CHANNELS)[number];
 
 /** Payload types per event channel. */
 export type EventPayloads = {
+  "event:vocalAnalysis": {
+    songDir: string;
+    stage: string;
+    percent: number;
+  } | null;
   "event:status": AppStatus;
+  "event:config": AppConfig | null;
   "event:queueChanged": Song[];
   "event:activeDownloads": ActiveDownload[];
   "event:downloadedChanged": DownloadedEntry[];
@@ -307,7 +327,26 @@ export type EventPayloads = {
 
 /** Exposed by preload in the renderer as window.ultrastar. */
 export type UltrastarApi = {
+  editorAnalyze: (request: {
+    songDir: string;
+    midiOffset: 48 | 60;
+  }) => Promise<EditorLoadResult>;
+  editorCancelAnalysis: (songDir: string) => Promise<void>;
   getInitialState: () => Promise<InitialState>;
+  getEventState: <C extends EventChannel>(
+    channel: C,
+  ) => Promise<EventPayloads[C] | undefined>;
+  libraryInspect: () => Promise<LibraryReport>;
+  libraryUsdbCheck: (
+    songDir: string,
+  ) => Promise<UsdbUpdate & { proposedText?: string }>;
+  libraryUsdbApply: (request: {
+    songDir: string;
+    localRevision: string;
+    remoteRevision: string;
+    keepLocal?: boolean;
+  }) => Promise<void>;
+  searchPreview: (song: Song) => Promise<string>;
   search: (req: SearchRequest) => Promise<Page>;
   downloadSingle: (song: Song) => Promise<void>;
   failedList: () => Promise<FailedDownload[]>;

@@ -84,6 +84,35 @@ const job = (id: string) => ({
 });
 
 describe("creation queue", () => {
+  it("cancels during preparation without starting media acquisition", async () => {
+    const { deps, bearbeitet } = fakeDeps();
+    const gate = beschaffungsTor();
+    let release!: () => void;
+    const prepared = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let acquired = false;
+    deps.schreibeJobDateien = async () => {
+      gate.melde();
+      await prepared;
+      return { lyricsPath: "lyrics.txt" };
+    };
+    deps.acquire = async () => {
+      acquired = true;
+      return { audioPath: "audio.wav" };
+    };
+    const creations = createCreations(deps);
+    creations.queueAdd([job("prepare")]);
+    const running = creations.start();
+    await gate.begonnen;
+    creations.cancel();
+    release();
+    await running;
+    expect(acquired).toBe(false);
+    expect(bearbeitet).toEqual([]);
+    expect(creations.alleEintraege()[0]?.status).toBe("cancelled");
+  });
+
   it("verarbeitet Jobs sequenziell und meldet Status", async () => {
     const { deps, events, bearbeitet } = fakeDeps();
     const c = createCreations(deps);
@@ -357,7 +386,9 @@ describe("creation queue", () => {
 
   it("raeumt das Kratzverzeichnis nach Erfolg weg, nach einem Fehler nicht", async () => {
     const geraeumt: string[] = [];
-    const { deps } = fakeDeps({ verhalten: (id) => (id === "b" ? "fail" : "ok") });
+    const { deps } = fakeDeps({
+      verhalten: (id) => (id === "b" ? "fail" : "ok"),
+    });
     const erweitert = {
       ...deps,
       aufraeumen: async (d: string) => {
@@ -648,7 +679,10 @@ describe("creation queue", () => {
       },
     });
     await c.initialisiere();
-    expect(c.alleEintraege().map((e) => e.status)).toEqual(["queued", "queued"]);
+    expect(c.alleEintraege().map((e) => e.status)).toEqual([
+      "queued",
+      "queued",
+    ]);
     expect(c.wartendeIds()).toEqual(["a", "zwei"]);
     // Ein Programmstart darf sich die GPU nicht unaufgefordert nehmen.
     expect(gestartet).toBe(false);
@@ -768,6 +802,8 @@ describe("Warnungen aus dem Paketbau", () => {
         (e.payload as { context?: string }).context === "warnung",
     );
     expect(warnung).toBeDefined();
-    expect((warnung?.payload as { code?: string }).code).toBe("coverNotFound");
+    expect((warnung?.payload as { code?: string } | undefined)?.code).toBe(
+      "coverNotFound",
+    );
   });
 });

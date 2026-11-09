@@ -1,4 +1,5 @@
-from ultrastar_pipeline.notes import AlignedWord, PitchPoint, build_notes
+import pytest
+from ultrastar_pipeline.notes import AlignedWord, PitchPoint, build_notes, export_bpm, NoteTimingError
 
 
 def w(text, start, end, line=0, conf=0.9):
@@ -27,27 +28,24 @@ def test_letzte_silbe_eines_wortes_traegt_das_trennzeichen():
 
 
 def test_erste_note_beginnt_auf_beat_null_und_setzt_gap():
-    """gap ist um die gemessene Onset-Korrektur (60 ms) vorverlegt: 2000 ms
-    roher Wortstart -> 1940 ms GAP. Der Beat bleibt bei 0, da die Korrektur
-    nur den absoluten Nullpunkt verschiebt, nicht die Beat-Struktur."""
+    """Export preserves the absolute measured start without a fixed offset."""
     noten, _, gap, _ = build_notes([w("Hallo", 2.0, 2.5)], flacher_pitch(), bpm=120, language="de")
     assert noten[0].beat == 0
-    assert gap == 1940
+    assert gap == 2000
 
 
-def test_gap_korrektur_verschiebt_den_nullpunkt_um_60ms():
-    """Gemessene Onset-Korrektur (siehe ONSET_KORREKTUR_MS): der rohe
-    Wortstart wird um 60 ms vorverlegt, geklemmt auf >= 0."""
+def test_gap_preserves_early_and_late_measured_onsets():
+    """No reference-derived offset may move the measured timeline."""
     noten_spaet, _, gap_spaet, _ = build_notes(
         [w("Hallo", 1.0, 1.5)], flacher_pitch(), bpm=120, language="de"
     )
-    assert gap_spaet == 940
+    assert gap_spaet == 1000
     assert noten_spaet[0].beat == 0
 
     noten_frueh, _, gap_frueh, _ = build_notes(
         [w("Hallo", 0.02, 0.5)], flacher_pitch(), bpm=120, language="de"
     )
-    assert gap_frueh == 0  # Klemme: 20 ms - 60 ms waere negativ
+    assert gap_frueh == 20
     assert noten_frueh[0].beat == 0
 
 
@@ -63,7 +61,7 @@ def test_kurzes_mehrsilbiges_wort_erzeugt_keine_ueberlappenden_noten():
     sonst so, dass zwei Silben auf denselben Beat fallen (ueberlappende
     Noten)."""
     noten, _, _, _ = build_notes(
-        [w("Banane", 1.0, 1.12)], flacher_pitch(), bpm=120, language="de"
+        [w("Banane", 1.0, 1.12)], flacher_pitch(), bpm=export_bpm(120), language="de"
     )
     beats = [n.beat for n in noten]
     assert beats == sorted(set(beats))
@@ -78,7 +76,7 @@ def test_laenge_ist_mindestens_eins():
 
 def test_umbruch_zwischen_zeilen():
     words = [w("eins", 1.0, 1.4, line=0), w("zwei", 3.0, 3.4, line=1)]
-    noten, umbrueche, _, _ = build_notes(words, flacher_pitch(), bpm=120, language="de")
+    noten, umbrueche, _, _ = build_notes(words, flacher_pitch(), bpm=export_bpm(120), language="de")
     assert len(umbrueche) == 1
     assert umbrueche[0].after_note_index == 0
     assert umbrueche[0].beat > noten[0].beat
@@ -116,7 +114,7 @@ def test_umbruch_beat_liegt_in_der_luecke_zwischen_den_noten():
         w("Banane", 1.0, 1.12, line=0),
         w("Hallo", 1.13, 1.63, line=1),
     ]
-    noten, umbrueche, _, _ = build_notes(words, flacher_pitch(), bpm=120, language="de")
+    noten, umbrueche, _, _ = build_notes(words, flacher_pitch(), bpm=export_bpm(120), language="de")
     assert len(umbrueche) == 1
     for umbruch in umbrueche:
         i = umbruch.after_note_index
@@ -128,14 +126,15 @@ def test_tonhoehe_kommt_aus_dem_pitch_verlauf():
         [w("Hallo", 1.0, 1.5)], flacher_pitch(midi=62.0), bpm=120, language="de"
     )
     assert len({n.pitch for n in noten}) == 1
-    assert noten[0].pitch == 14  # 62 MIDI - gemessene Nullage 48
+    assert noten[0].pitch == 2  # MIDI 62 - standard origin 60.
 
 
-def test_unvoiced_pitch_faellt_auf_rueckfall_zurueck():
+def test_unvoiced_pitch_is_explicitly_unknown():
     stumm = [PitchPoint(time=i / 100, midi=0.0, voiced=False) for i in range(1000)]
     noten, _, _, _ = build_notes([w("Hallo", 1.0, 1.5)], stumm, bpm=120, language="de")
-    # Nichts im gesamten Track ist stimmhaft -> globaler Rueckfall ist 0.
+    # Zero is only an unscored placeholder, never a measured C.
     assert all(n.pitch == 0 for n in noten)
+    assert all(n.pitch_status == "missing" and n.confidence == 0 for n in noten)
 
 
 def test_leere_eingabe_ergibt_keine_noten():
@@ -189,3 +188,51 @@ def test_notes_und_syllables_importieren_keine_modelle():
                 continue
             treffer = wurzeln & verboten
             assert not treffer, f"{name} importiert {treffer}"
+
+
+def test_dense_syllables_keep_absolute_onsets_without_accumulating_rounding_error():
+    words = [w("Banane", 1 + i * 0.12, 1 + (i + 1) * 0.12) for i in range(100)]
+    bpm = export_bpm(120)
+    notes, _, gap, _ = build_notes(words, flacher_pitch(bis=14), bpm, "de")
+    assert len(notes) == 300
+    for i, note in enumerate(notes):
+        expected = 1 + i * 0.04
+        assert abs(gap / 1000 + note.beat * 60 / (bpm * 4) - expected) <= 0.006
+    assert all(a.beat + a.length <= b.beat for a, b in zip(notes, notes[1:]))
+
+
+def test_timing_conflicts_cannot_be_hidden_by_pushing_following_notes():
+    for words in ([w("eins", 2, 2.5), w("zwei", 1, 1.5)],
+                  [w("ah", 1, 1.001) for _ in range(100)]):
+        with pytest.raises(NoteTimingError, match="Zeitkonflikt"):
+            build_notes(words, flacher_pitch(), export_bpm(120), "de")
+
+
+@pytest.mark.parametrize("start,end", [(1, 1), (2, 1), (-1, 1), (float("nan"), 1), (1, float("inf"))])
+def test_invalid_word_intervals_are_rejected(start, end):
+    with pytest.raises(NoteTimingError):
+        build_notes([w("ah", start, end)], [], export_bpm(120), "de")
+
+
+def test_missing_pitch_never_borrows_an_unrelated_note_or_timing_confidence():
+    notes, _, _, _ = build_notes(
+        [w("ah", 2, 2.5)], flacher_pitch(midi=81, bis=1), export_bpm(120), "de"
+    )
+    assert notes[0].pitch_status == "missing"
+    assert notes[0].pitch == 0
+    assert notes[0].confidence == 0
+    assert notes[0].timing_confidence == 0.9
+
+
+def test_known_midi_notes_use_the_ultrastar_standard_origin():
+    for midi, expected in [(48, -12), (60, 0), (69, 9)]:
+        notes, _, _, _ = build_notes([w("ah", 1, 1.5)], flacher_pitch(midi), export_bpm(120), "de")
+        assert notes[0].pitch == expected
+        assert notes[0].pitch_status == "measured"
+
+
+def test_recovered_pitch_does_not_inherit_high_timing_confidence():
+    points = [PitchPoint(1+i*.016, 60, True, .3, 'consensus') for i in range(32)]
+    notes, *_ = build_notes([w('ah', 1, 1.5)], points, export_bpm(120), 'de')
+    assert notes[0].pitch == 0 and notes[0].confidence == pytest.approx(.3)
+    assert notes[0].timing_confidence == .9 and notes[0].pitch_status == 'measured'

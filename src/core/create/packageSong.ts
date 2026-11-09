@@ -3,6 +3,7 @@
 // playable UltraStar folder. The folder is finished inside the job scratch
 // dir and only then moved into the library, so a crash never leaves half a
 // song behind for the library scan to trip over.
+import { ORIGINAL_PITCH_FILE, VOCALS_FILE } from "../edit/originalVocal.ts";
 import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
@@ -177,6 +178,11 @@ export const assemblePackage = (
         } else if (kandidat) {
           await copyFile(kandidat, join(rohbau, "cover.jpg"));
         }
+        for (const artifact of [ORIGINAL_PITCH_FILE, VOCALS_FILE]) {
+          const source = join(opts.jobDir, artifact);
+          if (existsSync(source))
+            await copyFile(source, join(rohbau, artifact));
+        }
         const txt = renderSongTxt(opts.songData, {
           artist: opts.meta.artist,
           title: opts.meta.title,
@@ -192,7 +198,11 @@ export const assemblePackage = (
         // creation gets no file at all.
         const hints = buildSyncHints(opts.songData);
         if (hints.length > 0) {
-          await writeFile(join(rohbau, SYNC_HINTS_FILE), serializeSyncHints(hints), "utf8");
+          await writeFile(
+            join(rohbau, SYNC_HINTS_FILE),
+            serializeSyncHints(hints),
+            "utf8",
+          );
         }
       },
       catch: (e): PackageError => ({

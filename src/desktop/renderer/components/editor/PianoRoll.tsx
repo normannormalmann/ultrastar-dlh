@@ -5,9 +5,21 @@
 // pixels themselves are pianoRollDraw.ts; this is state and the mouse.
 import type { FC } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { moveNote, shiftFrom, updateNote } from "../../../../core/edit/noteEdits.ts";
-import type { EditNote, Track } from "../../../../core/edit/songTxt.ts";
-import { geometrie, leseFarben, type Szene, type SungPoint, zeichne } from "./pianoRollDraw.ts";
+import {
+  moveNote,
+  shiftFrom,
+  updateNote,
+} from "../../../../core/edit/noteEdits.ts";
+import type { EditNote, Track, Timing } from "../../../../core/edit/songTxt.ts";
+import {
+  KEYBOARD_WIDTH,
+  TIMELINE_HEIGHT,
+  geometrie,
+  leseFarben,
+  type Szene,
+  type SungPoint,
+  zeichne,
+} from "./pianoRollDraw.ts";
 
 const PITCH_PADDING = 3;
 const EDGE_PX = 6;
@@ -22,6 +34,9 @@ type Drag = {
 };
 
 export type PianoRollProps = {
+  reference?: SungPoint[];
+  timing?: Timing | null;
+  midiOffset?: number;
   track: Track;
   /** The other voices of a duet. */
   ghosts: Track[];
@@ -80,6 +95,9 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
   );
 
   const szene: Szene = {
+    reference: p.reference,
+    timing: p.timing,
+    midiOffset: p.midiOffset,
     w: groesse.w,
     h: groesse.h,
     scrollBeat: p.scrollBeat,
@@ -95,14 +113,17 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
     suggestions: p.suggestions,
   };
   const { rollH, rowH, xVon, yVon } = geometrie(szene);
-  const sichtBeats = groesse.w / p.pxPerBeat;
+  const sichtBeats = (groesse.w - KEYBOARD_WIDTH) / p.pxPerBeat;
 
   // While playing, the view pages along with the playhead.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs per playhead move, reads the rest through propsRef
   useEffect(() => {
     const q = propsRef.current;
     if (!q.follow || q.playheadBeat === null) return;
-    if (q.playheadBeat < q.scrollBeat || q.playheadBeat > q.scrollBeat + sichtBeats * 0.9) {
+    if (
+      q.playheadBeat < q.scrollBeat ||
+      q.playheadBeat > q.scrollBeat + sichtBeats * 0.9
+    ) {
       q.onScroll(q.playheadBeat - sichtBeats * 0.1);
     }
   }, [p.playheadBeat, sichtBeats]);
@@ -141,7 +162,11 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
     zeichne(ctx, szene, f);
   });
 
-  const trefferAn = (x: number, y: number): { index: number; rand: boolean } | null => {
+  const trefferAn = (
+    x: number,
+    y: number,
+  ): { index: number; rand: boolean } | null => {
+    if (x < KEYBOARD_WIDTH || y < TIMELINE_HEIGHT) return null;
     const notes = p.track.notes;
     for (let i = notes.length - 1; i >= 0; i -= 1) {
       const n = notes[i] as EditNote;
@@ -167,11 +192,13 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
     // The canvas takes no focus, so a half-typed field in the panel would
     // keep it and be thrown away when the selection changes. Blurring
     // commits it first.
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
     const { x, y } = lokal(e);
+    if (x < KEYBOARD_WIDTH) return;
     const treffer = y < rollH ? trefferAn(x, y) : null;
     if (!treffer) {
-      p.onSeek(Math.max(0, p.scrollBeat + x / p.pxPerBeat));
+      p.onSeek(Math.max(0, p.scrollBeat + (x - KEYBOARD_WIDTH) / p.pxPerBeat));
       return;
     }
     p.onSelect(treffer.index);
@@ -190,13 +217,19 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
     const drag = dragRef.current;
     if (!drag) {
       const t = y < rollH ? trefferAn(x, y) : null;
-      e.currentTarget.style.cursor = t ? (t.rand ? "ew-resize" : "grab") : "text";
+      e.currentTarget.style.cursor = t
+        ? t.rand
+          ? "ew-resize"
+          : "grab"
+        : "text";
       return;
     }
     const dBeat = Math.round((x - drag.startX) / p.pxPerBeat);
     const original = p.track.notes[drag.index] as EditNote;
     if (drag.mode === "resize") {
-      setVorschau(updateNote(p.track, drag.index, { length: original.length + dBeat }));
+      setVorschau(
+        updateNote(p.track, drag.index, { length: original.length + dBeat }),
+      );
       return;
     }
     const dPitch = Math.round((drag.startY - y) / rowH);
@@ -206,7 +239,9 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
     setVorschau(
       dPitch === 0
         ? verschoben
-        : updateNote(verschoben, drag.index, { pitch: original.pitch + dPitch }),
+        : updateNote(verschoben, drag.index, {
+            pitch: original.pitch + dPitch,
+          }),
     );
   };
 
@@ -231,7 +266,9 @@ export const PianoRoll: FC<PianoRollProps> = (p) => {
       e.preventDefault();
       const q = propsRef.current;
       const r = canvas.getBoundingClientRect();
-      const anker = q.scrollBeat + (e.clientX - r.left) / q.pxPerBeat;
+      const anker =
+        q.scrollBeat +
+        Math.max(0, e.clientX - r.left - KEYBOARD_WIDTH) / q.pxPerBeat;
       if (e.ctrlKey) {
         q.onZoom(q.pxPerBeat * (e.deltaY < 0 ? 1.25 : 0.8), anker);
         return;

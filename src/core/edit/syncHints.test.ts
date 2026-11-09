@@ -18,7 +18,10 @@ const note = (beat: number, confidence?: number) => ({
   ...(confidence === undefined ? {} : { confidence }),
 });
 
-const daten = (notes: SongData["notes"], sections: SongData["sections"] = []): SongData => ({
+const daten = (
+  notes: SongData["notes"],
+  sections: SongData["sections"] = [],
+): SongData => ({
   schemaVersion: 2,
   bpm: 300,
   gap: 0,
@@ -26,12 +29,35 @@ const daten = (notes: SongData["notes"], sections: SongData["sections"] = []): S
   notes,
   lineBreaks: [],
   sections,
-  meta: { durationSec: 1, device: "cpu", stageVersions: {}, warnings: [], lowConfidence: false },
+  meta: {
+    durationSec: 1,
+    device: "cpu",
+    stageVersions: {},
+    warnings: [],
+    lowConfidence: false,
+  },
 });
 
 describe("buildSyncHints", () => {
+  it("keeps missing pitch distinct from uncertain timing across save and reload", () => {
+    const d = daten([
+      { ...note(0, 0), pitchStatus: "missing", timingConfidence: 0.9 },
+      { ...note(2, 0), pitchStatus: "missing", timingConfidence: 0.2 },
+    ]);
+    const hints = buildSyncHints(d);
+    expect(hints.map((h) => h.kind)).toEqual(["pitch", "pitchAndTiming"]);
+    expect(parseSyncHints(JSON.parse(serializeSyncHints(hints)))).toEqual(
+      hints,
+    );
+  });
   it("fasst schwache Noten zu Bereichen zusammen", () => {
-    const d = daten([note(0, 0.9), note(2, 0.3), note(4, 0.5), note(6, 0.9), note(8, 0.1)]);
+    const d = daten([
+      note(0, 0.9),
+      note(2, 0.3),
+      note(4, 0.5),
+      note(6, 0.9),
+      note(8, 0.1),
+    ]);
     expect(buildSyncHints(d)).toEqual([
       { fromBeat: 2, toBeat: 6, kind: "low" },
       { fromBeat: 8, toBeat: 10, kind: "low" },
@@ -42,8 +68,18 @@ describe("buildSyncHints", () => {
     const d = daten(
       [note(0, 0.2), note(2, 0.2), note(4, 0.2)],
       [
-        { fromNoteIndex: 0, toNoteIndex: 2, confidence: 0, anchoredBothSides: false },
-        { fromNoteIndex: 2, toNoteIndex: 3, confidence: 0.4, anchoredBothSides: true },
+        {
+          fromNoteIndex: 0,
+          toNoteIndex: 2,
+          confidence: 0,
+          anchoredBothSides: false,
+        },
+        {
+          fromNoteIndex: 2,
+          toNoteIndex: 3,
+          confidence: 0.4,
+          anchoredBothSides: true,
+        },
       ],
     );
     expect(buildSyncHints(d)).toEqual([
@@ -56,7 +92,9 @@ describe("buildSyncHints", () => {
     const d = daten([{ ...note(10, 0.1), length: 0.3 }]);
     const hints = buildSyncHints(d);
     expect(hints).toEqual([{ fromBeat: 10, toBeat: 11, kind: "low" }]);
-    expect(parseSyncHints(JSON.parse(serializeSyncHints(hints)))).toEqual(hints);
+    expect(parseSyncHints(JSON.parse(serializeSyncHints(hints)))).toEqual(
+      hints,
+    );
   });
 
   it("rundet Beats wie writeSongTxt", () => {
@@ -73,11 +111,18 @@ describe("buildSyncHints", () => {
 describe("Datei", () => {
   it("liest zurueck, was sie schreibt", () => {
     const hints = [{ fromBeat: 2, toBeat: 6, kind: "low" as const }];
-    expect(parseSyncHints(JSON.parse(serializeSyncHints(hints)))).toEqual(hints);
+    expect(parseSyncHints(JSON.parse(serializeSyncHints(hints)))).toEqual(
+      hints,
+    );
   });
 
   it("verwirft fremde Versionen und kaputte Eintraege", () => {
-    expect(parseSyncHints({ version: 2, hints: [{ fromBeat: 0, toBeat: 2, kind: "low" }] })).toEqual([]);
+    expect(
+      parseSyncHints({
+        version: 2,
+        hints: [{ fromBeat: 0, toBeat: 2, kind: "low" }],
+      }),
+    ).toEqual([]);
     expect(
       parseSyncHints({
         version: 1,
@@ -95,7 +140,13 @@ describe("Datei", () => {
 
 describe("Noten und Bereiche", () => {
   const spur: Track = {
-    notes: [0, 2, 4, 6].map((beat) => ({ type: ":", beat, length: 2, pitch: 0, syllable: "x" })),
+    notes: [0, 2, 4, 6].map((beat) => ({
+      type: ":",
+      beat,
+      length: 2,
+      pitch: 0,
+      syllable: "x",
+    })),
   };
 
   it("legt Bereiche auf die Noten und sammelt sie wieder ein", () => {
@@ -104,7 +155,12 @@ describe("Noten und Bereiche", () => {
       { fromBeat: 6, toBeat: 8, kind: "low" as const },
     ];
     const markiert = applySyncHints(spur, hints);
-    expect(markiert.notes.map((n) => n.unsure)).toEqual([undefined, "interpolated", "interpolated", "low"]);
+    expect(markiert.notes.map((n) => n.unsure)).toEqual([
+      undefined,
+      "interpolated",
+      "interpolated",
+      "low",
+    ]);
     expect(collectSyncHints(markiert)).toEqual(hints);
   });
 });

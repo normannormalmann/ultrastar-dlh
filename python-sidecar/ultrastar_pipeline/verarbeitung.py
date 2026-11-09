@@ -22,7 +22,7 @@ from .align import (
 )
 from .cache import atomic_write_bytes, audio_fingerprint
 from .contract import baue_song_data
-from .notes import build_notes
+from .notes import build_notes, export_bpm, NoteTimingError, STAGE_VERSION as NOTES_STAGE_VERSION
 from .pitch import STAGE_VERSION as PITCH_STAGE_VERSION, track_pitch
 from .progress import emit_error, emit_progress
 from .separate import STAGE_VERSION as SEPARATE_STAGE_VERSION, separate
@@ -79,7 +79,7 @@ def _stage_versions() -> dict[str, str]:
         "transcribe": TRANSCRIBE_STAGE_VERSION,
         "align": ALIGN_STAGE_VERSION,
         "pitch": PITCH_STAGE_VERSION,
-        "notes": "1",
+        "notes": NOTES_STAGE_VERSION,
         "separate_model": modellwahl.SEPARATOR,
         "asr_model": modellwahl.ASR,
         "aligner": modellwahl.ALIGNER,
@@ -253,7 +253,15 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
         groesste_luecke = max(0.0, max(luecken)) if luecken else 0.0
 
         emit_progress("notes", 0.0)
+        musical_bpm = bpm
+        bpm = export_bpm(musical_bpm)
         noten, umbrueche, gap, wort_zu_note = build_notes(woerter, verlauf, bpm, auftrag.language)
+        missing_pitch = sum(n.pitch_status == "missing" for n in noten)
+        if missing_pitch:
+            warnungen.append(
+                f"{missing_pitch} von {len(noten)} Noten ohne gemessene Tonhöhe: "
+                "als Freestyle gespeichert und zur Prüfung markiert."
+            )
         emit_progress("notes", 1.0)
 
         sections = _baue_sections(woerter, wort_zu_note)
@@ -261,7 +269,7 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
     except LanguageUnsupported as exc:
         emit_error("language_unsupported", language=exc.language, stufe=exc.stufe)
         return 1
-    except AlignmentFailed as exc:
+    except (AlignmentFailed, NoteTimingError) as exc:
         emit_error("alignment_failed", detail=str(exc))
         return 1
     except MemoryError:
@@ -303,6 +311,20 @@ def verarbeite_auftrag(auftrag: Auftrag) -> int:
         largest_gap_sec=groesste_luecke,
         sections=sections,
     )
+    daten["meta"]["musicalBpm"] = musical_bpm
+    # Persist the measured voice so the editor needs no model rerun.
+    from shutil import copyfile
+    from .notes import MIDI_NULLAGE
+
+    auftrag.out.parent.mkdir(parents=True, exist_ok=True)
+    stem = auftrag.out.parent / "vocals.wav"
+    if vocals.resolve() != stem.resolve():
+        copyfile(vocals, stem)
+    trace = {"midiOffset": MIDI_NULLAGE, "points": [
+        {"ms": round(p.time * 1000, 3), "pitch": p.midi - MIDI_NULLAGE}
+        for p in verlauf if p.voiced
+    ]}
+    atomic_write_bytes(auftrag.out.parent / "originalPitch.json", json.dumps(trace).encode("utf8"))
     atomic_write_bytes(
         auftrag.out, json.dumps(daten, ensure_ascii=False, indent=2).encode("utf8")
     )

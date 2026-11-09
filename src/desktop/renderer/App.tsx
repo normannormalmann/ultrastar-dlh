@@ -87,6 +87,7 @@ const Shell: FC<{
 
   const status = useIpcEvent("event:status", initial.status);
   const queue = useIpcEvent("event:queueChanged", initial.queue);
+  const config = useIpcEvent("event:config", initial.config);
   const downloads = useIpcEvent("event:activeDownloads", []);
   const downloaded = useIpcEvent("event:downloadedChanged", initial.downloaded);
   // Startwert aus dem Initialzustand: eine wiederhergestellte Queue meldet
@@ -100,54 +101,56 @@ const Shell: FC<{
 
   return (
     <OpenEditorContext.Provider value={setEditorZiel}>
-    <div className="app-shell">
-      <Sidebar
-        active={view}
-        onSelect={setView}
-        queueCount={queue.length}
-        creationCount={creations.filter((c) => c.status === "queued").length}
-        status={status}
-      />
-      <main className="main-view">
-        {lastError && (
-          <div className="error-banner">
-            [{errorContextLabel(t, lastError.context)}]{" "}
-            {appErrorText(t, lastError)}
-          </div>
-        )}
-        <SupportCard downloadedCount={downloaded.length} />
-        {view === "search" && (
-          <SearchView downloaded={downloaded} status={status} />
-        )}
-        {view === "create" && (
-          <CreateView
-            entwurf={entwurf}
-            setEntwurf={setEntwurf}
-            downloaded={downloaded}
-          />
-        )}
-        {view === "queue" && <QueueView queue={queue} creations={creations} />}
-        {view === "downloaded" && <DownloadedView entries={downloaded} />}
-        {view === "repair" && <RepairView status={status} />}
-        {view === "settings" && (
-          <SettingsView
-            initialConfig={initial.config}
-            version={initial.version}
-            update={update}
-            onSprache={onSprache}
-          />
-        )}
-      </main>
-      <DownloadBar downloads={downloads} />
-      {editorZiel && (
-        <EditorView
-          key={editorZiel.songDir}
-          songDir={editorZiel.songDir}
-          heading={editorZiel.heading}
-          onClose={() => setEditorZiel(null)}
+      <div className="app-shell">
+        <Sidebar
+          active={view}
+          onSelect={setView}
+          queueCount={queue.length}
+          creationCount={creations.filter((c) => c.status === "queued").length}
+          status={status}
         />
-      )}
-    </div>
+        <main className="main-view">
+          {lastError && (
+            <div className="error-banner">
+              [{errorContextLabel(t, lastError.context)}]{" "}
+              {appErrorText(t, lastError)}
+            </div>
+          )}
+          <SupportCard downloadedCount={downloaded.length} />
+          {view === "search" && (
+            <SearchView downloaded={downloaded} status={status} />
+          )}
+          {view === "create" && (
+            <CreateView
+              entwurf={entwurf}
+              setEntwurf={setEntwurf}
+              downloaded={downloaded}
+            />
+          )}
+          {view === "queue" && (
+            <QueueView queue={queue} creations={creations} />
+          )}
+          {view === "downloaded" && <DownloadedView entries={downloaded} />}
+          {view === "repair" && <RepairView status={status} />}
+          {view === "settings" && (
+            <SettingsView
+              initialConfig={config}
+              version={initial.version}
+              update={update}
+              onSprache={onSprache}
+            />
+          )}
+        </main>
+        <DownloadBar downloads={downloads} />
+        {editorZiel && (
+          <EditorView
+            key={editorZiel.songDir}
+            songDir={editorZiel.songDir}
+            heading={editorZiel.heading}
+            onClose={() => setEditorZiel(null)}
+          />
+        )}
+      </div>
     </OpenEditorContext.Provider>
   );
 };

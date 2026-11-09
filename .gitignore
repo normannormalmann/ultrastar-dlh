@@ -46,6 +46,7 @@ cookies.txt
 .superpowers/
 
 # Playwright
+.verification/
 test-results/
 playwright-report/
 

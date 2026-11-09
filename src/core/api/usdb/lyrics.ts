@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "./search.ts";
 import { Effect } from "effect";
 import { API_URL } from "./config.ts";
 
@@ -41,14 +42,18 @@ export const mapToObject = <K extends string, V>(map: Map<K, V>) =>
  * Keeps the provided regex logic intact.
  */
 export const parseLyrics = (html: string): ParsedLyrics => {
-  const text = html.match(/<textarea.*?>([\s\S]*)<\/textarea>/m)?.[1];
+  const raw = html.match(/<textarea[^>]*>([\s\S]*?)<\/textarea>/i)?.[1];
+  const text = raw === undefined ? undefined : decodeHtmlEntities(raw);
   if (!text) return null;
 
   const headersRaw = [...text.matchAll(/^#(.*:.*)$/gm)];
   const headers: SongHeaders = new Map();
 
   headersRaw.forEach((h) => {
-    const [header, value] = h[1]?.split(":") ?? [];
+    const raw = h[1] ?? "";
+    const colon = raw.indexOf(":");
+    const header = raw.slice(0, colon);
+    const value = raw.slice(colon + 1).trimEnd();
     if (header && value)
       headers.set(header.toLowerCase() as SongHeaderType, value);
   });
@@ -78,6 +83,7 @@ export const fetchLyricsPage = (id: number, cookie?: string) =>
     try: async () => {
       const response = await fetch(`${API_URL}/?link=editsongs&id=${id}`, {
         method: "GET",
+        signal: AbortSignal.timeout(30_000),
         headers: {
           ...(cookie ? { Cookie: cookie } : {}),
         },

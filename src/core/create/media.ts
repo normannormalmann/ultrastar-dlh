@@ -3,6 +3,7 @@
 // - when the source is a link - the video that ships with the package.
 // Nothing here writes into the library; the job scratch dir holds it all
 // until assemblePackage moves the finished folder over.
+import { killProcessTree } from "./processTree.ts";
 import { spawn } from "node:child_process";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -63,9 +64,29 @@ export const videoIdAusLink = (url: string): string | null => {
 };
 
 /** ffmpeg lives on PATH: managedBinDir() is prepended by the desktop main. */
-const ffmpegStandard = (args: string[]): Promise<void> =>
+const ffmpegStandard = (args: string[], signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
-    const kind = spawn("ffmpeg", ["-y", ...args], { stdio: "ignore" });
+    if (signal?.aborted) {
+      reject(new Error("Cancelled"));
+      return;
+    }
+    const kind = spawn("ffmpeg", ["-y", ...args], {
+      stdio: "ignore",
+      windowsHide: true,
+      detached: process.platform !== "win32",
+    });
+    const abort = () => {
+      killProcessTree(kind);
+      reject(new Error("Cancelled"));
+    };
+    const timer = setTimeout(abort, 120_000);
+    signal?.addEventListener("abort", abort, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    };
+    kind.once("error", cleanup);
+    kind.once("close", cleanup);
     kind.on("error", reject);
     kind.on("close", (code) =>
       code === 0 ? resolve() : reject(new Error(`ffmpeg endete mit ${code}`)),
@@ -82,7 +103,10 @@ const holeThumbnail = async (
   if (!id) return undefined;
   for (const name of ["maxresdefault", "hqdefault"]) {
     try {
-      const antwort = await fetchFn(`https://i.ytimg.com/vi/${id}/${name}.jpg`);
+      const antwort = await fetchFn(
+        `https://i.ytimg.com/vi/${id}/${name}.jpg`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
       if (!antwort.ok) continue;
       await writeFile(ziel, new Uint8Array(await antwort.arrayBuffer()));
       return ziel;
@@ -97,11 +121,15 @@ export const acquireMedia = (
   opts: AcquireOptions,
 ): Effect.Effect<AcquiredMedia, MediaError> =>
   Effect.gen(function* () {
-    const runFfmpeg = opts.deps?.runFfmpeg ?? ffmpegStandard;
+    const runFfmpeg =
+      opts.deps?.runFfmpeg ??
+      ((args: string[]) => ffmpegStandard(args, opts.signal));
     const fetchFn = opts.deps?.fetchFn ?? fetch;
 
     const pruefeAbbruch = (): MediaError | null =>
-      opts.signal?.aborted ? { kind: "Cancelled", detail: "Abgebrochen." } : null;
+      opts.signal?.aborted
+        ? { kind: "Cancelled", detail: "Abgebrochen." }
+        : null;
 
     const vorher = pruefeAbbruch();
     if (vorher) return yield* Effect.fail(vorher);
@@ -145,6 +173,11 @@ export const acquireMedia = (
           return false;
         }
       });
+      if (opts.signal?.aborted)
+        return yield* Effect.fail<MediaError>({
+          kind: "Cancelled",
+          detail: "Abgebrochen.",
+        });
       opts.onProgress?.(1);
       return {
         audioPath: pfad,
@@ -186,7 +219,7 @@ export const acquireMedia = (
     yield* Effect.tryPromise({
       try: () => runFfmpeg(["-i", videoPath, "-vn", "-c:a", "copy", audioPath]),
       catch: (e): MediaError => ({
-        kind: "AudioExtractionFailed",
+        kind: opts.signal?.aborted ? "Cancelled" : "AudioExtractionFailed",
         detail: e instanceof Error ? e.message : String(e),
       }),
     });

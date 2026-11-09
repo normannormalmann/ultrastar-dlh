@@ -21,8 +21,14 @@ const BULK_FETCH_YIELD_MS = 10;
  * Downloads a song and maintains activeDownloads/history/failure log.
  * Never throws — errors surface as status:"failed" in the UI event and log.
  */
-export const downloadSongItem = async (song: Song): Promise<void> => {
-  if (!state.cookie) return;
+export const downloadSongItem = async (song: Song): Promise<boolean> => {
+  if (!state.cookie) {
+    broadcast("event:error", {
+      context: "download",
+      message: "Bitte zuerst bei USDB anmelden.",
+    });
+    return false;
+  }
   if (
     state.status.ytDlpAvailable === false ||
     state.status.ffmpegAvailable === false
@@ -33,10 +39,10 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
       message:
         "yt-dlp oder ffmpeg ist nicht installiert. Downloads sind deaktiviert (Einstellungen → Tools).",
     });
-    return;
+    return false;
   }
-  if (state.activeDownloads.some((d) => d.apiId === song.apiId)) return;
-  if (state.isDownloadedSong(song)) return;
+  if (state.activeDownloads.some((d) => d.apiId === song.apiId)) return false;
+  if (state.isDownloadedSong(song)) return true;
 
   state.setActiveDownloads([
     ...state.activeDownloads,
@@ -102,6 +108,7 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
       () => state.removeActiveDownload(song.apiId),
       COMPLETED_REMOVE_DELAY_MS,
     );
+    return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     Effect.runPromise(
@@ -116,6 +123,7 @@ export const downloadSongItem = async (song: Song): Promise<void> => {
       () => state.removeActiveDownload(song.apiId),
       FAILED_REMOVE_DELAY_MS,
     );
+    return false;
   }
 };
 
@@ -129,6 +137,14 @@ export const requestQueueCancel = (): void => {
 /** Process the queue: batches sized by configured concurrency (settings). Cancellable. */
 export const processQueue = async (): Promise<void> => {
   if (state.queueRunning || state.queue.length === 0) return;
+  if (!state.cookie) {
+    broadcast("event:error", {
+      context: "download",
+      message:
+        "Bitte zuerst bei USDB anmelden. Die Warteschlange bleibt erhalten.",
+    });
+    return;
+  }
   if (
     state.status.ytDlpAvailable === false ||
     state.status.ffmpegAvailable === false
@@ -147,12 +163,16 @@ export const processQueue = async (): Promise<void> => {
     const concurrency = state.downloadConcurrency;
     let isDownloaded = state.makeIsDownloadedSong();
     let current = state.queue.filter((s) => !isDownloaded(s));
+    if (current.length !== state.queue.length) state.setQueue(current);
     while (current.length > 0 && !queueCancelRequested) {
       const batch = current.slice(0, concurrency);
-      await Promise.all(batch.map((song) => downloadSongItem(song)));
-      state.setQueue(
-        state.queue.filter((s) => !batch.some((b) => b.apiId === s.apiId)),
+      const results = await Promise.all(
+        batch.map((song) => downloadSongItem(song)),
       );
+      const completed = new Set(
+        batch.filter((_, i) => results[i]).map((s) => s.apiId),
+      );
+      state.setQueue(state.queue.filter((s) => !completed.has(s.apiId)));
       isDownloaded = state.makeIsDownloadedSong();
       current = current.slice(batch.length).filter((s) => !isDownloaded(s));
     }

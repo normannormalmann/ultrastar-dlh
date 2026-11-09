@@ -81,7 +81,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        scope: [base, models]
+        scope: [base, models, cuda, pitch-quality, pitch-quality-cuda]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -99,58 +99,32 @@ jobs:
           AUDIT_SCOPE: ${{ matrix.scope }}
         run: |
           extra_flags=()
-          if [ "$AUDIT_SCOPE" = models ]; then
-            # The managed environment installs CPU/CUDA wheels first. Audit
-            # their shared upstream version rather than ignoring local suffixes.
-            python - <<'PY'
-          import os
-          import pathlib
-          import re
-          source = pathlib.Path('src/core/create/environment.ts').read_text(encoding='utf-8-sig')
-          pins = sorted(set(re.findall(r'(torch(?:audio)?)==([0-9.]+)\+(?:cpu|cu128)', source)))
-          assert len(pins) == 2 and {name for name, version in pins} == {'torch', 'torchaudio'}, 'Update model audit for changed runtime Torch pins'
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'runtime-torch.txt').write_text(''.join(f'{name}=={version}\n' for name, version in pins))
-          PY
-            extra_flags=(--extra models --constraint "$RUNNER_TEMP/runtime-torch.txt")
+          backend=cpu
+          kind=Models
+          if [ "$AUDIT_SCOPE" != base ]; then extra_flags=(--extra models); fi
+          if [[ "$AUDIT_SCOPE" == pitch-quality* ]]; then extra_flags+=(--extra pitch-quality); fi
+          if [ "$AUDIT_SCOPE" = cuda ] || [ "$AUDIT_SCOPE" = pitch-quality-cuda ]; then
+            extra_flags+=(--extra cuda)
+            backend=cu132
+            kind=Cuda
           fi
+          if [ "$RUNNER_OS" = Windows ]; then platform=Windows; else platform=Linux; fi
+          constraints="python-sidecar/requirements${kind}${platform}.txt"
           python -m uv pip compile python-sidecar/pyproject.toml \
-            --python-version 3.12 "${extra_flags[@]}" \
+            --python-version 3.12 --constraint "$constraints" "${extra_flags[@]}" \
+            --index "https://download.pytorch.org/whl/$backend" --index-strategy unsafe-best-match \
             --no-annotate --no-header --output-file "$RUNNER_TEMP/audit-requirements.txt"
-      - name: Check time-limited risk exceptions
-        shell: bash
-        env:
-          AUDIT_SCOPE: ${{ matrix.scope }}
-        run: |
+          # CPU/CUDA wheels share the upstream advisories; audit their public version.
           python - <<'PY'
-          import datetime
-          import json
-          import os
-          import pathlib
-          import urllib.request
-          # Ignore flags only for the scope the exceptions were decided for;
-          # every other scope audits without any exception.
-          exceptions = json.loads(pathlib.Path('.github/python-audit-exceptions.json').read_text(encoding='utf-8'))
-          args = []
-          if os.environ['AUDIT_SCOPE'] == exceptions['scope']:
-              expires = datetime.date.fromisoformat(exceptions['expires'])
-              assert datetime.date.today() <= expires, f'Python audit exceptions expired on {expires}: re-assess them or finish the migration'
-              # The exceptions only exist because whisperx blocks the fixed
-              # versions. Once it stops pinning torch 2.8 they must go.
-              with urllib.request.urlopen('https://pypi.org/pypi/whisperx/json', timeout=30) as response:
-                  whisperx = json.load(response)['info']
-              torch_pins = [r for r in whisperx['requires_dist'] if r.replace(' ', '').startswith('torch~=2.8')]
-              assert torch_pins, f"whisperx {whisperx['version']} no longer pins torch 2.8: migrate and drop .github/python-audit-exceptions.json"
-              for advisory in exceptions['advisories']:
-                  args += ['--ignore-vuln', advisory['id']]
-              print(f"{len(exceptions['advisories'])} advisories excepted until {expires} (whisperx {whisperx['version']} still pins torch 2.8)")
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'audit-ignore-args.txt').write_text(''.join(f'{a}\n' for a in args), newline='\n')
+          import os, pathlib, re
+          path = pathlib.Path(os.environ['RUNNER_TEMP'], 'audit-requirements.txt')
+          path.write_text(re.sub(r'\+(?:cpu|cu132)(?=\s|$)', '', path.read_text()))
           PY
       - name: Audit resolved versions
         shell: bash
         run: |
-          mapfile -t ignore_args < "$RUNNER_TEMP/audit-ignore-args.txt"
           python -m pip_audit --no-deps --disable-pip --requirement "$RUNNER_TEMP/audit-requirements.txt" \
-            "${ignore_args[@]}" --format json --output "$RUNNER_TEMP/python-audit.json"
+            --format json --output "$RUNNER_TEMP/python-audit.json"
       - name: Preserve resolved versions and findings
         if: always()
         uses: actions/upload-artifact@v7

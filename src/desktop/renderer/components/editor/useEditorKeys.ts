@@ -2,7 +2,7 @@
 // Keyboard control for the editor. Kept out of EditorView so the view is
 // layout and the key map is one readable table. No Alt combinations: with
 // the hidden menu bar, Alt alone toggles it.
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import {
   deleteNote,
   lineOf,
@@ -15,7 +15,12 @@ import {
   toggleType,
   updateNote,
 } from "../../../../core/edit/noteEdits.ts";
-import { beatToMs, type EditNote, type Timing, type Track } from "../../../../core/edit/songTxt.ts";
+import {
+  beatToMs,
+  type EditNote,
+  type Timing,
+  type Track,
+} from "../../../../core/edit/songTxt.ts";
 import type { Playback } from "./usePlayback.ts";
 
 /** Lead-in and tail around "play this line", so the first word is not clipped. */
@@ -61,14 +66,19 @@ const inEingabefeld = (ziel: EventTarget | null): boolean =>
 type MitNote = (f: (index: number) => Track) => void;
 
 /** Arrow keys: select, move, resize, shift the rest, pitch. */
-const pfeil = (e: KeyboardEvent, k: EditorKeyDeps, mitNote: MitNote): boolean => {
+const pfeil = (
+  e: KeyboardEvent,
+  k: EditorKeyDeps,
+  mitNote: MitNote,
+): boolean => {
   const strg = e.ctrlKey || e.metaKey;
   const i = k.selected;
   const n = i === null ? undefined : k.track.notes[i];
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     const r = e.key === "ArrowRight" ? 1 : -1;
     if (strg && e.shiftKey) mitNote((x) => shiftFrom(k.track, x, r));
-    else if (strg) mitNote((x) => updateNote(k.track, x, { length: (n?.length ?? 1) + r }));
+    else if (strg)
+      mitNote((x) => updateNote(k.track, x, { length: (n?.length ?? 1) + r }));
     else if (e.shiftKey) mitNote((x) => moveNote(k.track, x, r));
     else {
       const letzte = k.track.notes.length - 1;
@@ -78,7 +88,9 @@ const pfeil = (e: KeyboardEvent, k: EditorKeyDeps, mitNote: MitNote): boolean =>
   }
   if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     const schritt = (e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 12 : 1);
-    mitNote((x) => updateNote(k.track, x, { pitch: (n?.pitch ?? 0) + schritt }));
+    mitNote((x) =>
+      updateNote(k.track, x, { pitch: (n?.pitch ?? 0) + schritt }),
+    );
     return true;
   }
   return false;
@@ -100,7 +112,12 @@ const mitStrg = (taste: string, shift: boolean, k: EditorKeyDeps): boolean => {
 };
 
 /** Single keys without modifiers. */
-const einfach = (taste: string, k: EditorKeyDeps, mitNote: MitNote, playLine: () => void): boolean => {
+const einfach = (
+  taste: string,
+  k: EditorKeyDeps,
+  mitNote: MitNote,
+  playLine: () => void,
+): boolean => {
   const aktionen: Record<string, () => void> = {
     " ": () => k.playback.toggle(),
     delete: () => mitNote((x) => deleteNote(k.track, x)),
@@ -143,7 +160,7 @@ export const useEditorKeys = (d: EditorKeyDeps): EditorActions => {
 
   // Subscribed once; everything current, playLine included, comes through depsRef.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = depsRef.current;
       const strg = e.ctrlKey || e.metaKey;
@@ -152,7 +169,8 @@ export const useEditorKeys = (d: EditorKeyDeps): EditorActions => {
       // Save works everywhere, also from inside a field.
       if (strg && taste === "s") {
         e.preventDefault();
-        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        if (document.activeElement instanceof HTMLElement)
+          document.activeElement.blur();
         // The blur commits a half-typed field, but only on the next render.
         // Saving from this closure would write the version without it, so
         // wait a tick and take the then-current save function.
@@ -163,7 +181,8 @@ export const useEditorKeys = (d: EditorKeyDeps): EditorActions => {
       // On a focused button these keys belong to the button (and Tab to
       // focus navigation): "Discard" must not apply the suggestion.
       const aufKnopf = e.target instanceof HTMLButtonElement;
-      if (aufKnopf && (taste === "enter" || taste === " " || taste === "tab")) return;
+      if (aufKnopf && (taste === "enter" || taste === " " || taste === "tab"))
+        return;
 
       if (taste === "tab") {
         if (k.spurAnzahl < 2 || e.shiftKey || strg) return;
@@ -194,7 +213,9 @@ export const useEditorKeys = (d: EditorKeyDeps): EditorActions => {
         behandelt = mitStrg(taste, e.shiftKey, k);
       } else {
         // Shift only matters for "+" on layouts that need it.
-        behandelt = (!e.shiftKey || taste === "+") && einfach(taste, k, mitNote, playLine);
+        behandelt =
+          (!e.shiftKey || taste === "+") &&
+          einfach(taste, k, mitNote, playLine);
       }
       if (behandelt) e.preventDefault();
     };

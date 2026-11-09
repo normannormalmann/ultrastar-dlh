@@ -1,10 +1,12 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { scanSongFiles, pathKey } from "../library/inspect.ts";
+import { basename, dirname } from "node:path";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import {
   type DownloadedEntry,
   loadDownloadedEntries,
-  saveDownloadedEntries,
+  updateDownloadedEntries,
 } from "../storage/downloaded.ts";
 import { parseTxtHeaders, stableHash, type TxtHeaders } from "./repairSongs.ts";
 
@@ -44,15 +46,6 @@ const readHeaders = async (songDir: string): Promise<TxtHeaders | null> => {
   }
 };
 
-const hasSongTxt = async (dir: string): Promise<boolean> => {
-  try {
-    await stat(join(dir, "song.txt"));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 const probeNewFolder = async (
   songDir: string,
   name: string,
@@ -71,7 +64,7 @@ const probeNewFolder = async (
     kind: "song",
     hasVideo,
     entry: {
-      apiId: stableHash(name),
+      apiId: stableHash(pathKey(songDir)),
       artist: meta.artist || name,
       title: meta.title || name,
       dirName: name,
@@ -94,31 +87,17 @@ export const importArchive = (
   Effect.gen(function* () {
     const candidates = yield* Effect.tryPromise({
       try: async () => {
-        const result: Array<{ name: string; songDir: string }> = [];
-        const top = await readdir(downloadDir, { withFileTypes: true });
-        for (const d of top.filter((x) => x.isDirectory())) {
-          const dir = join(downloadDir, d.name);
-          if (await hasSongTxt(dir)) {
-            result.push({ name: d.name, songDir: dir });
-            continue;
-          }
-          // Search one level deeper (artist/letter layouts)
-          const sub = await readdir(dir, { withFileTypes: true });
-          for (const s of sub.filter((x) => x.isDirectory())) {
-            const subDir = join(dir, s.name);
-            if (await hasSongTxt(subDir)) {
-              result.push({ name: s.name, songDir: subDir });
-            }
-          }
-        }
-        return result;
+        return (await scanSongFiles(downloadDir)).map((file) => ({
+          name: basename(dirname(file)),
+          songDir: dirname(file),
+        }));
       },
       catch: (e) =>
         e instanceof Error ? e : new Error("Failed to read download dir"),
     });
 
     const existing = yield* loadDownloadedEntries;
-    const trackedByName = new Map(existing.map((e) => [e.dirName, e]));
+    const trackedByName = new Map(existing.map((e) => [pathKey(e.songDir), e]));
 
     const total = candidates.length;
     let importedWithoutVideo = 0;
@@ -133,12 +112,12 @@ export const importArchive = (
           Promise.all(
             chunk.map(async (candidate): Promise<ProbeResult> => {
               const { name, songDir } = candidate;
-              const tracked = trackedByName.get(name);
+              const tracked = trackedByName.get(pathKey(songDir));
               if (tracked) {
                 if (tracked.language) return { kind: "skipped" };
                 const meta = await readHeaders(songDir);
                 if (meta === null) return { kind: "skipped" };
-                return { kind: "refresh", dirName: name, meta };
+                return { kind: "refresh", dirName: pathKey(songDir), meta };
               }
               return probeNewFolder(songDir, name);
             }),
@@ -161,12 +140,18 @@ export const importArchive = (
     }
 
     if (newEntries.length > 0 || refreshMeta.size > 0) {
-      const updated = existing.map((e) => {
-        const meta = refreshMeta.get(e.dirName);
-        // Existing fields win: metadata first, then the entry layered on top
-        return meta ? { ...entryMetadata(meta), ...e } : e;
+      yield* updateDownloadedEntries((current) => {
+        const updated = current.map((e) => {
+          const meta = refreshMeta.get(pathKey(e.songDir));
+          // Existing fields win: metadata first, then the entry layered on top
+          return meta ? { ...entryMetadata(meta), ...e } : e;
+        });
+        const known = new Set(current.map((entry) => pathKey(entry.songDir)));
+        return [
+          ...updated,
+          ...newEntries.filter((entry) => !known.has(pathKey(entry.songDir))),
+        ];
       });
-      yield* saveDownloadedEntries([...updated, ...newEntries]);
     }
 
     return {

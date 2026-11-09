@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from ultrastar_pipeline.contract import baue_song_data
-from ultrastar_pipeline.notes import AlignedWord, PitchPoint, build_notes
+from ultrastar_pipeline.notes import AlignedWord, PitchPoint, build_notes, export_bpm
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -24,9 +24,9 @@ def _lade():
 
 def _baue():
     woerter, verlauf = _lade()
-    noten, umbrueche, gap, _ = build_notes(woerter, verlauf, bpm=120.0, language="de")
+    noten, umbrueche, gap, _ = build_notes(woerter, verlauf, bpm=export_bpm(120), language="de")
     daten = baue_song_data(
-        bpm=120.0,
+        bpm=export_bpm(120),
         gap=gap,
         language="de",
         notes=noten,
@@ -43,9 +43,7 @@ def test_kette_erzeugt_vertragskonformes_json():
     _, _, daten = _baue()
     assert daten["schemaVersion"] == 2
     assert len(daten["notes"]) >= 4
-    # 1000 ms roher Wortstart, um die gemessene Onset-Korrektur (60 ms)
-    # vorverlegt (siehe ONSET_KORREKTUR_MS in notes.py).
-    assert daten["gap"] == 940
+    assert daten["gap"] == 1000
     assert daten["meta"]["lowConfidence"] is False
 
 
@@ -65,4 +63,4 @@ def test_json_ist_serialisierbar(tmp_path):
     _, _, daten = _baue()
     ziel = tmp_path / "song_data.json"
     ziel.write_text(json.dumps(daten, ensure_ascii=False, indent=2), encoding="utf8")
-    assert json.loads(ziel.read_text(encoding="utf8"))["bpm"] == 120.0
+    assert json.loads(ziel.read_text(encoding="utf8"))["bpm"] == export_bpm(120)

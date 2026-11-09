@@ -1,3 +1,4 @@
+import { sourceSnapshot, USDB_SOURCE_FILE } from "../library/usdbUpdates.ts";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -164,6 +165,10 @@ export const downloadSong = (
       yield* Effect.tryPromise({
         try: async () => {
           await writeFile(join(songDir, "song.txt"), content);
+          await writeFile(
+            join(songDir, USDB_SOURCE_FILE),
+            JSON.stringify(sourceSnapshot(song.apiId, parsed)),
+          );
           lyricsProgress = 1;
           updateOverallProgress();
         },

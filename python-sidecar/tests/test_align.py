@@ -122,9 +122,9 @@ def test_separate_versionswechsel_invalidiert_den_align_cache(tmp_path, monkeypa
         zugriffe.append(language_code)
         raise RuntimeError("Platzhalter: dieser Test laedt kein Modell")
 
-    platzhalter = types.ModuleType("whisperx")
+    platzhalter = types.ModuleType("ultrastar_pipeline.modelBackend")
     platzhalter.load_align_model = load_align_model
-    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", platzhalter)
 
     # Vor dem Versionswechsel: Cache-Treffer, das Modell bleibt unberuehrt.
     assert align(Path("egal.wav"), lines, "de", tmp_path, "hashXYZ", "cpu", [], anker) == []
@@ -159,9 +159,9 @@ def test_anderer_aligner_invalidiert_den_align_cache(tmp_path, monkeypatch):
         zugriffe.append(language_code)
         raise RuntimeError("Platzhalter: dieser Test laedt kein Modell")
 
-    platzhalter = types.ModuleType("whisperx")
+    platzhalter = types.ModuleType("ultrastar_pipeline.modelBackend")
     platzhalter.load_align_model = load_align_model
-    monkeypatch.setitem(sys.modules, "whisperx", platzhalter)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", platzhalter)
 
     assert align(Path("egal.wav"), lines, "de", tmp_path, "hashALG", "cpu", [], anker_liste) == []
     assert zugriffe == []
@@ -315,11 +315,10 @@ def test_pruefe_fenster_akzeptiert_monotone_zeiten_im_fenster():
     assert _pruefe_fenster(roh, 0.9, 2.0) == [(1.0, 1.2, 0.4), (1.3, 1.6, 0.2)]
 
 
-def test_pruefe_fenster_toleriert_das_erste_wort_am_fensterrand():
-    """Die dokumentierte Toleranz von 0,5 s gilt auch fuer das erste Wort,
-    nicht nur fuer die Monotonie der Folgewoerter."""
+def test_pruefe_fenster_verwirft_woerter_vor_dem_fensterrand():
+    """A result outside its window can overlap the neighbouring anchor."""
     knapp_davor = [{"word": "a", "start": 0.7, "end": 0.9, "score": 0.4}]
-    assert _pruefe_fenster(knapp_davor, 1.0, 2.0) == [(0.7, 0.9, 0.4)]
+    assert _pruefe_fenster(knapp_davor, 1.0, 2.0) is None
     zu_frueh = [{"word": "a", "start": 0.4, "end": 0.6, "score": 0.4}]
     assert _pruefe_fenster(zu_frueh, 1.0, 2.0) is None
 
@@ -341,7 +340,7 @@ def _vierpass_platzhalter(
     vorgegebenes Fensterergebnis."""
     import numpy as np
 
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
     modul.load_align_model = lambda **k: ("modell", {"meta": True})
     modul.load_audio = lambda pfad: np.zeros(16000 * 30, dtype=np.float32)
 
@@ -364,7 +363,7 @@ def _drei_woerter_anker() -> list:
 
 def test_align_misst_luecken_im_fenster_zwischen_den_nachbarn(tmp_path, monkeypatch):
     aufrufe: list = []
-    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _vierpass_platzhalter(
         aufrufe, [{"word": "zwei", "start": 4.0, "end": 4.5, "score": 0.2}]
     ))
     warnungen: list[str] = []
@@ -383,7 +382,7 @@ def test_align_misst_luecken_im_fenster_zwischen_den_nachbarn(tmp_path, monkeypa
 
 def test_align_faellt_bei_ausbrechern_auf_interpolation_zurueck(tmp_path, monkeypatch):
     aufrufe: list = []
-    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _vierpass_platzhalter(
         aufrufe, [{"word": "zwei", "start": 25.0, "end": 25.5, "score": 0.9}]
     ))
     warnungen: list[str] = []
@@ -394,24 +393,24 @@ def test_align_faellt_bei_ausbrechern_auf_interpolation_zurueck(tmp_path, monkey
     assert woerter[1].quelle == "interpolated"
     assert woerter[1].confidence == 0.0
     assert 1.4 <= woerter[1].start <= 9.0
-    assert len(warnungen) == 1 and "Wort" in warnungen[0]
+    assert len(warnungen) == 2 and "Wort" in warnungen[0]
 
 
 def test_align_cache_traegt_quelle_und_warnungen(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _vierpass_platzhalter(
         [], [{"word": "zwei", "start": 25.0, "end": 25.5, "score": 0.9}]
     ))
     erste: list[str] = []
     align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashI", "cpu",
           erste, _drei_woerter_anker())
 
-    kaputt = types.ModuleType("whisperx")  # jeder Zugriff waere ein Fehler
-    monkeypatch.setitem(sys.modules, "whisperx", kaputt)
+    kaputt = types.ModuleType("ultrastar_pipeline.modelBackend")  # jeder Zugriff waere ein Fehler
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", kaputt)
     zweite: list[str] = []
     woerter = align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashI",
                     "cpu", zweite, _drei_woerter_anker())
     assert [w.quelle for w in woerter] == ["anchor", "interpolated", "anchor"]
-    assert zweite == erste and len(zweite) == 1
+    assert zweite == erste and len(zweite) == 2
 
 
 def test_geaenderte_anker_invalidieren_den_align_cache(tmp_path, monkeypatch):
@@ -419,7 +418,7 @@ def test_geaenderte_anker_invalidieren_den_align_cache(tmp_path, monkeypatch):
     geaenderter Anker darf nie eine alte Ausrichtung wiederverwenden."""
     aufrufe: list = []
     stub = _vierpass_platzhalter(aufrufe, [{"word": "zwei", "start": 4.0, "end": 4.5, "score": 0.2}])
-    monkeypatch.setitem(sys.modules, "whisperx", stub)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
     align(Path("egal.wav"), ["eins zwei drei"], "de", tmp_path, "hashJ", "cpu",
           [], _drei_woerter_anker())
     andere = _drei_woerter_anker()
@@ -437,7 +436,7 @@ def test_anker_laenge_muss_zur_wortzahl_passen(tmp_path):
 
 def test_song_ohne_anker_bekommt_ein_fenster_ueber_die_volle_spur(tmp_path, monkeypatch):
     aufrufe: list = []
-    monkeypatch.setitem(sys.modules, "whisperx", _vierpass_platzhalter(
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _vierpass_platzhalter(
         aufrufe,
         [
             {"word": "eins", "start": 0.5, "end": 1.0, "score": 0.3},
@@ -449,3 +448,112 @@ def test_song_ohne_anker_bekommt_ein_fenster_ueber_die_volle_spur(tmp_path, monk
     assert [w.quelle for w in woerter] == ["realign", "realign"]
     assert aufrufe[0][0]["start"] == 0.0
     assert aufrufe[0][0]["end"] == pytest.approx(30.0)
+
+
+def test_rejected_anchor_reopens_window_and_preserves_repeated_word_occurrences(tmp_path, monkeypatch):
+    calls = []
+    stub = _vierpass_platzhalter(calls, [
+        {"word": "la", "start": 1.0, "end": 1.5, "score": 0.5},
+        {"word": "la", "start": 2.0, "end": 2.5, "score": 0.5},
+        {"word": "la", "start": 3.0, "end": 3.5, "score": 0.5},
+    ])
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    warnings = []
+    result = align(Path("x.wav"), ["la la", "la"], "de", tmp_path, "repeated", "cpu",
+                   warnings, [None, None, GemessenesWort(0, 0.2, .9, "anchor")])
+    assert [(w.start, w.line_index, w.quelle) for w in result] == [
+        (1, 0, "realign"), (2, 0, "realign"), (3, 1, "realign")]
+    assert len(warnings) == 1 and "Wortanker" in warnings[0]
+    assert calls[0][0]["end"] == 30
+
+
+def test_same_token_count_with_wrong_text_does_not_become_measured(tmp_path, monkeypatch):
+    stub = _vierpass_platzhalter([], [{"word": "wrong", "start": 4, "end": 4.5, "score": .9}])
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    result = align(Path("x.wav"), ["eins zwei drei"], "de", tmp_path, "wrong", "cpu",
+                   [], _drei_woerter_anker())
+    assert result[1].quelle == "interpolated" and result[1].confidence == 0
+
+
+@pytest.mark.parametrize("error", [MemoryError(), RuntimeError("CUDA out of memory")])
+def test_window_memory_failure_propagates(tmp_path, monkeypatch, error):
+    stub = _vierpass_platzhalter([], [])
+    def fail(*args, **kwargs):
+        raise error
+    stub.align = fail
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    with pytest.raises(type(error)):
+        align(Path("x.wav"), ["eins zwei drei"], "de", tmp_path, "oom", "cpu",
+              [], _drei_woerter_anker())
+    assert not list(tmp_path.rglob("align-*.json"))
+
+
+def test_long_unanchored_region_does_not_trigger_unbounded_ctc(tmp_path, monkeypatch):
+    import numpy as np
+    calls = []
+    stub = _vierpass_platzhalter(calls, [])
+    stub.load_audio = lambda path: np.zeros(16000 * 61, dtype=np.float32)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    warnings = []
+    result = align(Path("x.wav"), ["eins zwei"], "de", tmp_path, "long", "cpu", warnings, [None, None])
+    assert calls == []
+    assert all(w.quelle == "interpolated" and w.confidence == 0 for w in result)
+    assert any("Unterteilung" in warning for warning in warnings)
+
+
+def test_invalid_expanded_token_is_not_hidden_by_word_merging(tmp_path, monkeypatch):
+    stub = _vierpass_platzhalter([], [
+        {"word": "twenty", "start": 1.0, "end": 1.5},
+        {"word": "one", "start": 1.4, "end": 1.8},
+    ])
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    result = align(Path("x.wav"), ["21"], "en", tmp_path, "number", "cpu", [], [None])
+    assert result[0].quelle == "interpolated"
+
+
+def test_sparse_asr_does_not_pin_known_text_to_the_wrong_occurrence(tmp_path, monkeypatch):
+    calls = []
+    tokens = ["eins", "zwei", "drei", "vier", "fuenf"]
+    stub = _vierpass_platzhalter(calls, [
+        {"word": token, "start": i + 1, "end": i + 1.5, "score": .5}
+        for i, token in enumerate(tokens)
+    ])
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    evidence = [None, None, GemessenesWort(10, 10.5, .9, "anchor"), None, None]
+    warnings = []
+    result = align(Path("x.wav"), [" ".join(tokens)], "de", tmp_path, "sparse", "cpu", warnings, evidence)
+    assert len(calls) == 1 and calls[0][0]["text"] == " ".join(tokens)
+    assert all(w.quelle == "realign" for w in result)
+    assert result[2].start == 3 and evidence[2].start == 10
+    assert any("vollstaendig neu" in message for message in warnings)
+
+
+def test_failed_direct_attempt_keeps_anchors_and_realigns_local_windows(tmp_path, monkeypatch):
+    calls = []
+    stub = _vierpass_platzhalter([], [])
+    def measure(segments, *args, **kwargs):
+        segment = segments[0]
+        calls.append(segment)
+        tokens = segment["text"].split()
+        if len(tokens) == 5:
+            return {"segments": [{"words": [{"word": "eins", "start": 1, "end": 2}]}]}
+        return {"segments": [{"words": [
+            {"word": token, "start": segment["start"] + i + .1,
+             "end": segment["start"] + i + .6, "score": .5}
+            for i, token in enumerate(tokens)
+        ]}]}
+    stub.align = measure
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    result = align(Path("x.wav"), ["eins zwei drei vier fuenf"], "de", tmp_path, "retry", "cpu", [],
+                   [None, None, GemessenesWort(10, 10.5, .9, "anchor"), None, None])
+    assert [len(call["text"].split()) for call in calls] == [5, 2, 2]
+    assert result[2].quelle == "anchor" and result[2].start == 10
+    assert [w.quelle for w in result] == ["realign", "realign", "anchor", "realign", "realign"]
+
+
+def test_word_limit_bounds_ctc_even_for_short_audio(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _vierpass_platzhalter(calls, []))
+    result = align(Path("x.wav"), [" ".join(["la"] * 161)], "de", tmp_path, "dense", "cpu", [], [None] * 161)
+    assert not calls and len(result) == 161
+    assert all(w.quelle == "interpolated" for w in result)

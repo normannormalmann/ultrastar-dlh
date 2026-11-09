@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  parseDeezerAlbum,
-  pickDeezerTrack,
-  pickDeezerTracks,
-} from "./deezer.ts";
+import { parseDeezerAlbum, pickDeezerTracks } from "./deezer.ts";
 
 const SEARCH_FIXTURE = {
   data: [
@@ -27,14 +23,14 @@ const SEARCH_FIXTURE = {
 };
 
 test("picks first track whose artist matches", () => {
-  const t = pickDeezerTrack(SEARCH_FIXTURE, "Trailerpark");
+  const t = pickDeezerTracks(SEARCH_FIXTURE, "Trailerpark")[0];
   expect(t?.albumId).toBe(302127);
   expect(t?.explicit).toBe(true);
   expect(t?.realBpm).toBeUndefined(); // bpm 0 → kein Wert
 });
 
 test("returns null when no artist matches", () => {
-  expect(pickDeezerTrack(SEARCH_FIXTURE, "Rammstein")).toBeNull();
+  expect(pickDeezerTracks(SEARCH_FIXTURE, "Rammstein")).toEqual([]);
 });
 
 const ALBUM_FIXTURE = {

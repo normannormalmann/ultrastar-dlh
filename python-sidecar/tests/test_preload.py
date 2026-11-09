@@ -52,11 +52,11 @@ def _installiere_modell_stubs(monkeypatch, geladen: list[str]) -> None:
     monkeypatch.setitem(sys.modules, "demucs", _stub_module("demucs"))
     monkeypatch.setitem(sys.modules, "demucs.pretrained", demucs_pretrained)
     whisperx = _stub_module(
-        "whisperx",
+        "ultrastar_pipeline.modelBackend",
         load_model=lambda *a, **k: geladen.append("asr"),
         load_align_model=lambda **k: (geladen.append(f"align:{k['language_code']}"), ("m", {}))[1],
     )
-    monkeypatch.setitem(sys.modules, "whisperx", whisperx)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", whisperx)
     monkeypatch.setitem(
         sys.modules, "swift_f0",
         _stub_module("swift_f0", SwiftF0=lambda: geladen.append("pitch")),
@@ -98,7 +98,7 @@ def test_preload_fehlende_sprache_meldet_language_unsupported(tmp_path, monkeypa
     def kein_align(**k):
         raise RuntimeError("kein Alignment-Modell")
 
-    sys.modules["whisperx"].load_align_model = kein_align
+    sys.modules["ultrastar_pipeline.modelBackend"].load_align_model = kein_align
 
     rc = haupt.main(["--preload", "--language", "xx", "--device", "cpu",
                      "--out", str(tmp_path / "p.json")])

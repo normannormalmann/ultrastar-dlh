@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { writeJson } from "./atomicFile.ts";
 import { Effect } from "effect";
 import type { CreateJob } from "../create/job.ts";
 import { resolveDataFilePath } from "./paths.ts";
@@ -29,7 +30,7 @@ export const saveCreateQueue = (
   Effect.gen(function* () {
     const filePath = yield* resolveDataFilePath(DATEI);
     yield* Effect.tryPromise({
-      try: async () => writeFile(filePath, JSON.stringify(jobs, null, 2)),
+      try: async () => writeJson(filePath, jobs),
       catch: (e) =>
         e instanceof Error ? e : new Error("Failed to save create queue"),
     });

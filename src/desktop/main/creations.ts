@@ -65,7 +65,10 @@ export type CreationsDeps = {
   ladeQueue: () => Promise<CreateJobRequest[]>;
   /** Failure is reported, never fatal: a full disk must not stop the queue. */
   speichereQueue: (jobs: CreateJobRequest[]) => Promise<void>;
-  broadcast: <C extends EventChannel>(channel: C, payload: EventPayloads[C]) => void;
+  broadcast: <C extends EventChannel>(
+    channel: C,
+    payload: EventPayloads[C],
+  ) => void;
 };
 
 const toWorkerJob = (
@@ -123,8 +126,13 @@ export const createCreations = (deps: CreationsDeps) => {
     void deps.raeumeCover(id).catch(() => {});
   };
 
+  let pendingSave: Promise<void> = Promise.resolve();
   const sichere = (): void => {
-    void deps.speichereQueue([...queue]).catch((e: unknown) => {
+    const snapshot = [...queue];
+    pendingSave = pendingSave
+      .catch(() => {})
+      .then(() => deps.speichereQueue(snapshot));
+    void pendingSave.catch((e: unknown) => {
       const detail = e instanceof Error ? e.message : String(e);
       deps.broadcast("event:error", {
         context: "erstellen",
@@ -251,10 +259,12 @@ export const createCreations = (deps: CreationsDeps) => {
           const jobDir = deps.jobDir(jobDef.id);
           // Inside the try on purpose: a failed write must mark the job
           // failed, not abandon the queue.
+          const abbruch = new AbortController();
+          laufenderAbbruch = abbruch;
           const dateien = await deps.schreibeJobDateien(jobDef, jobDir);
+          if (abbruch.signal.aborted) throw { kind: "Cancelled" };
           eintrag.stage = "beschaffen";
           melde();
-          laufenderAbbruch = new AbortController();
           const medien = await deps.acquire(
             jobDef,
             jobDir,
@@ -262,8 +272,9 @@ export const createCreations = (deps: CreationsDeps) => {
               eintrag.progress = anteil * 0.25;
               melde();
             },
-            laufenderAbbruch.signal,
+            abbruch.signal,
           );
+          if (abbruch.signal.aborted) throw { kind: "Cancelled" };
           workerHatAuftrag = true;
           // The sidecar needs a while to boot and load its models before it
           // reports its first stage. Without this the row kept showing
@@ -289,7 +300,11 @@ export const createCreations = (deps: CreationsDeps) => {
           for (const w of paket.warnungen) {
             // message carries the code too: the renderer translates the
             // code, the TUI and the log at least see what it was.
-            deps.broadcast("event:error", { context: "warnung", code: w, message: w });
+            deps.broadcast("event:error", {
+              context: "warnung",
+              code: w,
+              message: w,
+            });
           }
           eintrag.songDir = paket.songDir;
           eintrag.dirName = paket.dirName;
@@ -373,9 +388,19 @@ export const createCreations = (deps: CreationsDeps) => {
     worker = null;
     alt?.cancelCurrentJob();
     await alt?.shutdown();
+    await pendingSave;
   };
 
   return {
+    releaseIdleWorker: async () => {
+      if (running)
+        throw new Error(
+          "Bitte zuerst die laufende Songerstellung abschließen oder abbrechen.",
+        );
+      const idle = worker;
+      worker = null;
+      await idle?.shutdown();
+    },
     initialisiere,
     queueAdd,
     queueRemove,

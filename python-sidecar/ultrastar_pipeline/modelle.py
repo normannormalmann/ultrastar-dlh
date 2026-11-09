@@ -20,9 +20,10 @@ _swiftf0: list[Any] = []
 def hole_asr(modell: str, device: str, sprache: str) -> Any:
     schluessel = (modell, device, sprache)
     if schluessel not in _asr:
-        import whisperx
+        from importlib import import_module
+        backend = import_module("ultrastar_pipeline.modelBackend")
 
-        _asr[schluessel] = whisperx.load_model(
+        _asr[schluessel] = backend.load_model(
             modell,
             device,
             compute_type="float16" if device == "cuda" else "int8",
@@ -34,9 +35,10 @@ def hole_asr(modell: str, device: str, sprache: str) -> Any:
 def hole_align(sprache: str, device: str) -> Any:
     schluessel = (sprache, device)
     if schluessel not in _align:
-        import whisperx
+        from importlib import import_module
+        backend = import_module("ultrastar_pipeline.modelBackend")
 
-        _align[schluessel] = whisperx.load_align_model(
+        _align[schluessel] = backend.load_align_model(
             language_code=sprache, device=device
         )
     return _align[schluessel]

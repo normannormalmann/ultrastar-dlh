@@ -7,6 +7,29 @@ export const useIpcEvent = <C extends EventChannel>(
   initialValue: EventPayloads[C],
 ): EventPayloads[C] => {
   const [value, setValue] = useState<EventPayloads[C]>(initialValue);
-  useEffect(() => window.ultrastar.on(channel, setValue), [channel]);
+  useEffect(() => {
+    let active = true;
+    let received = false;
+    const off = window.ultrastar.on(channel, (value) => {
+      received = true;
+      setValue(value);
+    });
+    void window.ultrastar
+      .getEventState(channel)
+      .then((snapshot) => {
+        if (
+          active &&
+          !received &&
+          channel !== "event:error" &&
+          snapshot !== undefined
+        )
+          setValue(snapshot);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      off();
+    };
+  }, [channel]);
   return value;
 };

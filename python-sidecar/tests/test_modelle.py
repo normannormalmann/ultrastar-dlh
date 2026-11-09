@@ -7,14 +7,14 @@ from ultrastar_pipeline import modelle
 
 
 def _whisperx_zaehler(monkeypatch, ladungen: list[str]) -> None:
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
     modul.load_model = lambda name, device, compute_type, language: ladungen.append(
         f"asr:{name}:{device}:{language}"
     ) or object()
     modul.load_align_model = lambda language_code, device: ladungen.append(
         f"align:{language_code}:{device}"
     ) or (object(), {})
-    monkeypatch.setitem(sys.modules, "whisperx", modul)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", modul)
 
 
 def test_asr_wird_je_schluessel_nur_einmal_geladen(monkeypatch):

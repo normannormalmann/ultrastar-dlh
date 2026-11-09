@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { atomicWrite, serializeFile } from "./atomicFile.ts";
 import { Effect } from "effect";
 import { resolveDataFilePath } from "./paths.ts";
 
@@ -33,13 +34,21 @@ export const saveConfig = (
   config: AppConfig,
 ): Effect.Effect<AppConfig, Error> =>
   Effect.gen(function* () {
-    const existing = yield* loadConfig;
-    const merged: AppConfig = { ...existing, ...config } as AppConfig;
     const path = yield* resolveDataFilePath(FILE_NAME);
-    yield* Effect.tryPromise({
-      try: async () => writeFile(path, JSON.stringify(merged, null, 2), "utf8"),
+    return yield* Effect.tryPromise({
+      try: () =>
+        serializeFile(path, async () => {
+          let existing: AppConfig | null = null;
+          try {
+            existing = JSON.parse(await readFile(path, "utf8"));
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+          const merged = { ...existing, ...config };
+          await atomicWrite(path, JSON.stringify(merged, null, 2));
+          return merged;
+        }),
       catch: (e) =>
         e instanceof Error ? e : new Error("Failed to write config"),
     });
-    return merged;
   });

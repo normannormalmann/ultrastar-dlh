@@ -1,3 +1,4 @@
+import { fetchChecksum, verifyFileChecksum } from "../../core/checksum.ts";
 import { execFile } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { chmod, mkdir, rename, rm, stat } from "node:fs/promises";
@@ -111,7 +112,10 @@ const downloadFile = async (
   dest: string,
   name: "yt-dlp" | "ffmpeg",
 ): Promise<void> => {
-  const response = await fetch(url, { redirect: "follow" });
+  const response = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(600_000),
+  });
   if (!response.ok || !response.body) {
     throw new Error(`Download failed: ${response.status} ${url}`);
   }
@@ -140,7 +144,18 @@ const downloadFile = async (
     ),
     createWriteStream(tmp),
   );
-  await rename(tmp, dest);
+  const manifest = name === "yt-dlp" ? "SHA2-256SUMS" : "checksums.sha256";
+  const checksum = await fetchChecksum(
+    new URL(manifest, url).href,
+    new URL(url).pathname.split("/").pop() as string,
+  );
+  try {
+    await verifyFileChecksum(tmp, checksum);
+    await rename(tmp, dest);
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw error;
+  }
 };
 
 /**

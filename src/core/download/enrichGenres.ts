@@ -1,11 +1,13 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { pathKey } from "../library/inspect.ts";
+import { atomicWrite, serializeFile } from "../storage/atomicFile.ts";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import type { GenreLookupResult } from "../api/genres/provider.ts";
 import {
   type DownloadedEntry,
   loadDownloadedEntries,
-  saveDownloadedEntries,
+  updateDownloadedEntries,
 } from "../storage/downloaded.ts";
 import { applyHeader } from "./repairSongs.ts";
 
@@ -55,7 +57,7 @@ export const enrichGenres = (
     const todo = all.filter((e) => !e.genre);
 
     // Only changed entries live here; persist merges them onto the live store.
-    const changed = new Map<number, DownloadedEntry>();
+    const changed = new Map<string, DownloadedEntry>();
 
     let processed = 0;
     let enriched = 0;
@@ -67,15 +69,9 @@ export const enrichGenres = (
     let cancelled = false;
 
     const persist = () =>
-      Effect.gen(function* () {
-        const live = yield* loadDownloadedEntries;
-        const liveIds = new Set(live.map((e) => e.apiId));
-        const merged = live.map((e) => changed.get(e.apiId) ?? e);
-        // If an enriched entry was externally removed, do not re-insert it.
-        yield* saveDownloadedEntries(
-          merged.filter((e) => liveIds.has(e.apiId)),
-        );
-      });
+      updateDownloadedEntries((live) =>
+        live.map((entry) => changed.get(pathKey(entry.songDir)) ?? entry),
+      );
 
     for (const entry of todo) {
       if (opts.shouldCancel?.()) {
@@ -117,7 +113,7 @@ export const enrichGenres = (
               ? { explicit: result.r.explicit }
               : {}),
           };
-          changed.set(entry.apiId, updated);
+          changed.set(pathKey(entry.songDir), updated);
           enriched++;
           dirtySinceSave++;
 
@@ -126,8 +122,10 @@ export const enrichGenres = (
           const patched = yield* Effect.tryPromise({
             try: async () => {
               const p = join(entry.songDir, "song.txt");
-              const txt = await readFile(p, "utf8");
-              await writeFile(p, applyHeader(txt, "GENRE", genre), "utf8");
+              await serializeFile(p, async () => {
+                const txt = await readFile(p, "utf8");
+                await atomicWrite(p, applyHeader(txt, "GENRE", genre));
+              });
               return true;
             },
             catch: (e) =>

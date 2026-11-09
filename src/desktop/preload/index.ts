@@ -22,6 +22,16 @@ const on = <C extends EventChannel>(
 };
 
 const api: UltrastarApi = {
+  editorAnalyze: (request) => ipcRenderer.invoke("editor:analyze", request),
+  editorCancelAnalysis: (folder) =>
+    ipcRenderer.invoke("editor:cancelAnalysis", folder),
+  getEventState: (channel) => ipcRenderer.invoke("app:getEventState", channel),
+  libraryUsdbCheck: (songDir) =>
+    ipcRenderer.invoke("library:usdbCheck", songDir),
+  libraryUsdbApply: (request) =>
+    ipcRenderer.invoke("library:usdbApply", request),
+  libraryInspect: () => ipcRenderer.invoke("library:inspect"),
+  searchPreview: (song) => ipcRenderer.invoke("search:preview", song),
   getInitialState: () => ipcRenderer.invoke("app:getInitialState"),
   search: (req) => ipcRenderer.invoke("usdb:search", req),
   downloadSingle: (song) => ipcRenderer.invoke("download:single", song),

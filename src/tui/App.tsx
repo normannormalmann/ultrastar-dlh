@@ -208,7 +208,7 @@ export const App: FC = () => {
         await Promise.all(
           entries.map(async (e) => {
             try {
-              await stat(join(e.songDir, "video.mp4"));
+              await stat(e.songDir);
               valid.push(e);
             } catch {
               // file missing – drop silently
@@ -278,18 +278,18 @@ export const App: FC = () => {
   );
 
   const downloadSongItem = useCallback(
-    async (song: Song) => {
-      if (!cookie) return;
+    async (song: Song): Promise<boolean> => {
+      if (!cookie) return false;
       if (ytAvailable === false) {
         setErrorMessage("yt-dlp is not installed. Downloading is disabled.");
-        return;
+        return false;
       }
       if (ffmpegAvailable === false) {
         setErrorMessage("ffmpeg is not installed. Downloading is disabled.");
-        return;
+        return false;
       }
       if (activeDownloadsRef.current.some((d) => d.apiId === song.apiId))
-        return;
+        return false;
 
       setErrorMessage(null);
       setActiveDownloads((prev) => [
@@ -378,6 +378,7 @@ export const App: FC = () => {
             prev.filter((d) => d.apiId !== song.apiId),
           );
         }, DISPLAY_TIMEOUT_MS.SUCCESS);
+        return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Download error:", err);
@@ -398,6 +399,7 @@ export const App: FC = () => {
             prev.filter((d) => d.apiId !== song.apiId),
           );
         }, DISPLAY_TIMEOUT_MS.ERROR);
+        return false;
       }
     },
     [cookie, ytAvailable, ffmpegAvailable, downloadDir, browser],
@@ -524,6 +526,10 @@ export const App: FC = () => {
 
   const processQueue = useCallback(async () => {
     if (isDownloadingQueue || downloadQueue.length === 0) return;
+    if (!cookie) {
+      setErrorMessage("Please log in before starting the queue.");
+      return;
+    }
     if (ytAvailable === false) {
       setErrorMessage("yt-dlp is not installed. Downloading is disabled.");
       return;
@@ -543,10 +549,13 @@ export const App: FC = () => {
 
       while (currentQueue.length > 0) {
         const batch = currentQueue.slice(0, DOWNLOAD_CONCURRENCY);
-        await Promise.all(batch.map((song) => downloadSongItem(song)));
-        setDownloadQueue((prev) =>
-          prev.filter((s) => !batch.some((b) => b.apiId === s.apiId)),
+        const outcomes = await Promise.all(
+          batch.map((song) => downloadSongItem(song)),
         );
+        const completed = new Set(
+          batch.filter((_, i) => outcomes[i]).map((song) => song.apiId),
+        );
+        setDownloadQueue((prev) => prev.filter((s) => !completed.has(s.apiId)));
         currentQueue = currentQueue
           .slice(batch.length)
           .filter((song) => !downloadedApiIds.has(song.apiId));
@@ -556,6 +565,7 @@ export const App: FC = () => {
     }
   }, [
     downloadQueue,
+    cookie,
     isDownloadingQueue,
     ytAvailable,
     ffmpegAvailable,
@@ -631,7 +641,7 @@ export const App: FC = () => {
         await Promise.all(
           entries.map(async (e) => {
             try {
-              await stat(join(e.songDir, "video.mp4"));
+              await stat(e.songDir);
               valid.push(e);
             } catch {
               // file still missing – keep out of UI list

@@ -65,6 +65,7 @@ const ZahlFeld: FC<{
 );
 
 export type NotePanelProps = {
+  midiOffset?: number;
   song: Track;
   selected: number | null;
   timing: Timing | null;
@@ -77,6 +78,7 @@ export type NotePanelProps = {
 
 export const NotePanel: FC<NotePanelProps> = ({
   song,
+  midiOffset,
   selected,
   timing,
   syllableRef,
@@ -100,9 +102,13 @@ export const NotePanel: FC<NotePanelProps> = ({
           {note.unsure && (
             <div className="editor-unsure">
               <span>
-                {note.unsure === "interpolated"
-                  ? t.editor.unsureInterpolated
-                  : t.editor.unsureLow}
+                {note.unsure === "pitch"
+                  ? "Tonhöhe nicht gemessen. Freestyle wird nicht bewertet. Tonhöhe und Notentyp nach der Korrektur prüfen."
+                  : note.unsure === "pitchAndTiming"
+                    ? "Tonhöhe nicht gemessen; auch das Timing ist unsicher. Freestyle wird nicht bewertet."
+                    : note.unsure === "interpolated"
+                      ? t.editor.unsureInterpolated
+                      : t.editor.unsureLow}
               </span>
               <button className="btn small" type="button" onClick={onChecked}>
                 <Check size={14} aria-hidden />
@@ -138,7 +144,7 @@ export const NotePanel: FC<NotePanelProps> = ({
           </div>
           <div className="editor-field-row">
             <ZahlFeld
-              label={`${t.editor.pitch} · ${pitchName(note.pitch)}`}
+              label={`${t.editor.pitch} · ${pitchName(note.pitch, midiOffset)}`}
               wert={note.pitch}
               onWert={(v) => onPatch(selected, { pitch: v })}
             />

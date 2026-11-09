@@ -235,6 +235,34 @@ Gut zu wissen:
 
 **Gut zu wissen:** Dateien im `RELATIVE`-Format werden im selben Format zurückgeschrieben. Ältere Dateien in Windows-1252-Kodierung werden beim Speichern in UTF-8 umgewandelt.
 
+### Orientierung und Abhören im Editor
+
+Links zeigt die **Klaviatur** die Tonhöhen. Die **Zeitleiste** darüber nennt Beats und die Position in Sekunden. Die Legende erklärt normale, goldene, Rap- und Freestyle-Noten sowie Überlappungen und unsichere Abschnitte. Eine ausgewählte Note behält ihre Typfarbe und bekommt einen Rahmen.
+
+Mit **Tempo** spielst du bei 100 %, 75 % oder 50 % ab; die Tonhöhe bleibt erhalten. Einsingen ist bei 100 % möglich. Das langsamere Abspielen eignet sich besonders zum Prüfen von Silbenanfängen und Notenlängen.
+
+Neu selbst erstellte Songs enthalten zusätzlich `originalPitch.json` und `vocals.wav`. **Originalgesang** blendet den gemessenen Tonhöhenverlauf als dünne türkise Linie hinter den Noten ein. **Nur Gesang** wechselt zur getrennten Gesangsspur; anschließend kannst du an derselben Position weiter abspielen. Beide Funktionen erscheinen nur, wenn die entsprechenden Dateien vorhanden sind.
+
+Neue Erstellungen verwenden ein feines Zeitraster. Deshalb kann der BPM-Wert in der Datei deutlich höher als das musikalische Tempo sein; die Abspielgeschwindigkeit bleibt korrekt. Die Erzeugung verschiebt einen Noteneinsatz höchstens um 20 ms. Größere Zeitkonflikte oder Wörter ohne gültige Dauer werden als Fehler gemeldet und müssen in der Ausrichtung behoben werden.
+
+Ohne gemessene Tonhöhe wird eine Stelle als **Freestyle** gespeichert und zur Prüfung markiert. Sie wird beim Spielen nicht bewertet und erzeugt keinen künstlichen Vergleichston. Der Editor unterscheidet fehlende Tonhöhe von zusätzlich unsicherem Timing. Nach der Korrektur von Tonhöhe und Timing kannst du den Notentyp auf „Normal“ setzen und die Stelle abhaken. Neue KI-Erstellungen verwenden den Standard-Tonhöhenbezug C4 = 0; vorhandene Songs werden nicht automatisch transponiert.
+
+Für ältere oder heruntergeladene Songs ergänzt **Originalgesang analysieren** die Daten aus der vorhandenen Audiodatei. Dabei werden nur Stimme und Tonhöhe berechnet. Deine Noten, Texte, Sicherungen und ungespeicherten Korrekturen bleiben erhalten. Du kannst die Analyse abbrechen; die letzte fertige Analyse bleibt dann bestehen. Passende Ergebnisse werden wiederverwendet, bei geändertem Audio oder einer neuen Analyseversion neu berechnet. Unter **Tonhöhenbezug** gilt für übliche USDB-Songs „Standard“, für ältere KI-Erstellungen dieser App „KI-Erstellung“. Bei Instrumentalversionen oder mehreren gleichzeitig singenden Stimmen kann die Messung unzuverlässig sein.
+
+Nach dem App-Update die **KI-Umgebung in den Einstellungen aktualisieren**. Das ersetzt auch die alten Modellabhängigkeiten. Die neue GPU-Installation verwendet Torch mit CUDA 13.2 und benötigt einen passenden NVIDIA-Treiber; CTranslate2 erhält zusätzlich seine CUDA-12-Bibliotheken. Ohne nutzbare GPU bleibt die CPU-Verarbeitung verfügbar.
+
+### Vorschau und Bibliotheksprüfung
+
+In der Suche öffnet **Anhören** eine Audio-Vorschau des zugeordneten YouTube-Videos. Die Vorschau wird gestreamt und legt keinen Songordner an. Sie benötigt ein funktionierendes yt-dlp und ein erreichbares Video; YouTube kann einzelne Vorschauen blockieren.
+
+Unter **Heruntergeladen → Gültigkeit & Duplikate prüfen** durchsucht die App auch verschachtelte Künstler- und Buchstabenordner. Geprüft werden `song.txt`, Pflichtangaben, Notenwerte, Überlappungen je Stimme, das abschließende `E` und referenzierte Medien. Auch reine Audio-Songs erscheinen in der Bibliothek. Die Prüfung findet häufige Importfehler; sie ersetzt keinen vollständigen Test in UltraStar Deluxe.
+
+Mögliche Duplikate werden nach Künstler und Titel gruppiert. Verschiedene Versionen oder Duette können denselben Namen tragen. Die Prüfung öffnet bei Bedarf die Ordner und löscht nichts automatisch.
+
+**USDB-Updates prüfen** vergleicht die aktuell gefilterten Songs mit bekannter USDB-ID mit USDB. Bei neuen Downloads wird die Ausgangsfassung gespeichert. Bei älteren Downloads legt ein identischer Erstabgleich die Vergleichsbasis automatisch an; Mediennamen und reine Formatierungsunterschiede zählen dabei nicht. Abweichungen werden als Unterschied zur aktuellen USDB-Fassung angezeigt, ohne zu behaupten, wer sie verursacht hat. **Lokale Fassung behalten und USDB ab jetzt beobachten** speichert die aktuelle USDB-Fassung als Referenz und verändert deinen Songtext nicht. Bei späteren Änderungen stehen die gespeicherte Ausgangsfassung, deine lokale Fassung und der neue Vorschlag zum Vergleich bereit. Gleichzeitige lokale und entfernte Änderungen werden als Konflikt markiert. Die Prüfung lässt sich zwischen Songs stoppen.
+
+Bei einer angebotenen Fassung kannst du den neuen Text vor dem Übernehmen ansehen. Das Übernehmen ersetzt Noten und Timing, behält die lokalen Medienzuordnungen und sichert die bisherige Datei als `song.txt.<Zeitstempel>.bak`. Eigene Notenkorrekturen werden dabei ersetzt. Wurde die Datei seit der Prüfung bearbeitet, muss sie erneut geprüft werden. Videos und Cover werden bei diesem Vorgang nicht neu heruntergeladen.
+
 ## 11. Problemlösung
 
 **„YouTube bot protection blocked the download" / viele Fehlschläge hintereinander**
@@ -250,10 +278,10 @@ Rot heißt: nicht eingerichtet oder defekt. Nicht eingerichtet ist normal, solan
 Song-Ordner löschen, in der Bibliothek „Aktualisieren", Song neu herunterladen — die App übernimmt VIDEOGAP-Korrekturen aus den USDB-Kommentaren automatisch. Liegt der Versatz am Text selbst, hilft der **GAP** im [Korrektur-Editor](#10-noten-korrigieren-der-korrektur-editor).
 
 **Bibliothek zeigt gelöschte Songs noch an / neue Ordner fehlen**
-„Aktualisieren" in der Bibliothek (gleicht mit der Platte ab) bzw. „Archiv importieren" (nimmt neue Ordner auf).
+Erfasste Songs bleiben sichtbar, damit „Gültigkeit & Duplikate prüfen“ fehlende Dateien und Ordner melden kann. „Archiv importieren“ nimmt neue Ordner auf, „Aktualisieren“ liest die gespeicherten Bibliothekseinträge erneut ein.
 
 **Import meldet „X ohne Video"**
-Normal bei Beständen mit fehlenden Videos. Diese Songs sind getrackt (kein Doppel-Download), erscheinen aber erst nach einer [Reparatur](#8-videos-reparieren) in der Liste.
+Das ist bei reinen Audio-Songs normal. Sie erscheinen ebenfalls in der Liste. Die Gültigkeitsprüfung zeigt, ob die in `#AUDIO` oder `#MP3` genannte Audiodatei vorhanden ist. Tatsächlich fehlende Medien können eine [Reparatur](#8-videos-reparieren) erfordern.
 
 **Einsingen: „Kein Mikrofon verfügbar"**
 Prüfe, ob ein Mikrofon angeschlossen ist und Windows den Zugriff erlaubt: Windows-Einstellungen → Datenschutz → Mikrofon.

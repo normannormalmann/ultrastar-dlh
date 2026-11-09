@@ -1,3 +1,28 @@
+import { validateIpcPayload } from "../shared/validateIpc.ts";
+import {
+  analyzeForEditor,
+  cancelVocalAnalysis,
+  vocalAnalysisRunning,
+} from "./vocalAnalysis.ts";
+import { pathToFileURL } from "node:url";
+import { resolveYoutubePreview } from "../../core/api/youtube/preview.ts";
+import { getYoutubeLinksById } from "../../core/api/usdb/youtube.ts";
+import { videoIdAusLink } from "../../core/create/media.ts";
+import {
+  inspectLibrary,
+  safeSongFile,
+  pathKey,
+} from "../../core/library/inspect.ts";
+import {
+  checkUsdbSong,
+  applyUsdbCandidate,
+  type UsdbCandidate,
+} from "../../core/library/usdbUpdates.ts";
+import {
+  appendDownloadedEntry,
+  loadDownloadedEntries,
+} from "../../core/storage/downloaded.ts";
+import { stableHash } from "../../core/download/repairSongs.ts";
 import { Effect } from "effect";
 import { app, dialog, type IpcMain, shell } from "electron";
 import { searchSongs } from "../../core/api/usdb/search.ts";
@@ -9,6 +34,7 @@ import type {
   BulkQueueRequest,
   InitialState,
   InvokeChannel,
+  EventChannel,
   SearchRequest,
 } from "../shared/ipcContract.ts";
 import { scanAndRepairVideos } from "../../core/download/repairSongs.ts";
@@ -25,7 +51,14 @@ import {
   saveCreateQueue,
 } from "../../core/storage/createQueue.ts";
 import { binariesStatus, installMissingBinaries } from "./binaries.ts";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+  stat,
+  realpath,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   cancelEnvironmentInstall,
@@ -65,7 +98,12 @@ import {
   processQueue,
   requestQueueCancel,
 } from "./downloads.ts";
-import { broadcast, reloadDownloadedEntries, state } from "./state.ts";
+import {
+  broadcast,
+  reloadDownloadedEntries,
+  state,
+  eventState,
+} from "./state.ts";
 import {
   checkForUpdate,
   downloadUpdate,
@@ -74,9 +112,13 @@ import {
 } from "./updater.ts";
 import type { EditorSaveRequest, Song } from "../shared/ipcContract.ts";
 import { CodedError } from "../shared/appErrors.ts";
-import { loadForEditor, saveFromEditor } from "./editor.ts";
+import { loadForEditor, saveFromEditor, realSongDir } from "./editor.ts";
 
 export const SEARCH_PAGE_SIZE = 20;
+
+const selectedFiles = new Set<string>();
+const usdbCandidates = new Map<string, UsdbCandidate>();
+let previewPending: Promise<string> | null = null;
 
 let repairRunning = false;
 let archiveImportRunning = false;
@@ -96,8 +138,19 @@ let genreEnrichCancel = false;
 export const holeCoverKandidaten = (
   jobId: string,
   a: KandidatenAnfrage,
-): Promise<CoverKandidat[]> =>
-  holeCoverKandidatenIn(creationCoverDir(jobId), a);
+): Promise<CoverKandidat[]> => {
+  if (a.thumbnailUrl) {
+    const url = new URL(a.thumbnailUrl);
+    if (
+      url.protocol !== "https:" ||
+      !["i.ytimg.com", "img.youtube.com"].includes(url.hostname) ||
+      url.username ||
+      url.password
+    )
+      throw new Error("Unsupported thumbnail host");
+  }
+  return holeCoverKandidatenIn(creationCoverDir(jobId), a);
+};
 
 const raeumeCoverJob = (jobId: string): Promise<void> =>
   rm(creationCoverDir(jobId), { recursive: true, force: true });
@@ -122,7 +175,14 @@ export const creations = createCreations({
   layout: () => state.folderLayout,
   acquire: (job, jobDir, onProgress, signal) =>
     Effect.runPromise(
-      acquireMedia({ quelle: job.quelle, jobDir, onProgress, signal }),
+      acquireMedia({
+        quelle: job.quelle,
+        jobDir,
+        onProgress,
+        signal,
+        cookiesBrowser: state.browser,
+        videoQuality: state.videoQuality,
+      }),
     ),
   schreibeJobDateien: async (job, jobDir) => {
     await mkdir(jobDir, { recursive: true });
@@ -156,6 +216,25 @@ export const creations = createCreations({
         coverWahl: job.coverWahl,
       }),
     );
+    const entry = {
+      apiId: stableHash(pathKey(paket.songDir)),
+      artist: job.artist,
+      title: job.title,
+      songDir: paket.songDir,
+      dirName: paket.dirName,
+      downloadedAt: new Date().toISOString(),
+      language: songData.language,
+      genre: job.genre,
+      year: job.year,
+      bpm: songData.bpm,
+    };
+    await Effect.runPromise(appendDownloadedEntry(entry)).catch((error) => {
+      broadcast("event:error", {
+        context: "tracking",
+        message: `Song erstellt, aber Bibliothekseintrag nicht gespeichert: ${String(error)}`,
+      });
+    });
+    state.upsertDownloaded(entry);
     return { ...paket, lowConfidence: songData.meta.lowConfidence };
   },
   broadcast,
@@ -164,6 +243,126 @@ export const creations = createCreations({
 // biome-ignore lint/suspicious/noExplicitAny: central IPC boundary, types are per-channel in the contract
 export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
   {
+    "editor:analyze": async (request: {
+      songDir: string;
+      midiOffset: 48 | 60;
+    }) => {
+      return analyzeForEditor(
+        state.downloadDir,
+        request.songDir,
+        request.midiOffset,
+        () => creations.releaseIdleWorker(),
+      );
+    },
+    "editor:cancelAnalysis": async (folder: string) =>
+      cancelVocalAnalysis(folder),
+    "app:getEventState": async (channel: EventChannel) =>
+      ({
+        ...eventState,
+        "event:config": state.config,
+        "event:status": state.status,
+        "event:queueChanged": state.queue,
+        "event:queueRunning": state.queueRunning,
+        "event:activeDownloads": state.activeDownloads,
+        "event:downloadedChanged": state.downloaded,
+      })[channel],
+    "library:inspect": async () =>
+      Effect.runPromise(
+        inspectLibrary(
+          state.downloadDir,
+          (await Effect.runPromise(loadDownloadedEntries)).map(
+            (entry) => entry.songDir,
+          ),
+        ),
+      ),
+    "search:preview": async (song: Song) => {
+      if (previewPending)
+        throw new Error("Eine Vorschau wird bereits geladen.");
+      const resolve = async () => {
+        const links = await Effect.runPromise(
+          getYoutubeLinksById(song.apiId, state.cookie),
+        );
+        const link = links[0]?.link;
+        let id = link
+          ? (videoIdAusLink(link) ?? (/^[\w-]{11}$/.test(link) ? link : null))
+          : null;
+        if (!id)
+          id =
+            (
+              await Effect.runPromise(
+                searchYoutubeVideos(`${song.artist} ${song.title}`),
+              )
+            )[0]?.id ?? null;
+        if (!id) throw new Error("Keine YouTube-Vorschau gefunden.");
+        return Effect.runPromise(resolveYoutubePreview(id));
+      };
+      previewPending = resolve();
+      try {
+        return await previewPending;
+      } finally {
+        previewPending = null;
+      }
+    },
+    "library:usdbCheck": async (songDir: string) => {
+      if (!state.cookie) throw new Error("Bitte zuerst bei USDB anmelden.");
+      const entry = state.downloaded.find(
+        (e) => pathKey(e.songDir) === pathKey(songDir),
+      );
+      const folder = await realSongDir(state.downloadDir, songDir);
+      if (
+        !entry ||
+        entry.apiId <= 0 ||
+        !folder ||
+        !(await safeSongFile(folder, "song.txt"))
+      )
+        throw new Error("Kein bekannter USDB-Song.");
+      const result = await Effect.runPromise(
+        checkUsdbSong(folder, entry.apiId, state.cookie),
+      );
+      if (result.changed !== false)
+        usdbCandidates.set(folder, result.candidate);
+      else usdbCandidates.delete(folder);
+      return {
+        songDir,
+        artist: entry.artist,
+        title: entry.title,
+        status:
+          result.changed === null
+            ? "unknown"
+            : result.changed
+              ? "available"
+              : "current",
+        localRevision: result.candidate.localRevision,
+        remoteRevision: result.candidate.remoteRevision,
+        localChanged: result.localChanged,
+        conflict: result.conflict,
+        localText: result.changed === false ? undefined : result.localText,
+        baseText: result.changed === false ? undefined : result.baseText,
+        proposedText:
+          result.changed === false ? undefined : result.candidate.text,
+      };
+    },
+    "library:usdbApply": async (request: {
+      songDir: string;
+      localRevision: string;
+      remoteRevision: string;
+      keepLocal?: boolean;
+    }) => {
+      const folder = await realSongDir(state.downloadDir, request.songDir);
+      const candidate = folder ? usdbCandidates.get(folder) : null;
+      if (
+        !folder ||
+        !candidate ||
+        candidate.localRevision !== request.localRevision ||
+        candidate.remoteRevision !== request.remoteRevision ||
+        !(await safeSongFile(folder, "song.txt"))
+      )
+        throw new Error("Bitte zuerst die aktuelle USDB-Fassung prüfen.");
+      await Effect.runPromise(
+        applyUsdbCandidate(folder, candidate, request.keepLocal),
+      );
+      usdbCandidates.delete(folder);
+    },
     "app:getInitialState": async (): Promise<InitialState> => ({
       config: state.config,
       status: state.status,
@@ -213,10 +412,26 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     },
 
     "shell:openFolder": async (path: string) => {
-      await shell.openPath(path);
+      const folder = await realSongDir(state.downloadDir, path);
+      const root = await realpath(state.downloadDir);
+      if (
+        (!folder && pathKey(path) !== pathKey(root)) ||
+        !(await stat(folder ?? root)).isDirectory()
+      )
+        throw new Error("Nur Bibliotheksordner dürfen geöffnet werden.");
+      const error = await shell.openPath(folder ?? root);
+      if (error) throw new Error(error);
     },
 
     "download:single": async (song: Song) => {
+      if (repairRunning || archiveImportRunning || genreEnrichRunning) {
+        broadcast("event:error", {
+          context: "download",
+          message:
+            "Die Bibliothek wird gerade bearbeitet. Bitte danach erneut starten.",
+        });
+        return;
+      }
       void downloadSongItem(song);
     },
 
@@ -279,6 +494,14 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
     },
 
     "queue:start": async () => {
+      if (repairRunning || archiveImportRunning || genreEnrichRunning) {
+        broadcast("event:error", {
+          context: "queue",
+          message:
+            "Die Bibliothek wird gerade bearbeitet. Bitte danach erneut starten.",
+        });
+        return;
+      }
       void processQueue();
     },
 
@@ -296,12 +519,16 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
 
     "repair:start": async () => {
       if (repairRunning) return;
-      if (archiveImportRunning || genreEnrichRunning) {
+      if (
+        archiveImportRunning ||
+        genreEnrichRunning ||
+        state.queueRunning ||
+        state.activeDownloads.length > 0
+      ) {
         broadcast("event:error", {
           context: "repair",
-          code: "repairBusy",
           message:
-            "Reparatur nicht möglich, während der Archiv-Import oder Genre-Anreicherung läuft. Bitte warten und erneut versuchen.",
+            "Reparatur nicht möglich, während Downloads, Archiv-Import oder Genre-Anreicherung laufen. Bitte warten und erneut versuchen.",
         });
         return;
       }
@@ -356,13 +583,32 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       await installMissingBinaries(force === true);
     },
     "environment:status": async () => environmentStatusForApp(),
-    "environment:install": async (force?: boolean) =>
-      installEnvironmentForApp(force === true),
+    "environment:install": async (force?: boolean) => {
+      if (vocalAnalysisRunning())
+        throw new Error(
+          "Bitte zuerst die Gesangsanalyse abschließen oder abbrechen.",
+        );
+      return installEnvironmentForApp(force === true);
+    },
     "environment:cancel": async () => {
       cancelEnvironmentInstall();
     },
-    "create:queueAdd": async (jobs: CreateJobRequest[]) =>
-      creations.queueAdd(jobs),
+    "create:queueAdd": async (jobs: CreateJobRequest[]) => {
+      for (const job of jobs) {
+        if (
+          job.quelle.kind === "datei" &&
+          !selectedFiles.has(pathKey(job.quelle.pfad))
+        )
+          throw new Error("Please select the audio file in the file dialog");
+        if (
+          typeof job.coverWahl === "object" &&
+          !selectedFiles.has(pathKey(job.coverWahl.pfad)) &&
+          !(await safeSongFile(creationCoverDir(job.id), job.coverWahl.pfad))
+        )
+          throw new Error("Unknown cover file");
+      }
+      return creations.queueAdd(jobs);
+    },
     "create:queueRemove": async (id: string) => {
       creations.queueRemove(id);
     },
@@ -370,6 +616,10 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
       creations.queueClear();
     },
     "create:start": async () => {
+      if (vocalAnalysisRunning())
+        throw new Error(
+          "Bitte zuerst die Gesangsanalyse abschließen oder abbrechen.",
+        );
       await creations.start();
     },
     "create:cancel": async () => {
@@ -382,6 +632,8 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
         ),
       ),
     "create:sourceInfo": async (quelle: MediaQuelle) => {
+      if (quelle.kind === "datei" && !selectedFiles.has(pathKey(quelle.pfad)))
+        throw new Error("Please select the audio file in the file dialog");
       const dauer = await Effect.runPromise(dauerSekunden(quelle));
       return dauer === null ? null : { durationSec: dauer };
     },
@@ -406,10 +658,22 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
         properties: ["openFile"],
         filters,
       });
-      return ergebnis.canceled ? null : (ergebnis.filePaths[0] ?? null);
+      const selected = ergebnis.canceled
+        ? null
+        : (ergebnis.filePaths[0] ?? null);
+      if (selected) selectedFiles.add(pathKey(selected));
+      return selected;
     },
-    "covers:get": async (apiId: number) => getCoverDataUrl(apiId),
-    "covers:getLocal": async (songDir: string) => getLocalCoverDataUrl(songDir),
+    "covers:get": async (apiId: number) => {
+      if (!Number.isSafeInteger(apiId)) throw new Error("Ungültige Song-ID.");
+      return getCoverDataUrl(apiId);
+    },
+    "covers:getLocal": async (songDir: string) => {
+      const folder = await realSongDir(state.downloadDir, songDir);
+      return folder && (await safeSongFile(folder, "cover.jpg"))
+        ? getLocalCoverDataUrl(folder)
+        : null;
+    },
     "covers:clearCache": async () => clearCoverCaches(),
 
     "genres:enrich": async () => {
@@ -472,6 +736,20 @@ export const handlers: Record<InvokeChannel, (payload?: any) => Promise<any>> =
 
 export const registerIpcHandlers = (ipcMain: IpcMain): void => {
   for (const [channel, handler] of Object.entries(handlers)) {
-    ipcMain.handle(channel, (_event, payload) => handler(payload));
+    ipcMain.handle(channel, (event, payload) => {
+      if (event.senderFrame !== event.sender.mainFrame)
+        throw new Error("Untrusted IPC sender");
+      const url = event.senderFrame.url;
+      const expected =
+        process.env.ELECTRON_RENDERER_URL ??
+        pathToFileURL(join(import.meta.dirname, "../renderer/index.html")).href;
+      if (
+        new URL(url).origin !== new URL(expected).origin ||
+        (!process.env.ELECTRON_RENDERER_URL && url.split("#")[0] !== expected)
+      )
+        throw new Error("Untrusted IPC origin");
+      validateIpcPayload(channel as InvokeChannel, payload);
+      return handler(payload);
+    });
   }
 };

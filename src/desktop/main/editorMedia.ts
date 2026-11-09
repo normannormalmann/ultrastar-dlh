@@ -84,7 +84,13 @@ export const serveMedia = async (request: Request): Promise<Response> => {
   } catch {
     return new Response(null, { status: 404 });
   }
+  if (request.method !== "GET" && request.method !== "HEAD")
+    return new Response(null, { status: 405 });
   const typ = mimeFor(pfad);
+  if (size === 0)
+    return new Response(null, {
+      headers: { "content-type": typ, "content-length": "0" },
+    });
   const range = parseRange(request.headers.get("range"), size);
   if (range === "invalid") {
     return new Response(null, {
@@ -95,9 +101,12 @@ export const serveMedia = async (request: Request): Promise<Response> => {
   const { start, end } = range ?? { start: 0, end: size - 1 };
   // Node's and the DOM's ReadableStream typings disagree; at runtime both
   // are the same web stream.
-  const koerper = Readable.toWeb(
-    createReadStream(pfad, { start, end }),
-  ) as unknown as BodyInit;
+  const koerper =
+    request.method === "HEAD"
+      ? null
+      : (Readable.toWeb(
+          createReadStream(pfad, { start, end }),
+        ) as unknown as BodyInit);
   return new Response(koerper, {
     status: range ? 206 : 200,
     headers: {

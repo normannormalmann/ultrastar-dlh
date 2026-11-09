@@ -35,9 +35,27 @@ const holeThumbnail = async (
   f: typeof fetch,
 ): Promise<Uint8Array | null> => {
   try {
-    const antwort = await f(url);
+    const antwort = await f(url, {
+      signal: AbortSignal.timeout(15_000),
+      redirect: "error",
+    });
     if (!antwort.ok) return null;
-    const bytes = new Uint8Array(await antwort.arrayBuffer());
+    if (!antwort.body) return null;
+    const reader = antwort.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 5_000_000) return null;
+        chunks.push(value);
+      }
+    } finally {
+      await reader.cancel();
+    }
+    const bytes = Buffer.concat(chunks);
     return bytes.length > 0 ? bytes : null;
   } catch {
     return null;

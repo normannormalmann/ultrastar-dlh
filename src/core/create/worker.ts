@@ -5,7 +5,11 @@
 // boundaries come from the @@READY and @@JOB lines the worker emits.
 import { spawn, type ChildProcess } from "node:child_process";
 import { resolvePythonBin } from "./environment.ts";
-import { baueDetail, FEHLER_ABBILDUNG, type PipelineError } from "./pipeline.ts";
+import {
+  baueDetail,
+  FEHLER_ABBILDUNG,
+  type PipelineError,
+} from "./pipeline.ts";
 import { killProcessTree } from "./processTree.ts";
 
 export type WorkerJob = {
@@ -59,6 +63,8 @@ const JOB_IDLE_MS = 600_000;
 export class SidecarWorker {
   private child: ChildProcess | null = null;
   private ready: Promise<void> | null = null;
+  private rejectReady: ((error: PipelineError) => void) | null = null;
+  private submitting = false;
   private current: RunningJob | null = null;
   private idleTimer: unknown = null;
   private jobTimer: unknown = null;
@@ -74,16 +80,28 @@ export class SidecarWorker {
     job: WorkerJob,
     onProgress?: (stage: string, percent: number) => void,
   ): Promise<void> {
-    if (this.current) {
+    if (this.current || this.submitting) {
       throw {
         kind: "PipelineFailed",
         detail: "Es laeuft bereits ein Auftrag.",
       } satisfies PipelineError;
     }
+    this.submitting = true;
     this.stopIdleTimer();
-    await this.startIfNeeded();
+    try {
+      await this.startIfNeeded();
+    } finally {
+      this.submitting = false;
+    }
+    if (!this.child) throw { kind: "Cancelled" } satisfies PipelineError;
     return new Promise<void>((resolve, reject) => {
-      this.current = { id: job.id, resolve, reject, onProgress, lastError: null };
+      this.current = {
+        id: job.id,
+        resolve,
+        reject,
+        onProgress,
+        lastError: null,
+      };
       const zeile = JSON.stringify({
         id: job.id,
         audio: job.audioPath,
@@ -113,6 +131,8 @@ export class SidecarWorker {
     const child = this.child;
     if (!child) return;
     const running = this.current;
+    this.rejectReady?.({ kind: "Cancelled" });
+    this.rejectReady = null;
     this.child = null;
     this.ready = null;
     this.current = null;
@@ -126,6 +146,10 @@ export class SidecarWorker {
     this.stopIdleTimer();
     const child = this.child;
     if (!child) return;
+    this.rejectReady?.({ kind: "Cancelled" });
+    this.rejectReady = null;
+    this.current?.reject({ kind: "Cancelled" });
+    this.current = null;
     this.child = null;
     this.ready = null;
     const closed = new Promise<void>((resolve) => {
@@ -164,6 +188,7 @@ export class SidecarWorker {
     this.ready = new Promise<void>((resolve, reject) => {
       becameReady = resolve;
       readyFailed = reject;
+      this.rejectReady = reject;
     });
     const readyFrist = setTimeout(() => {
       readyFailed({
@@ -193,6 +218,10 @@ export class SidecarWorker {
       readyFailed({ kind: "PipelineFailed", detail: fehler.message });
     });
     child.on("close", (code) => {
+      readyFailed({
+        kind: "PipelineFailed",
+        detail: `Worker exited before READY (${code})`,
+      });
       if (this.child !== child) return; // already replaced or cancelled
       this.child = null;
       this.ready = null;
@@ -200,7 +229,8 @@ export class SidecarWorker {
       this.current = null;
       running?.reject({
         kind: "PipelineFailed",
-        detail: `Worker beendet (Exit ${code ?? "?"}). ${this.stderrTail}`.trim(),
+        detail:
+          `Worker beendet (Exit ${code ?? "?"}). ${this.stderrTail}`.trim(),
       });
     });
 
@@ -208,6 +238,7 @@ export class SidecarWorker {
       await this.ready;
     } finally {
       clearTimeout(readyFrist);
+      if (this.child === child) this.rejectReady = null;
     }
   }
 

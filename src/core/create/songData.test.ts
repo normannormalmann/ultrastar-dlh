@@ -19,6 +19,31 @@ const gueltig = {
 };
 
 describe("parseSongData", () => {
+  it("preserves separate timing evidence while missing pitch cannot be confident", () => {
+    const d = parseSongData({
+      ...gueltig,
+      notes: [
+        { ...gueltig.notes[0], pitchStatus: "missing", timingConfidence: 0.91 },
+      ],
+      meta: { ...gueltig.meta, musicalBpm: 120 },
+    });
+    expect(d.notes[0]?.confidence).toBe(0);
+    expect(d.notes[0]?.timingConfidence).toBe(0.91);
+    expect(d.notes[0]?.pitchStatus).toBe("missing");
+    expect(d.meta.musicalBpm).toBe(120);
+    expect(() =>
+      parseSongData({
+        ...gueltig,
+        notes: [{ ...gueltig.notes[0], pitchStatus: "guessed" }],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseSongData({
+        ...gueltig,
+        notes: [{ ...gueltig.notes[0], timingConfidence: 2 }],
+      }),
+    ).toThrow();
+  });
   it("nimmt gueltige Daten an", () => {
     const d = parseSongData(gueltig);
     expect(d.bpm).toBe(294.5);
@@ -27,7 +52,9 @@ describe("parseSongData", () => {
   });
 
   it("lehnt unbekannte schemaVersion ab, ohne teilweise zu parsen", () => {
-    expect(() => parseSongData({ ...gueltig, schemaVersion: 3 })).toThrow(/schemaVersion/);
+    expect(() => parseSongData({ ...gueltig, schemaVersion: 3 })).toThrow(
+      /schemaVersion/,
+    );
   });
 
   it("lehnt fehlende Noten ab", () => {
@@ -45,7 +72,10 @@ describe("parseSongData", () => {
   });
 
   it("erlaubt fehlende optionale Konfidenz", () => {
-    const ohne = { ...gueltig, notes: [{ beat: 0, length: 4, pitch: 5, syllable: "Hal" }] };
+    const ohne = {
+      ...gueltig,
+      notes: [{ beat: 0, length: 4, pitch: 5, syllable: "Hal" }],
+    };
     expect(parseSongData(ohne).notes[0]?.confidence).toBeUndefined();
   });
 
@@ -55,11 +85,15 @@ describe("parseSongData", () => {
   });
 
   it("lehnt nicht-Array lineBreaks ab", () => {
-    expect(() => parseSongData({ ...gueltig, lineBreaks: "nope" })).toThrow(/lineBreaks/);
+    expect(() => parseSongData({ ...gueltig, lineBreaks: "nope" })).toThrow(
+      /lineBreaks/,
+    );
   });
 
   it("erlaubt leere lineBreaks", () => {
-    expect(parseSongData({ ...gueltig, lineBreaks: [] }).lineBreaks).toEqual([]);
+    expect(parseSongData({ ...gueltig, lineBreaks: [] }).lineBreaks).toEqual(
+      [],
+    );
   });
 
   it("lehnt eine Silbe mit Zeilenumbruch ab", () => {
@@ -85,17 +119,36 @@ describe("parseSongData", () => {
   it("nimmt gueltige sections an", () => {
     const mit = {
       ...gueltig,
-      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 0.75, anchoredBothSides: true }],
+      sections: [
+        {
+          fromNoteIndex: 0,
+          toNoteIndex: 1,
+          confidence: 0.75,
+          anchoredBothSides: true,
+        },
+      ],
     };
     expect(parseSongData(mit).sections).toEqual([
-      { fromNoteIndex: 0, toNoteIndex: 1, confidence: 0.75, anchoredBothSides: true },
+      {
+        fromNoteIndex: 0,
+        toNoteIndex: 1,
+        confidence: 0.75,
+        anchoredBothSides: true,
+      },
     ]);
   });
 
   it("lehnt sections mit Index ausserhalb der Notenanzahl ab", () => {
     const kaputt = {
       ...gueltig,
-      sections: [{ fromNoteIndex: 0, toNoteIndex: 999, confidence: 1, anchoredBothSides: true }],
+      sections: [
+        {
+          fromNoteIndex: 0,
+          toNoteIndex: 999,
+          confidence: 1,
+          anchoredBothSides: true,
+        },
+      ],
     };
     expect(() => parseSongData(kaputt)).toThrow();
   });
@@ -103,7 +156,14 @@ describe("parseSongData", () => {
   it("lehnt sections mit verdrehten Grenzen ab", () => {
     const kaputt = {
       ...gueltig,
-      sections: [{ fromNoteIndex: 3, toNoteIndex: 1, confidence: 1, anchoredBothSides: true }],
+      sections: [
+        {
+          fromNoteIndex: 3,
+          toNoteIndex: 1,
+          confidence: 1,
+          anchoredBothSides: true,
+        },
+      ],
     };
     expect(() => parseSongData(kaputt)).toThrow();
   });
@@ -111,7 +171,14 @@ describe("parseSongData", () => {
   it("lehnt confidence ausserhalb von 0..1 ab", () => {
     const kaputt = {
       ...gueltig,
-      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 1.5, anchoredBothSides: true }],
+      sections: [
+        {
+          fromNoteIndex: 0,
+          toNoteIndex: 1,
+          confidence: 1.5,
+          anchoredBothSides: true,
+        },
+      ],
     };
     expect(() => parseSongData(kaputt)).toThrow();
   });
@@ -119,12 +186,21 @@ describe("parseSongData", () => {
   it("lehnt nicht-boolesches anchoredBothSides ab", () => {
     const kaputt = {
       ...gueltig,
-      sections: [{ fromNoteIndex: 0, toNoteIndex: 1, confidence: 1, anchoredBothSides: "ja" }],
+      sections: [
+        {
+          fromNoteIndex: 0,
+          toNoteIndex: 1,
+          confidence: 1,
+          anchoredBothSides: "ja",
+        },
+      ],
     };
     expect(() => parseSongData(kaputt)).toThrow();
   });
 
   it("lehnt nicht-Array sections ab", () => {
-    expect(() => parseSongData({ ...gueltig, sections: "nope" })).toThrow(/sections/);
+    expect(() => parseSongData({ ...gueltig, sections: "nope" })).toThrow(
+      /sections/,
+    );
   });
 });

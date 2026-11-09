@@ -27,7 +27,7 @@ const baseManifest = {
   schemaVersion: 1 as const,
   sidecarFingerprint: "abc123",
   pythonVersion: "3.12.8",
-  torchVariante: "cu128" as const,
+  torchVariante: "cu132" as const,
   preload: { ok: true, device: "cuda", datum: "2026-07-30" },
 };
 
@@ -70,7 +70,7 @@ describe("environmentStatus", () => {
     await writeManifest(envDir, baseManifest);
     const s = await Effect.runPromise(environmentStatus(envDir, "abc123"));
     expect(s.state).toBe("ready");
-    expect(s.torchVariante).toBe("cu128");
+    expect(s.torchVariante).toBe("cu132");
     expect(s.pythonVersion).toBe("3.12.8");
   });
 
@@ -120,10 +120,18 @@ const fakeRunner = (opts?: {
     calls.push({ cmd, args });
     const line = `${cmd} ${args.join(" ")}`;
     if (opts?.failStep && line.includes(opts.failStep)) {
-      return { code: 1, stdout: "", stderr: "simulierter Fehler\nletzte Zeile" };
+      return {
+        code: 1,
+        stdout: "",
+        stderr: "simulierter Fehler\nletzte Zeile",
+      };
     }
     if (cmd === "nvidia-smi") {
-      return { code: opts?.nvidia === false ? 1 : 0, stdout: "GPU", stderr: "" };
+      return {
+        code: opts?.nvidia === false ? 1 : 0,
+        stdout: "GPU",
+        stderr: "",
+      };
     }
     if (args[0] === "venv") {
       // Simulate what real `uv venv` does on disk, since the installer's
@@ -131,11 +139,17 @@ const fakeRunner = (opts?: {
       const dir = args[args.length - 1] as string;
       await mkdir(join(dir, "Scripts"), { recursive: true });
       await writeFile(envPythonBin(dir), "", "utf8");
+      await mkdir(join(dir, "bin"), { recursive: true });
+      await writeFile(envPythonBin(dir, "linux"), "", "utf8");
     }
     if (args.includes("--preload")) {
       const out = args[args.indexOf("--out") + 1] as string;
       onLine?.('@@PROGRESS {"stage":"preload:asr","percent":1}');
-      await writeFile(out, JSON.stringify({ device: "cuda", modelle: {} }), "utf8");
+      await writeFile(
+        out,
+        JSON.stringify({ device: "cuda", modelle: {} }),
+        "utf8",
+      );
     }
     return { code: 0, stdout: "", stderr: "" };
   };
@@ -152,7 +166,10 @@ const fakeRunner = (opts?: {
   };
 };
 
-const installOpts = (envDir: string, runner: Partial<import("./environment.ts").InstallRunner>) => ({
+const installOpts = (
+  envDir: string,
+  runner: Partial<import("./environment.ts").InstallRunner>,
+) => ({
   envDir,
   binDir: join(envDir, "..", "bin"),
   sidecarDir: "C:/repo/python-sidecar",
@@ -170,18 +187,35 @@ describe("installEnvironment", () => {
       installEnvironment(installOpts(envDir, runner)),
     );
     expect(status.state).toBe("ready");
-    expect(status.torchVariante).toBe("cu128");
+    expect(status.torchVariante).toBe("cu132");
     const line = (c: Call) => `${c.cmd} ${c.args.join(" ")}`;
-    const venvIdx = calls.findIndex((c) => line(c).includes("venv --python 3.12"));
-    const torchIdx = calls.findIndex((c) => line(c).includes("torch==2.8.0+cu128"));
-    const sidecarIdx = calls.findIndex((c) => line(c).includes("[models]"));
+    const venvIdx = calls.findIndex((c) =>
+      line(c).includes("venv --python 3.12"),
+    );
+    const torchIdx = calls.findIndex((c) =>
+      line(c).includes("torch==2.15.0+cu132"),
+    );
+    const sidecarIdx = calls.findIndex((c) =>
+      line(c).includes("[models,cuda]"),
+    );
     const preloadIdx = calls.findIndex((c) => c.args.includes("--preload"));
     expect(venvIdx).toBeGreaterThanOrEqual(0);
     expect(torchIdx).toBeGreaterThan(venvIdx);
     expect(sidecarIdx).toBeGreaterThan(torchIdx);
     expect(preloadIdx).toBeGreaterThan(sidecarIdx);
+    const sync = calls.findIndex((c) => c.args.includes("sync"));
+    expect(sync).toBeGreaterThan(torchIdx);
+    expect(sync).toBeLessThan(sidecarIdx);
     expect(
-      calls.some((c) => line(c).includes("--index-url https://download.pytorch.org/whl/cu128")),
+      calls[sync]?.args.some((value) =>
+        value.endsWith("requirementsCudaWindows.txt"),
+      ),
+    ).toBe(true);
+    expect(calls[sidecarIdx]?.args).toContain("--constraint");
+    expect(
+      calls.some((c) =>
+        line(c).includes("--index-url https://download.pytorch.org/whl/cu132"),
+      ),
     ).toBe(true);
   });
 
@@ -193,7 +227,7 @@ describe("installEnvironment", () => {
     );
     expect(status.torchVariante).toBe("cpu");
     expect(
-      calls.some((c) => `${c.args.join(" ")}`.includes("torch==2.8.0+cpu")),
+      calls.some((c) => `${c.args.join(" ")}`.includes("torch==2.15.0+cpu")),
     ).toBe(true);
   });
 
@@ -223,16 +257,18 @@ describe("installEnvironment", () => {
     expect(await Bun.file(join(envDir, "marker.txt")).exists()).toBe(false);
   });
 
-  it("refuses non-windows platforms with a clear message", async () => {
+  it("supports Linux with uv on PATH and uses bin/python", async () => {
     const envDir = await tempEnv();
     const { runner } = fakeRunner();
     const ergebnis = await Effect.runPromise(
       Effect.either(
-        installEnvironment(installOpts(envDir, { ...runner, platform: "darwin" })),
+        installEnvironment(
+          installOpts(envDir, { ...runner, platform: "linux" }),
+        ),
       ),
     );
-    expect(ergebnis._tag).toBe("Left");
-    if (ergebnis._tag === "Left") expect(ergebnis.left.schritt).toBe("uv");
+    expect(ergebnis._tag).toBe("Right");
+    expect(envPythonBin(envDir, "linux")).toBe(join(envDir, "bin", "python"));
   });
 
   it("aborts before running when the signal is already aborted", async () => {
@@ -262,7 +298,10 @@ describe("installEnvironment", () => {
     const events: import("./environment.ts").InstallProgress[] = [];
     await Effect.runPromise(
       installEnvironment({
-        ...installOpts(envDir, { ...runner, freeDiskBytes: async () => 5_000_000_000 }),
+        ...installOpts(envDir, {
+          ...runner,
+          freeDiskBytes: async () => 5_000_000_000,
+        }),
         onProgress: (p) => events.push(p),
       }),
     );
@@ -276,12 +315,17 @@ describe("installEnvironment", () => {
     const events: import("./environment.ts").InstallProgress[] = [];
     await Effect.runPromise(
       installEnvironment({
-        ...installOpts(envDir, { ...runner, freeDiskBytes: async () => 50_000_000_000 }),
+        ...installOpts(envDir, {
+          ...runner,
+          freeDiskBytes: async () => 50_000_000_000,
+        }),
         onProgress: (p) => events.push(p),
       }),
     );
     const uvEvents = events.filter((e) => e.schritt === "uv");
-    expect(uvEvents.some((e) => e.detail?.includes("Plattenplatz"))).toBe(false);
+    expect(uvEvents.some((e) => e.detail?.includes("Plattenplatz"))).toBe(
+      false,
+    );
   });
 
   it("rejects a second install while the first is still running, then allows a third once it finished", async () => {
@@ -297,12 +341,19 @@ describe("installEnvironment", () => {
       },
     };
 
-    const erster = Effect.runPromise(installEnvironment(installOpts(envDir, langsamerRunner)));
+    const erster = Effect.runPromise(
+      installEnvironment(installOpts(envDir, langsamerRunner)),
+    );
     const zweiter = Effect.runPromise(
-      Effect.either(installEnvironment(installOpts(envDir, fakeRunner().runner))),
+      Effect.either(
+        installEnvironment(installOpts(envDir, fakeRunner().runner)),
+      ),
     );
 
-    const [ersterStatus, zweiterErgebnis] = await Promise.all([erster, zweiter]);
+    const [ersterStatus, zweiterErgebnis] = await Promise.all([
+      erster,
+      zweiter,
+    ]);
 
     expect(ersterStatus.state).toBe("ready");
     expect(zweiterErgebnis._tag).toBe("Left");

@@ -5,22 +5,41 @@
 // whether a pitch is right.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { noteAtBeat } from "../../../../core/edit/noteEdits.ts";
-import { msToBeat, type NoteSeq, type Timing } from "../../../../core/edit/songTxt.ts";
+import {
+  msToBeat,
+  type NoteSeq,
+  type Timing,
+} from "../../../../core/edit/songTxt.ts";
 
 /** UltraStar pitch 0 is C4, MIDI note 60. */
-export const pitchToHz = (pitch: number): number =>
-  440 * 2 ** ((pitch + 60 - 69) / 12);
+export const pitchToHz = (pitch: number, midiOffset = 60): number =>
+  440 * 2 ** ((pitch + midiOffset - 69) / 12);
 
-const NOTENNAMEN = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NOTENNAMEN = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
 
-export const pitchName = (pitch: number): string => {
-  const midi = pitch + 60;
+export const pitchName = (pitch: number, midiOffset = 60): string => {
+  const midi = pitch + midiOffset;
   return `${NOTENNAMEN[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 };
 
 const TON_LAUTSTAERKE = 0.08;
 
 export type Playback = {
+  rate: number;
+  setRate: (rate: number) => void;
   playing: boolean;
   /** Audio position in milliseconds. */
   positionMs: number;
@@ -41,10 +60,21 @@ export const usePlayback = (
   mediaUrl: string | null,
   song: NoteSeq,
   timing: Timing | null,
+  midiOffset = 60,
 ): Playback => {
+  const [rate, setRate] = useState(1);
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  const positionRef = useRef(0);
+  const offsetRef = useRef(midiOffset);
+  offsetRef.current = midiOffset;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const stopBeiRef = useRef<{ bis: number; zurueck: number } | null>(null);
-  const tonRef = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
+  const tonRef = useRef<{
+    ctx: AudioContext;
+    osc: OscillatorNode;
+    gain: GainNode;
+  } | null>(null);
   // The frame loop reads these through refs: a new song after every edit
   // must not restart the loop.
   const songRef = useRef(song);
@@ -61,13 +91,18 @@ export const usePlayback = (
     if (!mediaUrl) return;
     const audio = new Audio(mediaUrl);
     audio.preload = "auto";
+    audio.playbackRate = rateRef.current;
+    audio.preservesPitch = true;
+    audio.currentTime = positionRef.current / 1000;
     audioRef.current = audio;
     const onPause = () => setPlaying(false);
     const onPlay = () => setPlaying(true);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("play", onPlay);
     return () => {
+      positionRef.current = audio.currentTime * 1000;
       audio.pause();
+      setPlaying(false);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("play", onPlay);
       audio.removeAttribute("src");
@@ -75,6 +110,10 @@ export const usePlayback = (
       audioRef.current = null;
     };
   }, [mediaUrl]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  }, [rate]);
 
   useEffect(
     () => () => {
@@ -97,9 +136,19 @@ export const usePlayback = (
     const beat = msToBeat(t, ms);
     const i = noteAtBeat(s, beat);
     const note = s.notes[i];
-    const klingt = note !== undefined && beat < note.beat + note.length && note.type !== "F";
-    if (klingt) ton.osc.frequency.setTargetAtTime(pitchToHz(note.pitch), ton.ctx.currentTime, 0.005);
-    ton.gain.gain.setTargetAtTime(klingt ? TON_LAUTSTAERKE : 0, ton.ctx.currentTime, 0.01);
+    const klingt =
+      note !== undefined && beat < note.beat + note.length && note.type !== "F";
+    if (klingt)
+      ton.osc.frequency.setTargetAtTime(
+        pitchToHz(note.pitch, offsetRef.current),
+        ton.ctx.currentTime,
+        0.005,
+      );
+    ton.gain.gain.setTargetAtTime(
+      klingt ? TON_LAUTSTAERKE : 0,
+      ton.ctx.currentTime,
+      0.01,
+    );
   }, []);
 
   useEffect(() => {
@@ -166,7 +215,7 @@ export const usePlayback = (
     const audio = audioRef.current;
     if (!audio) return;
     stopBeiRef.current = null;
-    if (audio.paused) void audio.play();
+    if (audio.paused) void audio.play().catch(() => setPlaying(false));
     else audio.pause();
   }, []);
 
@@ -186,6 +235,8 @@ export const usePlayback = (
 
   return {
     currentMs,
+    rate,
+    setRate,
     playing,
     positionMs,
     available: mediaUrl !== null,

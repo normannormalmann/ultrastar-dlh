@@ -49,6 +49,36 @@ const job = (id: string) => ({
 });
 
 describe("SidecarWorker", () => {
+  it("cancels before READY without waiting for the startup timeout", async () => {
+    const bin = await fakeWorkerBin();
+    await writeFile(
+      bin,
+      "await new Promise(r => setTimeout(r, 30000)); console.log('@@READY');",
+    );
+    const worker = new SidecarWorker({
+      pythonBin: bin,
+      readyTimeoutMs: 20_000,
+    });
+    const pending = worker.submitJob(job("boot"));
+    const outcome = pending.catch((error) => error);
+    worker.cancelCurrentJob();
+    expect(await outcome).toMatchObject({ kind: "Cancelled" });
+    expect(worker.isAlive()).toBe(false);
+  });
+
+  it("rejects a process exit before READY immediately", async () => {
+    const bin = await fakeWorkerBin();
+    await writeFile(bin, "process.exit(7);");
+    const worker = new SidecarWorker({
+      pythonBin: bin,
+      readyTimeoutMs: 20_000,
+    });
+    await expect(worker.submitJob(job("boot"))).rejects.toMatchObject({
+      kind: "PipelineFailed",
+    });
+    expect(worker.isAlive()).toBe(false);
+  });
+
   it("verarbeitet einen Job und meldet Fortschritt", async () => {
     const worker = new SidecarWorker({ pythonBin: await fakeWorkerBin() });
     const stufen: string[] = [];
@@ -113,7 +143,10 @@ describe("SidecarWorker", () => {
     });
     const laufend = worker.submitJob(job("slow"));
     await new Promise((r) => setTimeout(r, 400));
-    timers.filter((t) => t.ms === 4242).at(-1)?.fn();
+    timers
+      .filter((t) => t.ms === 4242)
+      .at(-1)
+      ?.fn();
     await expect(laufend).rejects.toMatchObject({ kind: "PipelineFailed" });
     expect(worker.isAlive()).toBe(false);
   });

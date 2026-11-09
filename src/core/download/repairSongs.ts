@@ -1,5 +1,6 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { scanSongFiles, safeSongFile, pathKey } from "../library/inspect.ts";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { join, dirname, relative, basename } from "node:path";
 import { Effect } from "effect";
 import type { YoutubeLink } from "../api/usdb/youtube.ts";
 import { getYoutubeLinksById } from "../api/usdb/youtube.ts";
@@ -13,7 +14,7 @@ import type { DownloadedEntry } from "../storage/downloaded.ts";
 import {
   appendDownloadedEntry,
   loadDownloadedEntries,
-  saveDownloadedEntries,
+  updateDownloadedEntries,
 } from "../storage/downloaded.ts";
 
 export type RepairProgress = {
@@ -287,7 +288,7 @@ const repairSingleSong = (
         apiId: trackingApiId,
         artist: artist ?? dirName,
         title: title ?? dirName,
-        dirName,
+        dirName: basename(songDir),
         songDir,
         downloadedAt: new Date().toISOString(),
       }),
@@ -307,8 +308,9 @@ export const scanAndRepairVideos = (
   Effect.gen(function* () {
     const folders = yield* Effect.tryPromise({
       try: async () => {
-        const dirents = await readdir(downloadDir, { withFileTypes: true });
-        return dirents.filter((d) => d.isDirectory()).map((d) => d.name);
+        return (await scanSongFiles(downloadDir)).map((file) =>
+          relative(downloadDir, dirname(file)),
+        );
       },
       catch: (e) =>
         e instanceof Error ? e : new Error("Failed to read directory"),
@@ -316,7 +318,9 @@ export const scanAndRepairVideos = (
 
     // Load downloaded.json to retrieve apiIds for broken entries
     const allEntries = yield* loadDownloadedEntries;
-    const entryByDirName = new Map(allEntries.map((e) => [e.dirName, e]));
+    const entryByDirName = new Map(
+      allEntries.map((e) => [pathKey(e.songDir), e]),
+    );
 
     // Partition: needs repair vs already has video
     const needsRepair: string[] = [];
@@ -326,6 +330,10 @@ export const scanAndRepairVideos = (
       const missing = yield* Effect.tryPromise({
         try: async () => {
           try {
+            const songDir = join(downloadDir, name);
+            const text = await readFile(join(songDir, "song.txt"), "utf8");
+            const audio = /^#(?:AUDIO|MP3):(.+)$/im.exec(text)?.[1]?.trim();
+            if (audio && (await safeSongFile(songDir, audio))) return false;
             const s = await stat(videoPath);
             return s.size <= 1024 * 1024;
           } catch {
@@ -340,7 +348,7 @@ export const scanAndRepairVideos = (
 
     // ── Rebuild tracking for untracked songs that already have video.mp4 ──
     const untrackedWithVideo = hasVideo.filter(
-      (name) => !entryByDirName.has(name),
+      (name) => !entryByDirName.has(pathKey(join(downloadDir, name))),
     );
     let rebuilt = 0;
     if (untrackedWithVideo.length > 0) {
@@ -360,22 +368,21 @@ export const scanAndRepairVideos = (
           apiId: stableHash(name),
           artist: artist ?? name,
           title: title ?? name,
-          dirName: name,
+          dirName: basename(songDir),
           songDir,
           downloadedAt: new Date().toISOString(),
         });
       }
       if (newEntries.length > 0) {
-        yield* Effect.catchAll(
-          Effect.gen(function* () {
-            const existing = yield* loadDownloadedEntries;
-            const filtered = existing.filter(
-              (e) => !newEntries.some((n) => n.dirName === e.dirName),
-            );
-            yield* saveDownloadedEntries([...newEntries, ...filtered]);
-          }),
-          () => Effect.succeed(undefined),
-        );
+        yield* updateDownloadedEntries((existing) => {
+          const filtered = existing.filter(
+            (e) =>
+              !newEntries.some(
+                (n) => pathKey(n.songDir) === pathKey(e.songDir),
+              ),
+          );
+          return [...newEntries, ...filtered];
+        });
         rebuilt = newEntries.length;
       }
     }
@@ -402,7 +409,8 @@ export const scanAndRepairVideos = (
         // Update progress when starting
         updateProgress(name);
 
-        const apiId = entryByDirName.get(name)?.apiId ?? null;
+        const apiId =
+          entryByDirName.get(pathKey(join(downloadDir, name)))?.apiId ?? null;
 
         // Attempt repair with error categorization
         const result = yield* Effect.catchAll(
@@ -441,9 +449,7 @@ export const scanAndRepairVideos = (
         const success = typeof result === "boolean" ? result : result.success;
 
         // Increment completed count only when actually finished
-        if (success) {
-          completedCount++;
-        }
+        completedCount++;
 
         return {
           success,

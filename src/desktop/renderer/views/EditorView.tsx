@@ -3,6 +3,7 @@
 // piano roll with the audio underneath, and writes it back. Covers the whole
 // window, so leaving it always goes through the unsaved-changes check.
 import { X } from "lucide-react";
+import { useIpcEvent } from "../hooks.ts";
 import type { FC } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -44,7 +45,7 @@ import { usePlayback } from "../components/editor/usePlayback.ts";
 import { useSingAlong } from "../components/editor/useSingAlong.ts";
 import { type Katalog, useT } from "../i18n/index.tsx";
 
-const ZOOM_MIN = 1;
+const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 80;
 const ZOOM_START = 10;
 const SAVED_FLASH_MS = 2000;
@@ -54,7 +55,15 @@ export const fehlerText = (t: Katalog, e: EditorError): string =>
   t.editor.error[e.code] +
   ("line" in e && e.line !== undefined ? t.editor.atLine(e.line) : "");
 
-type Geladen = { revision: string; mediaUrl: string | null; converted: boolean };
+type Geladen = {
+  vocalUrl?: string | null;
+  originalPitch?:
+    | import("../../../core/edit/originalVocal.ts").OriginalPitch
+    | null;
+  revision: string;
+  mediaUrl: string | null;
+  converted: boolean;
+};
 
 export type EditorViewProps = {
   songDir: string;
@@ -62,7 +71,11 @@ export type EditorViewProps = {
   onClose: () => void;
 };
 
-export const EditorView: FC<EditorViewProps> = ({ songDir, heading, onClose }) => {
+export const EditorView: FC<EditorViewProps> = ({
+  songDir,
+  heading,
+  onClose,
+}) => {
   const t = useT();
   const [geladen, setGeladen] = useState<Geladen | null>(null);
   const [ladeFehler, setLadeFehler] = useState<EditorError | null>(null);
@@ -83,7 +96,13 @@ export const EditorView: FC<EditorViewProps> = ({ songDir, heading, onClose }) =
         setLadeFehler(r.error);
         return;
       }
-      setGeladen({ revision: r.revision, mediaUrl: r.mediaUrl, converted: r.converted });
+      setGeladen({
+        revision: r.revision,
+        mediaUrl: r.mediaUrl,
+        converted: r.converted,
+        originalPitch: r.originalPitch,
+        vocalUrl: r.vocalUrl,
+      });
       setHistory(startHistory(r.song));
     });
     return () => {
@@ -131,11 +150,11 @@ type ArbeitsflaecheProps = {
 };
 
 /** Tabs for the voices of a duet; nothing for a solo song. */
-const Spuren: FC<{ song: SongTxt; aktiv: number; onWahl: (i: number) => void }> = ({
-  song,
-  aktiv,
-  onWahl,
-}) => {
+const Spuren: FC<{
+  song: SongTxt;
+  aktiv: number;
+  onWahl: (i: number) => void;
+}> = ({ song, aktiv, onWahl }) => {
   const t = useT();
   if (song.tracks.length < 2) return null;
   return (
@@ -150,7 +169,8 @@ const Spuren: FC<{ song: SongTxt; aktiv: number; onWahl: (i: number) => void }> 
           className={i === aktiv ? "btn small primary" : "btn small"}
           onClick={() => onWahl(i)}
         >
-          {trackName(song, spur) ?? t.editor.voice(spur.marker ?? String(i + 1))}
+          {trackName(song, spur) ??
+            t.editor.voice(spur.marker ?? String(i + 1))}
         </button>
       ))}
       <span className="muted">{t.editor.voiceHint}</span>
@@ -171,15 +191,78 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
   const song = history.present;
   const [spur, setSpur] = useState(0);
   const track = (song.tracks[spur] ?? song.tracks[0]) as Track;
-  const ghosts = useMemo(() => song.tracks.filter((_, i) => i !== spur), [song, spur]);
+  const ghosts = useMemo(
+    () => song.tracks.filter((_, i) => i !== spur),
+    [song, spur],
+  );
   const timing = useMemo(() => timingOf(song), [song]);
   const ueberlappt = useMemo(() => findeUeberlappungen(track), [track]);
-  const playback = usePlayback(geladen.mediaUrl, track, timing);
+  const [solo, setSolo] = useState(false);
+  const [showReference, setShowReference] = useState(true);
+  const analysis = useIpcEvent("event:vocalAnalysis", null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+  const [analysisOffset, setAnalysisOffset] = useState<48 | 60>(
+    geladen.originalPitch?.midiOffset === 48 ? 48 : 60,
+  );
+  const analyze = async () => {
+    setAnalyzing(true);
+    setAnalysisError("");
+    playback.pause();
+    try {
+      const result = await window.ultrastar.editorAnalyze({
+        songDir,
+        midiOffset: analysisOffset,
+      });
+      if (!result.ok) throw new Error(fehlerText(t, result.error));
+      // Loading artifacts must preserve unsaved notes, history, and the editor revision.
+      setGeladen({
+        ...geladen,
+        originalPitch: result.originalPitch,
+        vocalUrl: result.vocalUrl,
+      });
+      setShowReference(true);
+    } catch (error) {
+      setAnalysisError(String(error));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+  useEffect(
+    () => () => {
+      void window.ultrastar.editorCancelAnalysis(songDir).catch(() => {});
+    },
+    [songDir],
+  );
+  const playback = usePlayback(
+    solo ? (geladen.vocalUrl ?? geladen.mediaUrl) : geladen.mediaUrl,
+    track,
+    timing,
+    geladen.originalPitch?.midiOffset ?? 60,
+  );
+  const reference = useMemo(
+    () =>
+      !timing || !showReference
+        ? []
+        : (geladen.originalPitch?.points ?? []).map((point, i, points) => ({
+            beat: msToBeat(timing, point.ms),
+            pitch: point.pitch,
+            breakBefore: i === 0 || point.ms - (points[i - 1]?.ms ?? 0) > 100,
+          })),
+    [timing, geladen.originalPitch, showReference],
+  );
   const sing = useSingAlong(track, timing, playback);
 
   const [selected, setSelected] = useState<number | null>(null);
-  const [pxPerBeat, setPxPerBeat] = useState(ZOOM_START);
-  const [scrollBeat, setScrollBeat] = useState(() => (track.notes[0]?.beat ?? 0) - 8);
+  const [pxPerBeat, setPxPerBeat] = useState(() =>
+    Math.max(
+      ZOOM_MIN,
+      Math.min(ZOOM_MAX, ZOOM_START * Math.min(1, 480 / (timing?.bpm ?? 480))),
+    ),
+  );
+  const [scrollBeat, setScrollBeat] = useState(
+    () => (track.notes[0]?.beat ?? 0) - 8,
+  );
   const [speichert, setSpeichert] = useState(false);
   const [gespeichert, setGespeichert] = useState(false);
   const [fehler, setFehler] = useState<EditorError | null>(null);
@@ -187,7 +270,19 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
   const silbeRef = useRef<HTMLInputElement>(null);
 
   const dirty = isDirty(history);
-  const anwendenSong = (next: SongTxt) => setHistory((h) => (h === null ? h : commit(h, next)));
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = "";
+        setSchliessenFragen(true);
+      }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [dirty]);
+  const anwendenSong = (next: SongTxt) =>
+    setHistory((h) => (h === null ? h : commit(h, next)));
   const anwenden = (next: Track) => anwendenSong(withTrack(song, spur, next));
 
   // Notes can disappear (delete, merge, undo): keep the selection valid.
@@ -199,7 +294,10 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
 
   // A suggestion belongs to the notes it was sung against; after any edit
   // its note indices may point elsewhere.
-  const review = sing.state.phase === "review" && sing.state.track === track ? sing.state : null;
+  const review =
+    sing.state.phase === "review" && sing.state.track === track
+      ? sing.state
+      : null;
   const singDiscard = sing.discard;
   const veraltet = sing.state.phase === "review" && review === null;
   useEffect(() => {
@@ -209,15 +307,26 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
   const sung: SungPoint[] = useMemo(() => {
     if (!review || !timing) return [];
     const versatz = 60 + 12 * review.suggestion.octaveShift;
-    return review.frames.map((f) => ({ beat: msToBeat(timing, f.ms), pitch: f.midi - versatz }));
+    return review.frames.map((f) => ({
+      beat: msToBeat(timing, f.ms),
+      pitch: f.midi - versatz,
+    }));
   }, [review, timing]);
 
-  const speichern = async (danachSchliessen: boolean, revision = geladen.revision) => {
+  const speichern = async (
+    danachSchliessen: boolean,
+    revision = geladen.revision,
+  ) => {
     if (speichert) return;
     setSpeichert(true);
     setFehler(null);
     const stand = history.present;
-    const r = await window.ultrastar.editorSave({ songDir, song: stand, revision });
+    const r = await window.ultrastar
+      .editorSave({ songDir, song: stand, revision })
+      .catch(() => ({
+        ok: false as const,
+        error: { code: "writeFailed" as const },
+      }));
     setSpeichert(false);
     if (!r.ok) {
       setFehler(r.error);
@@ -250,7 +359,13 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
       setFehler(r.error);
       return;
     }
-    setGeladen({ revision: r.revision, mediaUrl: r.mediaUrl, converted: r.converted });
+    setGeladen({
+      revision: r.revision,
+      mediaUrl: r.mediaUrl,
+      converted: r.converted,
+      originalPitch: r.originalPitch,
+      vocalUrl: r.vocalUrl,
+    });
     setHistory(startHistory(r.song));
     setSelected(null);
     setFehler(null);
@@ -280,7 +395,12 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
   };
 
   const einsingen = () => {
-    if (selected === null || sing.state.phase === "recording") return;
+    if (
+      selected === null ||
+      sing.state.phase === "recording" ||
+      playback.rate !== 1
+    )
+      return;
     const [von, bis] = lineOf(track, selected);
     sing.start(von, bis);
   };
@@ -354,13 +474,109 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
         onClose={schliessen}
       />
 
+      <div className="editor-legend">
+        <span style={{ color: "var(--mauve)" }}>● Normal</span>
+        <span style={{ color: "var(--yellow)" }}>● Golden / goldener Rap</span>
+        <span style={{ color: "var(--cyan)" }}>● Rap</span>
+        <span>◌ Freestyle (transparent)</span>
+        <span style={{ color: "var(--red)" }}>□ Überlappung</span>
+        <span style={{ color: "var(--peach)" }}>▧ Timing / Tonhöhe prüfen</span>
+        <span style={{ color: "var(--green)" }}>· Eingesungen</span>
+        {geladen.originalPitch && (
+          <label>
+            <input
+              type="checkbox"
+              checked={showReference}
+              onChange={(e) => setShowReference(e.target.checked)}
+            />
+            Originalgesang (türkise Linie)
+          </label>
+        )}
+        {geladen.vocalUrl && (
+          <label>
+            <input
+              type="checkbox"
+              checked={solo}
+              disabled={sing.state.phase === "recording"}
+              onChange={(e) => {
+                playback.pause();
+                setSolo(e.target.checked);
+              }}
+            />
+            Nur Gesang
+          </label>
+        )}
+      </div>
+      <div className="editor-analysis row">
+        <button
+          type="button"
+          className="btn small"
+          disabled={
+            analyzing ||
+            analysis !== null ||
+            !geladen.mediaUrl ||
+            sing.state.phase === "recording"
+          }
+          onClick={() => void analyze()}
+        >
+          {geladen.originalPitch
+            ? "Gesangsanalyse aktualisieren"
+            : "Originalgesang analysieren"}
+        </button>
+        <label>
+          Tonhöhenbezug{" "}
+          <select
+            className="input"
+            value={analysisOffset}
+            disabled={analyzing}
+            onChange={(e) =>
+              setAnalysisOffset(Number(e.target.value) as 48 | 60)
+            }
+          >
+            <option value={60}>Standard (C4 = 0)</option>
+            <option value={48}>Ältere KI-Erstellung (C3 = 0)</option>
+          </select>
+        </label>
+        {(analyzing || analysis?.songDir === songDir) && (
+          <>
+            <span role="status">
+              {analysis?.stage === "separate"
+                ? "Gesang trennen"
+                : analysis?.stage === "pitch"
+                  ? "Tonhöhen messen"
+                  : "Analyse vorbereiten"}{" "}
+              …
+            </span>
+            <button
+              type="button"
+              className="btn small"
+              onClick={() =>
+                void window.ultrastar
+                  .editorCancelAnalysis(songDir)
+                  .catch((e) => setAnalysisError(String(e)))
+              }
+            >
+              Analyse abbrechen
+            </button>
+          </>
+        )}
+        {analysisError && <span role="alert">{analysisError}</span>}
+      </div>
       {konflikt && (
         <div className="editor-confirm">
           <span>{t.editor.error.changedOnDisk}</span>
-          <button className="btn primary" type="button" onClick={() => void vonPlatteNeuLaden()}>
+          <button
+            className="btn primary"
+            type="button"
+            onClick={() => void vonPlatteNeuLaden()}
+          >
             {t.editor.conflictReload}
           </button>
-          <button className="btn danger" type="button" onClick={() => void trotzdemUeberschreiben()}>
+          <button
+            className="btn danger"
+            type="button"
+            onClick={() => void trotzdemUeberschreiben()}
+          >
             {t.editor.conflictOverwrite}
           </button>
           <button className="btn" type="button" onClick={() => setFehler(null)}>
@@ -372,13 +588,21 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
       {schliessenFragen && (
         <div className="editor-confirm">
           <span>{t.editor.unsaved}</span>
-          <button className="btn primary" type="button" onClick={() => void speichern(true)}>
+          <button
+            className="btn primary"
+            type="button"
+            onClick={() => void speichern(true)}
+          >
             {t.editor.saveAndClose}
           </button>
           <button className="btn danger" type="button" onClick={onClose}>
             {t.editor.discardAndClose}
           </button>
-          <button className="btn" type="button" onClick={() => setSchliessenFragen(false)}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => setSchliessenFragen(false)}
+          >
             {t.editor.keepEditing}
           </button>
         </div>
@@ -395,6 +619,9 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
 
       <div className="editor-body">
         <PianoRoll
+          reference={reference}
+          timing={timing}
+          midiOffset={geladen.originalPitch?.midiOffset}
           track={track}
           ghosts={ghosts}
           selected={selected}
@@ -414,6 +641,7 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
           }}
         />
         <NotePanel
+          midiOffset={geladen.originalPitch?.midiOffset}
           song={track}
           selected={selected}
           timing={timing}
@@ -425,14 +653,26 @@ const Arbeitsflaeche: FC<ArbeitsflaecheProps> = ({
       </div>
 
       <div className="editor-status">
-        <span className="muted">{t.editor.noteCount(noteCount(song).toLocaleString(t.locale))}</span>
+        <span className="muted">
+          {t.editor.noteCount(noteCount(song).toLocaleString(t.locale))}
+        </span>
         {ueberlappt.size > 0 && (
-          <span style={{ color: "var(--red)" }}>{t.editor.overlaps(ueberlappt.size)}</span>
+          <span style={{ color: "var(--red)" }}>
+            {t.editor.overlaps(ueberlappt.size)}
+          </span>
         )}
-        {!playback.available && <span className="muted">{t.editor.noAudio}</span>}
-        {geladen.converted && <span className="muted">{t.editor.converted}</span>}
-        {song.relative && <span className="muted">{t.editor.relativeHint}</span>}
-        {fehler && !konflikt && <span className="editor-error">{fehlerText(t, fehler)}</span>}
+        {!playback.available && (
+          <span className="muted">{t.editor.noAudio}</span>
+        )}
+        {geladen.converted && (
+          <span className="muted">{t.editor.converted}</span>
+        )}
+        {song.relative && (
+          <span className="muted">{t.editor.relativeHint}</span>
+        )}
+        {fehler && !konflikt && (
+          <span className="editor-error">{fehlerText(t, fehler)}</span>
+        )}
         <span className="spacer" />
         <span className="muted">{t.editor.backupHint}</span>
       </div>

@@ -126,47 +126,6 @@ export const videoSortArg = (quality?: VideoQuality): string =>
       ? "ext"
       : "ext,res:1080";
 
-/**
- * Download a youtube video from direct link (watch URL or ID) and save to provided path.
- * Equivalent shell: yt-dlp -S "ext,res:1080" -o '${path}' -- ${link}
- */
-export const downloadYoutubeVideo = (
-  link: string,
-  path: string,
-): Effect.Effect<void, Error> =>
-  Effect.tryPromise({
-    try: async () => {
-      validateOutputPath(path);
-      const args = ["-S", "ext,res:1080", "-o", path, "--", link];
-
-      await new Promise<void>((resolve, reject) => {
-        const child = spawn("yt-dlp", args, {
-          stdio: ["ignore", "ignore", "ignore"],
-        });
-
-        // Set timeout to prevent indefinite hanging
-        const timeout = setTimeout(() => {
-          child.kill("SIGKILL");
-          reject(new Error(`Download timeout after ${DOWNLOAD_TIMEOUT_MS}ms`));
-        }, DOWNLOAD_TIMEOUT_MS);
-
-        const cleanup = () => clearTimeout(timeout);
-
-        child.on("error", (err) => {
-          cleanup();
-          reject(err);
-        });
-        child.on("close", (code) => {
-          cleanup();
-          if (code === 0) resolve();
-          else reject(new Error(`yt-dlp download failed (code ${code})`));
-        });
-      });
-    },
-    catch: (e) =>
-      e instanceof Error ? e : new Error("Failed to download youtube video"),
-  });
-
 export type YoutubeDownloadProgress = {
   percent: number; // 0..1
   eta?: string; // e.g. 00:12
@@ -193,6 +152,8 @@ const runYtDlpDownload = (
   new Promise<void>((resolve, reject) => {
     const child = spawn("yt-dlp", args, {
       stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
     });
 
     // yt-dlp spawns ffmpeg for the merge; killing only the parent would
@@ -202,7 +163,7 @@ const runYtDlpDownload = (
     signal?.addEventListener("abort", abbrechen, { once: true });
 
     const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
+      killProcessTree(child);
       reject(new Error(`Download timeout after ${DOWNLOAD_TIMEOUT_MS}ms`));
     }, DOWNLOAD_TIMEOUT_MS);
 
@@ -454,26 +415,7 @@ export const downloadYoutubeVideoWithProgress = (
         if (isCookieFailure || isAuthBlock) {
           const cookiesTxt = findCookiesTxt(path);
 
-          if (cookiesTxt && cookieArgs.length > 0) {
-            onProgress({ percent: 0 });
-            const fallbackArgs = [
-              ...baseArgs,
-              "--cookies",
-              cookiesTxt,
-              "--",
-              link,
-            ];
-            try {
-              await runYtDlpDownload(fallbackArgs, onProgress, signal);
-              return;
-            } catch (fallbackErr) {
-              // A cancel killed this attempt: retrying would spawn a yt-dlp
-              // that the already-fired signal can no longer reach.
-              if (signal?.aborted) throw fallbackErr;
-              await tryFallbackWithoutCookies();
-              return;
-            }
-          } else if (cookiesTxt && cookieArgs.length === 0) {
+          if (cookiesTxt) {
             onProgress({ percent: 0 });
             const fallbackArgs = [
               ...baseArgs,

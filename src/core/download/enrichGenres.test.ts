@@ -16,7 +16,7 @@ const dirs: string[] = [];
 afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
   const cache = await Effect.runPromise(getCacheDir());
-  await rm(join(cache, ".."), { recursive: true, force: true });
+  await rm(cache, { recursive: true, force: true });
 });
 
 const seed = async (n: number, withGenreEvery?: number) => {

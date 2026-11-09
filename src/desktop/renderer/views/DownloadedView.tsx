@@ -1,3 +1,4 @@
+import { LibraryTools } from "../components/LibraryTools.tsx";
 import {
   FolderOpen,
   FolderSearch,
@@ -198,6 +199,7 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
   return (
     <div>
       <h2>Heruntergeladen ({entries.length})</h2>
+      <LibraryTools entries={filtered} />
       <div className="row" style={{ marginBottom: 14 }}>
         <input
           className="input"
@@ -290,12 +292,12 @@ export const DownloadedView: FC<{ entries: DownloadedEntry[] }> = ({
         </button>
       </div>
       {(langFilter || genreFilter || yearFrom || yearTo || filter) && (
-        <p className="muted">
-          {t.downloaded.hits(zahl(filtered.length))}
-        </p>
+        <p className="muted">{t.downloaded.hits(zahl(filtered.length))}</p>
       )}
       {importError && <div className="error-banner">{importError}</div>}
-      {importResult && <p className="muted">{importMessage(t, importResult)}</p>}
+      {importResult && (
+        <p className="muted">{importMessage(t, importResult)}</p>
+      )}
       {genreEnrichProgress && (
         <div className="row" style={{ marginBottom: 10 }}>
           <span className="muted">

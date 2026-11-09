@@ -43,7 +43,7 @@ export type SearchParams = {
 };
 
 /** Decode one layer only; generated ampersands must not become new entities. */
-const decodeHtmlEntities = (str: string): string => {
+export const decodeHtmlEntities = (str: string): string => {
   const named: Readonly<Record<string, string>> = {
     amp: "&",
     lt: "<",
@@ -205,6 +205,7 @@ export const searchSongs = (
     const response = yield* Effect.tryPromise({
       try: async () =>
         await fetch(`${API_URL}/?link=list`, {
+          signal: AbortSignal.timeout(30_000),
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",

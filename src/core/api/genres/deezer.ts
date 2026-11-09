@@ -56,13 +56,6 @@ export const pickDeezerTracks = (
   return results;
 };
 
-/** @deprecated Use pickDeezerTracks instead. */
-export const pickDeezerTrack = (
-  res: DeezerSearch,
-  artist: string,
-  cleanedArtist?: string,
-): DeezerTrackPick => pickDeezerTracks(res, artist, cleanedArtist)[0] ?? null;
-
 export const parseDeezerAlbum = (
   album: DeezerAlbum,
 ): { genre: string; year?: number } | null => {

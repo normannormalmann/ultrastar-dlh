@@ -8,6 +8,8 @@ export type Note = {
   pitch: number;
   syllable: string;
   confidence?: number;
+  pitchStatus?: "measured" | "missing";
+  timingConfidence?: number;
 };
 
 export type LineBreak = { afterNoteIndex: number; beat: number };
@@ -20,6 +22,7 @@ export type Section = {
 };
 
 export type SongDataMeta = {
+  musicalBpm?: number;
   durationSec: number;
   device: string;
   stageVersions: Record<string, string>;
@@ -43,14 +46,15 @@ const istObjekt = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 const zahl = (v: unknown, feld: string): number => {
-  if (typeof v !== "number" || Number.isNaN(v)) {
+  if (typeof v !== "number" || !Number.isFinite(v)) {
     throw new Error(`songData: ${feld} muss eine Zahl sein`);
   }
   return v;
 };
 
 const text = (v: unknown, feld: string): string => {
-  if (typeof v !== "string") throw new Error(`songData: ${feld} muss ein String sein`);
+  if (typeof v !== "string")
+    throw new Error(`songData: ${feld} muss ein String sein`);
   return v;
 };
 
@@ -74,9 +78,13 @@ const silbentext = (v: unknown, feld: string): string => {
 export const parseSongData = (input: unknown): SongData => {
   if (!istObjekt(input)) throw new Error("songData: Objekt erwartet");
 
+  if (zahl(input.bpm, "bpm") <= 0)
+    throw new Error("songData: BPM must be positive");
   const version = zahl(input.schemaVersion, "schemaVersion");
   if (version !== SCHEMA_VERSION) {
-    throw new Error(`songData: unbekannte schemaVersion ${version}, erwartet ${SCHEMA_VERSION}`);
+    throw new Error(
+      `songData: unbekannte schemaVersion ${version}, erwartet ${SCHEMA_VERSION}`,
+    );
   }
 
   if (!Array.isArray(input.notes) || input.notes.length === 0) {
@@ -84,15 +92,38 @@ export const parseSongData = (input: unknown): SongData => {
   }
 
   const notes: Note[] = input.notes.map((n, i) => {
-    if (!istObjekt(n)) throw new Error(`songData: notes[${i}] muss ein Objekt sein`);
+    if (!istObjekt(n))
+      throw new Error(`songData: notes[${i}] muss ein Objekt sein`);
     const note: Note = {
       beat: zahl(n.beat, `notes[${i}].beat`),
       length: zahl(n.length, `notes[${i}].length`),
       pitch: zahl(n.pitch, `notes[${i}].pitch`),
       syllable: silbentext(n.syllable, `notes[${i}].syllable`),
     };
+    if (
+      !Number.isSafeInteger(note.beat) ||
+      !Number.isSafeInteger(note.length) ||
+      note.length <= 0 ||
+      !Number.isSafeInteger(note.pitch)
+    )
+      throw new Error(`songData: notes[${i}] has invalid note values`);
     if (n.confidence !== undefined) {
       note.confidence = zahl(n.confidence, `notes[${i}].confidence`);
+    }
+    if (n.pitchStatus !== undefined) {
+      if (n.pitchStatus !== "measured" && n.pitchStatus !== "missing")
+        throw new Error(`songData: notes[${i}].pitchStatus is invalid`);
+      note.pitchStatus = n.pitchStatus;
+      if (n.pitchStatus === "missing") note.confidence = 0;
+    }
+    if (n.timingConfidence !== undefined) {
+      const confidence = zahl(
+        n.timingConfidence,
+        `notes[${i}].timingConfidence`,
+      );
+      if (confidence < 0 || confidence > 1)
+        throw new Error(`songData: notes[${i}].timingConfidence is invalid`);
+      note.timingConfidence = confidence;
     }
     return note;
   });
@@ -101,7 +132,8 @@ export const parseSongData = (input: unknown): SongData => {
     throw new Error("songData: lineBreaks muss ein Array sein");
   }
   const lineBreaks: LineBreak[] = input.lineBreaks.map((b, i) => {
-    if (!istObjekt(b)) throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
+    if (!istObjekt(b))
+      throw new Error(`songData: lineBreaks[${i}] muss ein Objekt sein`);
     return {
       afterNoteIndex: zahl(b.afterNoteIndex, `lineBreaks[${i}].afterNoteIndex`),
       beat: zahl(b.beat, `lineBreaks[${i}].beat`),
@@ -110,25 +142,33 @@ export const parseSongData = (input: unknown): SongData => {
 
   const sections: Section[] = [];
   const rohSections = (input as { sections?: unknown }).sections ?? [];
-  if (!Array.isArray(rohSections)) throw new Error("songData: sections muss ein Array sein");
+  if (!Array.isArray(rohSections))
+    throw new Error("songData: sections muss ein Array sein");
   rohSections.forEach((eintrag, i) => {
-    if (!istObjekt(eintrag)) throw new Error(`songData: sections[${i}] muss ein Objekt sein`);
+    if (!istObjekt(eintrag))
+      throw new Error(`songData: sections[${i}] muss ein Objekt sein`);
     const von = zahl(eintrag.fromNoteIndex, `sections[${i}].fromNoteIndex`);
     const bis = zahl(eintrag.toNoteIndex, `sections[${i}].toNoteIndex`);
     if (!Number.isInteger(von) || !Number.isInteger(bis)) {
-      throw new Error(`sections[${i}]: fromNoteIndex und toNoteIndex muessen ganze Zahlen sein`);
+      throw new Error(
+        `sections[${i}]: fromNoteIndex und toNoteIndex muessen ganze Zahlen sein`,
+      );
     }
     // Bereichspruefung: der bestehende Vertrag laesst lineBreaks[].afterNoteIndex
     // ausserhalb des Bereichs still durchrutschen. Hier nicht.
     if (von < 0 || von >= bis || bis > notes.length) {
-      throw new Error(`sections[${i}]: Bereich ${von}..${bis} liegt ausserhalb von 0..${notes.length}`);
+      throw new Error(
+        `sections[${i}]: Bereich ${von}..${bis} liegt ausserhalb von 0..${notes.length}`,
+      );
     }
     const vertrauen = zahl(eintrag.confidence, `sections[${i}].confidence`);
     if (vertrauen < 0 || vertrauen > 1) {
       throw new Error(`sections[${i}]: confidence muss in 0..1 liegen`);
     }
     if (typeof eintrag.anchoredBothSides !== "boolean") {
-      throw new Error(`sections[${i}]: anchoredBothSides muss ein Wahrheitswert sein`);
+      throw new Error(
+        `sections[${i}]: anchoredBothSides muss ein Wahrheitswert sein`,
+      );
     }
     sections.push({
       fromNoteIndex: von,
@@ -140,21 +180,35 @@ export const parseSongData = (input: unknown): SongData => {
 
   const rohMeta = istObjekt(input.meta) ? input.meta : {};
   const meta: SongDataMeta = {
-    durationSec: typeof rohMeta.durationSec === "number" ? rohMeta.durationSec : 0,
+    durationSec:
+      typeof rohMeta.durationSec === "number" ? rohMeta.durationSec : 0,
     device: typeof rohMeta.device === "string" ? rohMeta.device : "unbekannt",
     stageVersions: istObjekt(rohMeta.stageVersions)
       ? Object.fromEntries(
           Object.entries(rohMeta.stageVersions).map(([k, v]) => [k, String(v)]),
         )
       : {},
-    warnings: Array.isArray(rohMeta.warnings) ? rohMeta.warnings.map(String) : [],
+    warnings: Array.isArray(rohMeta.warnings)
+      ? rohMeta.warnings.map(String)
+      : [],
     lowConfidence: rohMeta.lowConfidence === true,
   };
+  if (rohMeta.musicalBpm !== undefined) {
+    meta.musicalBpm = zahl(rohMeta.musicalBpm, "meta.musicalBpm");
+    if (meta.musicalBpm <= 0)
+      throw new Error("songData: musicalBpm must be positive");
+  }
   if (istObjekt(rohMeta.confidence)) {
     meta.confidence = {
       median: zahl(rohMeta.confidence.median, "meta.confidence.median"),
-      unsureRatio: zahl(rohMeta.confidence.unsureRatio, "meta.confidence.unsureRatio"),
-      largestGapSec: zahl(rohMeta.confidence.largestGapSec, "meta.confidence.largestGapSec"),
+      unsureRatio: zahl(
+        rohMeta.confidence.unsureRatio,
+        "meta.confidence.unsureRatio",
+      ),
+      largestGapSec: zahl(
+        rohMeta.confidence.largestGapSec,
+        "meta.confidence.largestGapSec",
+      ),
     };
   }
 

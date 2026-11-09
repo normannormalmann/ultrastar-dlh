@@ -522,3 +522,11 @@ a.btn {
 .editor-unsure-btn {
   color: var(--peach);
 }
+
+.editor-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px; font-size: 12px; background: var(--mantle); }
+.editor-analysis { padding: 6px 12px; flex-wrap: wrap; font-size: 12px; }
+.library-tools { margin-bottom: 16px; padding: 12px; border: 1px solid var(--overlay); border-radius: 8px; }
+.library-tools details { margin: 8px 0; }
+.library-tools li { margin-bottom: 8px; overflow-wrap: anywhere; }
+.library-update-preview { max-height: 240px; overflow: auto; background: var(--mantle); padding: 12px; }
+.search-preview { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px; margin-bottom: 12px; background: var(--mantle); border-radius: 8px; }

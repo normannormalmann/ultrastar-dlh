@@ -9,6 +9,7 @@ import {
 } from "../storage/downloaded.ts";
 import { getCacheDir } from "../storage/paths.ts";
 import { importArchive } from "./importArchive.ts";
+import { scanAndRepairVideos } from "./repairSongs.ts";
 
 // Isoliertes Datenverzeichnis (gleiche Technik wie queue.test.ts)
 process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-import-test-${process.pid}`;
@@ -17,7 +18,7 @@ const dirs: string[] = [];
 afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
   const cache = await Effect.runPromise(getCacheDir());
-  await rm(join(cache, ".."), { recursive: true, force: true });
+  await rm(cache, { recursive: true, force: true });
 });
 
 const makeArchive = async (): Promise<string> => {
@@ -25,6 +26,24 @@ const makeArchive = async (): Promise<string> => {
   dirs.push(root);
   return root;
 };
+
+test("repair tracks nested audio-only songs without downloading video", async () => {
+  const root = await makeArchive();
+  const songDir = join(root, "A", "Artist", "Title");
+  await mkdir(songDir, { recursive: true });
+  await writeFile(join(songDir, "audio.wav"), "local-audio");
+  await writeFile(
+    join(songDir, "song.txt"),
+    "#ARTIST:Artist\n#TITLE:Title\n#MP3:audio.wav\n#BPM:120\n: 0 4 0 La\nE\n",
+  );
+  const result = await Effect.runPromise(scanAndRepairVideos(root, ""));
+  expect(result.total).toBe(0);
+  expect(result.rebuilt).toBe(1);
+  const entry = (await Effect.runPromise(loadDownloadedEntries)).find(
+    (item) => item.songDir === songDir,
+  );
+  expect(entry?.dirName).toBe("Title");
+});
 
 const makeSong = async (
   root: string,
@@ -117,19 +136,21 @@ test("reports progress and finishes with current === total", async () => {
   expect(last?.current).toBe(3);
 });
 
-test("finds songs nested one level deep (artist/letter layouts)", async () => {
+test("finds songs recursively (artist/letter layouts)", async () => {
   const root = await makeArchive();
   await makeSong(root, "Flat_-_Song", { video: true });
   await makeSong(root, join("ABBA", "ABBA_-_Nested"), { video: true });
-  await makeSong(root, join("A", "Deep", "Too_-_Deep"), { video: true }); // Tiefe 3 → ignoriert
+  await makeSong(root, join("A", "Deep", "Too_-_Deep"), { video: true });
 
   const result = await Effect.runPromise(importArchive(root));
-  expect(result.imported).toBe(2);
+  expect(result.imported).toBe(3);
 
   const entries = await Effect.runPromise(loadDownloadedEntries);
   const nested = entries.find((e) => e.dirName === "ABBA_-_Nested");
   expect(nested?.songDir).toBe(join(root, "ABBA", "ABBA_-_Nested"));
-  expect(entries.find((e) => e.dirName === "Too_-_Deep")).toBeUndefined();
+  expect(entries.find((e) => e.dirName === "Too_-_Deep")?.songDir).toBe(
+    join(root, "A", "Deep", "Too_-_Deep"),
+  );
 });
 
 test("stores metadata and backfills tracked entries missing language", async () => {

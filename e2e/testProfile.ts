@@ -1,9 +1,11 @@
-import { basename, dirname } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import envPaths from "env-paths";
 
 /** Where the app keeps config.json & co. for this app name (see core/storage/paths.ts). */
 export const datenOrdner = (appName: string): string =>
-  envPaths(appName, { suffix: "" }).cache;
+  process.env.ULTRASTAR_DATA_ROOT
+    ? join(resolve(process.env.ULTRASTAR_DATA_ROOT), appName)
+    : envPaths(appName, { suffix: "" }).cache;
 
 /**
  * The folder to delete after a test: the app's own, never a shared parent.

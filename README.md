@@ -124,9 +124,15 @@ Architektur: `src/core/` (geteilter Kern: USDB-API, Downloads, Storage, Genre-Pr
 
 ### Security-Checks
 
+Für isolierte Tests kann `ULTRASTAR_DATA_ROOT` auf ein temporäres Verzeichnis gesetzt werden. Konfiguration, Bibliotheksindex und Electron-Profil liegen dann dort unter dem jeweiligen `ULTRASTAR_APP_NAME`. Mit `ULTRASTAR_OFFLINE=1` startet der Desktop ohne automatische Anmeldung, Updates oder Tool-Downloads. `e2e/reviewFeatures.spec.ts` prüft die neuen Funktionen mit lokalen Testdaten und eine gebündelte App ohne Entwicklungsabhängigkeiten.
+
+Unter Windows werden USDB-Zugangsdaten mit DPAPI an das Benutzerkonto gebunden; vorhandene Klartextdateien werden beim Lesen migriert. Auf anderen Plattformen werden sie mit eingeschränkten Dateirechten gespeichert. Automatisch geladene Werkzeuge werden gegen die SHA-256-Prüfsummen ihrer Anbieter geprüft. Die Python-Einrichtung unterstützt Windows und Linux; unter Linux muss `uv` bereits installiert sein.
+
 Bun 1.4.3 verwenden und mit `bun install --frozen-lockfile` installieren. `bun audit --audit-level=high` und `bun audit --prod --audit-level=moderate` laufen in CI unabhängig voneinander. ZIP-Regressionstests laufen unter Windows und Linux; CodeQL analysiert TypeScript/JavaScript und Python.
 
-Der Python-Audit prüft Basis- und Modellabhängigkeiten getrennt für Python 3.12 und berücksichtigt die Torch-Pins der automatischen Einrichtung. Aufgelöste Versionen und Befunde werden als Artefakte gespeichert. Die Modellbefunde bleiben blockierend; der [separate Migrationsplan](docs/superpowers/plans/2026-10-14-model-security-migration.md) beschreibt die nächsten Schritte.
+Der Python-Audit prüft Basis-, CPU- und CUDA-Abhängigkeiten getrennt für Python 3.12. Installation und CI verwenden dieselben vier plattformspezifischen Versionsdateien in `python-sidecar/requirements*.txt`. Advisory-Ausnahmen gibt es nicht mehr. Aufgelöste Versionen und Befunde werden als Artefakte gespeichert. Der [Migrationsbericht](docs/superpowers/plans/2026-10-14-model-security-migration.md) beschreibt Modellwechsel, echte Tests und verbleibende Grenzen. Bestehende KI-Umgebungen müssen über die Einstellungen aktualisiert werden; reine Code-Updates ersetzen deren installierte Pakete nicht.
+
+Echte Diensttests: `bun run scripts/liveServices.ts .verification/live-neu` verwendet ausschließlich vorhandene USDB-Zugangsdaten und eine temporäre Audio-Probe. Echte Modelltests: `bun run scripts/modelRegression.ts scripts/reference-corpus.json --python <Python-Pfad> --device cpu --out .verification/lauf-neu`. Das Ausgabeverzeichnis muss neu sein; Originalsongs werden nur gelesen. Der Messhelfer benötigt `psutil` im Testinterpreter. Berichte enthalten Paketversionen, Quellfingerprint, Audio-/Referenzhashes, Zeit- und Tonhöhenmetriken, Laufzeit sowie gemessenen RAM-/Torch-VRAM-Verbrauch. Torch-VRAM umfasst nicht die separaten CTranslate2-Allokationen.
 
 ---
 

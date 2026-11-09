@@ -24,9 +24,34 @@ const daten: SongData = {
   },
 };
 
-const headers = { artist: "Testkuenstler", title: "Testlied", mp3: "Testlied.ogg" };
+const headers = {
+  artist: "Testkuenstler",
+  title: "Testlied",
+  mp3: "Testlied.ogg",
+};
 
 describe("renderSongTxt", () => {
+  it("exports unknown pitch as unscored freestyle with a neutral placeholder", () => {
+    const txt = renderSongTxt(
+      {
+        ...daten,
+        notes: [
+          {
+            beat: 0,
+            length: 4,
+            pitch: 99,
+            syllable: "ah ",
+            confidence: 0,
+            pitchStatus: "missing",
+          },
+        ],
+        lineBreaks: [],
+      },
+      headers,
+    );
+    expect(txt).toContain("F 0 4 0 ah ");
+    expect(txt).not.toContain(": 0 4");
+  });
   it("schreibt Pflicht-Header zuerst", () => {
     const zeilen = renderSongTxt(daten, headers).split("\n");
     expect(zeilen[0]).toBe("#TITLE:Testlied");
@@ -66,7 +91,12 @@ describe("renderSongTxt", () => {
   });
 
   it("schreibt optionale Header, wenn gesetzt", () => {
-    const txt = renderSongTxt(daten, { ...headers, genre: "Pop", year: 1987, cover: "c.jpg" });
+    const txt = renderSongTxt(daten, {
+      ...headers,
+      genre: "Pop",
+      year: 1987,
+      cover: "c.jpg",
+    });
     expect(txt).toContain("#GENRE:Pop");
     expect(txt).toContain("#YEAR:1987");
     expect(txt).toContain("#COVER:c.jpg");
@@ -115,7 +145,9 @@ describe("renderSongTxt", () => {
     const noten = renderSongTxt(zweiWoerterEineZeile, headers)
       .split("\n")
       .filter((z) => z.startsWith(": "));
-    const text = noten.map((z) => z.replace(/^: -?\d+ \d+ -?\d+ /, "")).join("");
+    const text = noten
+      .map((z) => z.replace(/^: -?\d+ \d+ -?\d+ /, ""))
+      .join("");
     expect(text).toBe("Hallo Welt");
   });
 

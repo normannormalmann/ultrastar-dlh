@@ -24,6 +24,7 @@ export const register = (r: Registration): Effect.Effect<void, Error, never> =>
     const response = yield* Effect.tryPromise({
       try: async () =>
         await fetch(`${API_URL}/index.php?link=register`, {
+          signal: AbortSignal.timeout(30_000),
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: buildRegistrationForm(r).toString(),

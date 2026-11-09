@@ -13,6 +13,7 @@ export const downloadCoverById = (
     const response = yield* Effect.tryPromise({
       try: async () =>
         await fetch(`${API_URL}/data/cover/${id}.jpg`, {
+          signal: AbortSignal.timeout(30_000),
           method: "GET",
           headers: {
             ...(cookie ? { Cookie: cookie } : {}),

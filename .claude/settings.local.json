@@ -38,7 +38,16 @@
       "Skill(update-config)",
       "Bash(python *)",
       "Bash(mkdir -p ~/.claude/session-data)",
-      "Read(//c/Users/NormanSchönherr/.claude/session-data/**)"
+      "Read(//c/Users/NormanSchönherr/.claude/session-data/**)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "Bash(gh pr merge *)",
+      "Bash(rtk proxy *)",
+      "Bash(awk -F'\\\\t' '{print $1\": \"$2}')",
+      "Bash(git tag *)",
+      "Bash(git switch *)",
+      "Bash(rtk git *)",
+      "Bash(git rev-list *)"
     ],
     "deny": [],
     "ask": []

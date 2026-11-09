@@ -6,6 +6,7 @@ Millisekunden testbar bleiben — sonst laeuft bei jeder Justierung Demucs.
 """
 
 from dataclasses import dataclass, replace
+import math
 from statistics import median
 
 from .syllables import split_syllables
@@ -28,6 +29,8 @@ class PitchPoint:
     time: float  # Sekunden
     midi: float
     voiced: bool
+    confidence: float | None = None
+    source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,8 @@ class Note:
     pitch: int
     syllable: str
     confidence: float
+    pitch_status: str | None = None
+    timing_confidence: float | None = None
 
 
 @dataclass(frozen=True)
@@ -45,19 +50,25 @@ class LineBreak:
     beat: int
 
 
-# Gemessen, nicht mehr angenommen: der erste echte Lauf gegen eine von
-# Menschen gesyncte Referenz ergab bei Nullage 60 einen Median-Pitch-Offset
-# von genau -12,000 Halbtoenen. Genau eine Oktave ist eine falsche Konstante
-# und kein Rauschen, also 12 tiefer ansetzen. UltraStar-Tonhoehe 0
-# entspricht damit C3 (MIDI 48). Benannt und isoliert lassen, nicht inlinen.
-MIDI_NULLAGE = 48
+# UltraStar pitch 0 is MIDI 60. Legacy artifacts retain their own midiOffset.
+MIDI_NULLAGE = 60
+STAGE_VERSION = "3"
+MAX_TIMING_SHIFT_SEC = 0.020
+MAX_TICK_SEC = 0.010
 
-# Gemessen, nicht angenommen (Korpuslauf ueber 30 Referenzsongs,
-# 2026-07-29): unsere Onsets liegen im Median 61 ms hinter menschlich
-# gesyncten Referenzen - der wav2vec-Onset sitzt am Phonembeginn,
-# Menschen syncen fruher auf den Beat. Eine konstante Vorverlegung
-# um 60 ms zentriert den Fehler, ohne am Alignment zu drehen.
-ONSET_KORREKTUR_MS = 60
+
+class NoteTimingError(ValueError):
+    """The measured timing cannot be exported without inventing new onsets."""
+
+
+def export_bpm(musical_bpm: float) -> float:
+    """Use an integer tempo multiple with at most 10 ms per export tick."""
+    if not math.isfinite(musical_bpm) or musical_bpm <= 0:
+        raise NoteTimingError("Ungültiges Songtempo.")
+    result = musical_bpm
+    while 60 / (result * 4) > MAX_TICK_SEC:
+        result *= 2
+    return result
 
 
 def _beats_pro_sekunde(bpm: float, beats_per_bpm_unit: int) -> float:
@@ -65,11 +76,11 @@ def _beats_pro_sekunde(bpm: float, beats_per_bpm_unit: int) -> float:
 
 
 def _mittlere_tonhoehe(
-    pitch: list[PitchPoint], von: float, bis: float, rueckfall: int
-) -> int:
-    werte = [p.midi for p in pitch if p.voiced and von <= p.time < bis and p.midi > 0]
+    pitch: list[PitchPoint], von: float, bis: float
+) -> int | None:
+    werte = [p.midi for p in pitch if p.voiced and von <= p.time < bis and math.isfinite(p.midi) and p.midi > 0]
     if not werte:
-        return rueckfall
+        return None
     return int(round(median(werte))) - MIDI_NULLAGE
 
 
@@ -98,15 +109,17 @@ def build_notes(
     if not words:
         return [], [], 0, [0]
 
+    if not math.isfinite(bpm) or bpm <= 0 or beats_per_bpm_unit <= 0:
+        raise NoteTimingError("Ungültige Zeitauflösung.")
+    for i, word in enumerate(words):
+        if not all(math.isfinite(v) for v in (word.start, word.end)) or word.start < 0 or word.end <= word.start:
+            raise NoteTimingError(f"Ungültiger Zeitbereich bei Wort {i + 1}. Bitte Text und Audiofassung prüfen.")
     bps = _beats_pro_sekunde(bpm, beats_per_bpm_unit)
     gap_sekunden = words[0].start
     gap_ms = int(round(gap_sekunden * 1000))
 
-    # Globaler Rueckfall fuer Woerter ohne verwertbare Tonhoehe.
-    gesungen = [p.midi for p in pitch if p.voiced and p.midi > 0]
-    rueckfall = int(round(median(gesungen))) - MIDI_NULLAGE if gesungen else 0
-
     noten: list[Note] = []
+    onsets: list[float] = []
     umbrueche: list[LineBreak] = []
     wort_zu_note: list[int] = []
     letzte_zeile = words[0].line_index
@@ -149,24 +162,37 @@ def build_notes(
             # Nur hier ist bekannt, wo ein Wort endet (ein AlignedWord pro
             # Wort) — die Serialisierung schreibt die Silbe nur noch verbatim.
             ist_letzte_silbe = i == len(silben) - 1
+            measured_pitch = _mittlere_tonhoehe(pitch, von, bis)
+            pitch_scores = [p.confidence for p in pitch if p.voiced and von <= p.time < bis
+                            and p.confidence is not None and math.isfinite(p.confidence)
+                            and 0 <= p.confidence <= 1 and math.isfinite(p.midi) and p.midi > 0]
+            confidence = min(wort.confidence, median(pitch_scores)) if pitch_scores else wort.confidence
+            onsets.append(von)
             noten.append(
                 Note(
                     beat=int(round((von - gap_sekunden) * bps)),
                     length=max(1, int(round(pro_silbe * bps))),
-                    pitch=_mittlere_tonhoehe(pitch, von, bis, rueckfall),
+                    # Numeric placeholder only; missing pitches export as unscored freestyle.
+                    pitch=measured_pitch if measured_pitch is not None else 0,
                     syllable=f"{silbe} " if ist_letzte_silbe else silbe,
-                    confidence=wort.confidence,
+                    confidence=confidence if measured_pitch is not None else 0.0,
+                    pitch_status="measured" if measured_pitch is not None else "missing",
+                    timing_confidence=wort.confidence,
                 )
             )
 
-    # Beat und Laenge werden unabhaengig gerundet. Zwei Silben eines schnell
-    # gesungenen Wortes koennen dadurch auf denselben Beat fallen, was
-    # ueberlappende Noten ergibt. Erst die Beats mindestens einen Schritt
-    # auseinanderziehen ...
+    # Bound displacement against the original onset, never against a shifted neighbour.
+    # A chain of individually small corrections must not accumulate into seconds.
     for i in range(1, len(noten)):
         mindest = noten[i - 1].beat + 1
-        if noten[i].beat < mindest:
-            noten[i] = replace(noten[i], beat=mindest)
+        beat = max(noten[i].beat, mindest)
+        if abs(gap_ms / 1000 + beat / bps - onsets[i]) > MAX_TIMING_SHIFT_SEC + 1e-9:
+            raise NoteTimingError(
+                f"Zeitkonflikt bei Note {i + 1} ({onsets[i]:.2f} s): "
+                "Eine Korrektur würde den Einsatz um mehr als 20 ms verschieben. "
+                "Bitte Textfolge, Audiofassung und überlappende Stimmen prüfen."
+            )
+        noten[i] = replace(noten[i], beat=beat)
 
     # ... dann die Laengen kuerzen, damit keine Note in die naechste
     # hineinreicht. Kuerzen statt Verschieben: der Einsatzzeitpunkt ist die
@@ -195,12 +221,5 @@ def build_notes(
     # [von, bis) sich als [wort_zu_note[von], wort_zu_note[bis]) lesen laesst
     # auch dann, wenn bis das letzte Wort ist.
     wort_zu_note.append(len(noten))
-
-    # Die Beats oben sind gegen den unkorrigierten gap_sekunden berechnet und
-    # bleiben zueinander unveraendert. Erst hier verschiebt sich der absolute
-    # Nullpunkt um die gemessene Korrektur nach vorn. Klemmen auf >= 0, weil
-    # ein Song praktisch bei 0 beginnen kann und der GAP nicht negativ sein
-    # darf.
-    gap_ms = max(0, gap_ms - ONSET_KORREKTUR_MS)
 
     return noten, umbrueche, gap_ms, wort_zu_note

@@ -1,28 +1,33 @@
-"""Forced Alignment ueber WhisperX: Paesse 3 und 4 des Vierpass-Modells.
+"""Align known lyrics using validated anchors and bounded CTC windows.
 
-Die reine Entscheidungslogik (Interpolation, Fenstergrenzen, Validierung)
-liegt in den testbaren Bausteinen; hier sind nur die Modellaufrufe selbst
-duenn.
+Sparse anchors may be replaced by a direct known-text pass. Unmeasured words
+retain explicit interpolation provenance and zero confidence.
 
-Teile portiert aus UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarKaraokeMaker, MIT, (c) walterfr).
+Parts ported from UltraStarKaraokeMaker (https://github.com/walterfr/UltraStarKaraokeMaker, MIT, (c) walterfr).
 """
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import modelle, modellwahl, separate
-from .anchors import GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN
+from .anchors import GemessenesWort, QUELLE_INTERPOLIERT, QUELLE_REALIGN, normalisiere
+from .alignmentTiming import select_anchors, validate_window
 from .cache import atomic_write_bytes, stage_path
 from .errors import LanguageUnsupported
 from .notes import AlignedWord
 from .numerals import erweitere_zahlwort
 from .progress import emit_progress
 
-STAGE_VERSION = "3"
+STAGE_VERSION = "6"
+
+MAX_WINDOW_SECONDS = 60.0
+MAX_WINDOW_WORDS = 160
+MIN_ANCHOR_COVERAGE = 0.25
 
 # Re-exportiert: bestehender Code und Tests importieren LanguageUnsupported
 # von hier, die eigentliche Definition liegt aber in errors.py (Importzyklus,
@@ -75,6 +80,9 @@ def interpoliere(
 
     Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
     n = len(woerter)
+    if len(anker) != n or not math.isfinite(audio_ende) or audio_ende <= 0:
+        raise AlignmentFailed("Ungueltige Wortanzahl oder Audiodauer")
+    anker = select_anchors(anker, [silbengewicht(w, sprache) for w in woerter], audio_ende)
     zeiten: list[WortZeit | None] = [None] * n
     for i in range(n):
         a = anker[i]
@@ -95,7 +103,7 @@ def interpoliere(
         danach = anker[i] if i < n else None
 
         if davor is not None and danach is not None:
-            spanne = max(0.05 * (len(lauf) + 1), danach.start - davor.ende)
+            spanne = danach.start - davor.ende
             atem = sum(gewichte) / len(gewichte)
             summe = sum(gewichte) + atem
             t = davor.ende
@@ -119,12 +127,13 @@ def interpoliere(
         elif danach is not None:
             # Songanfang ohne Messung davor: rueckwaerts ketten, endet an
             # der ersten Messung, beginnt fruehestens bei 0.
-            t = danach.start
-            for k, g in zip(reversed(lauf), reversed(gewichte)):
-                dauer = min(0.8, max(0.2, 0.15 * g))
-                start = max(0.0, t - dauer)
-                zeiten[k] = WortZeit(woerter[k], start, t, 0.0, QUELLE_INTERPOLIERT)
-                t = start
+            dauern = [min(0.8, max(0.2, 0.15 * g)) for g in gewichte]
+            faktor = min(1.0, danach.start / sum(dauern))
+            t = danach.start - sum(dauern) * faktor
+            for k, dauer in zip(lauf, dauern):
+                ende = min(danach.start, t + dauer * faktor)
+                zeiten[k] = WortZeit(woerter[k], t, ende, 0.0, QUELLE_INTERPOLIERT)
+                t = ende
         else:
             # Kein einziger Anker im Song: ab 0 ketten, im Audio bleiben.
             # Pass 3 macht daraus anschliessend ein Fenster ueber die
@@ -143,6 +152,11 @@ def interpoliere(
         # Kann nur ein Programmierfehler sein - laut scheitern statt still
         # Woerter verlieren.
         raise AlignmentFailed("Interpolation hat Woerter verloren")
+    # Floating point sums may exceed a boundary by a few ulps.
+    for z in fertig:
+        if z.quelle == QUELLE_INTERPOLIERT:
+            z.start = max(0.0, z.start)
+            z.ende = min(audio_ende, z.ende)
     return fertig
 
 
@@ -220,26 +234,8 @@ def _fasse_zusammen(
 def _pruefe_fenster(
     woerter_roh: list[dict], fenster_start: float, fenster_ende: float
 ) -> list[tuple[float, float, float]] | None:
-    """Validierung eines Fensterergebnisses: Zeiten vorhanden, im Fenster
-    (mit 0,5 s Spiel), monoton steigend. None heisst: Ergebnis verwerfen,
-    die Luecke behaelt die Interpolation - ein Fensterfehler reisst nie
-    die Pipeline."""
-    zeiten: list[tuple[float, float, float]] = []
-    # Die 0,5 s Toleranz gelten auch fuer das erste Wort - sonst wird es
-    # schon bei einem winzigen Vorlauf vor Fensterstart verworfen. Die
-    # Monotonie der Folgewoerter bleibt trotzdem gewahrt, weil letzter_start
-    # danach auf den tatsaechlichen Start jedes Wortes weiterrueckt.
-    letzter_start = fenster_start - 0.5
-    for w in woerter_roh:
-        ws, we = w.get("start"), w.get("end")
-        if ws is None or we is None:
-            return None
-        ws, we = float(ws), float(we)
-        if ws < fenster_start - 0.5 or we > fenster_ende + 0.5 or ws < letzter_start:
-            return None
-        letzter_start = ws
-        zeiten.append((ws, max(we, ws + 0.02), float(w.get("score", 0.0))))
-    return zeiten
+    """Reject invalid CTC measurements without fabricating missing durations."""
+    return validate_window(woerter_roh, fenster_start, fenster_ende)
 
 
 class AlignmentFailed(Exception):
@@ -317,7 +313,7 @@ def richte_fenster_aus(
     warnungen: list[str],
 ) -> int:
     """Pass 3: je zusammenhaengendem interpoliertem Lauf genau ein
-    whisperx.align im Fenster zwischen den gemessenen Nachbarn (bzw.
+    backend.align im Fenster zwischen den gemessenen Nachbarn (bzw.
     Audio-Anfang/-Ende). Vorher wird Randstille getrimmt und Zahlen fuer
     den CTC ausgeschrieben; das Ergebnis wird validiert und bei Verstoss
     verworfen - ein Fensterfehler reisst nie die Pipeline, die Luecke
@@ -325,9 +321,10 @@ def richte_fenster_aus(
     liefert die Zahl befoerderter Woerter.
 
     Teile portiert aus UltraStarKaraokeMaker (MIT, (c) walterfr)."""
-    import whisperx
+    from importlib import import_module
+    backend = import_module("ultrastar_pipeline.modelBackend")
 
-    abtastrate = 16000  # whisperx.audio.SAMPLE_RATE
+    abtastrate = 16000  # backend.audio.SAMPLE_RATE
     audio_dauer = float(len(audio)) / abtastrate
     n = len(zeiten)
     befoerdert = 0
@@ -345,6 +342,15 @@ def richte_fenster_aus(
         fenster_ende = zeiten[i].start if i < n else audio_dauer
         fenster_start = max(0.0, min(fenster_start, audio_dauer))
         fenster_ende = max(0.0, min(fenster_ende, audio_dauer))
+
+        # Do not invent section boundaries by dividing a song into equal chunks.
+        # Long unanchored regions need better recognition before a local CTC pass.
+        if fenster_ende - fenster_start > MAX_WINDOW_SECONDS or len(lauf) > MAX_WINDOW_WORDS:
+            warnungen.append(
+                f"Abschnitt {fenster_start:.2f}–{fenster_ende:.2f} s ohne sichere "
+                f"Unterteilung ({len(lauf)} Woerter); Timing bleibt geschaetzt."
+            )
+            continue
 
         von_sample, bis_sample = stille_grenzen(
             audio,
@@ -370,11 +376,15 @@ def richte_fenster_aus(
 
         segment = {"start": fenster_start, "end": fenster_ende, "text": " ".join(tokens)}
         try:
-            ergebnis = whisperx.align(
+            ergebnis = backend.align(
                 [segment], modell, metadaten, audio, device,
-                interpolate_method="nearest", return_char_alignments=False,
+                interpolate_method="ignore", return_char_alignments=False,
             )
-        except Exception:
+        except MemoryError:
+            raise
+        except Exception as exc:
+            if "out of memory" in str(exc).lower():
+                raise
             warnungen.append(
                 f"Fenster-Alignment fehlgeschlagen fuer {len(lauf)} Wort(e); Interpolation bleibt."
             )
@@ -384,6 +394,14 @@ def richte_fenster_aus(
         if len(roh) != len(tokens):
             warnungen.append(
                 f"Fenster-Alignment lieferte {len(roh)} statt {len(tokens)} Tokens "
+                f"fuer {len(lauf)} Wort(e); Interpolation bleibt."
+            )
+            continue
+        # Validate expanded tokens too: merging must not hide invalid inner spans.
+        if (any(normalisiere(w.get("word", "")) != normalisiere(t) for w, t in zip(roh, tokens))
+                or _pruefe_fenster(roh, fenster_start, fenster_ende) is None):
+            warnungen.append(
+                f"Fenster-Alignment mit ungueltigen Tokens/Zeitbereichen "
                 f"fuer {len(lauf)} Wort(e); Interpolation bleibt."
             )
             continue
@@ -469,7 +487,8 @@ def align(
         return [AlignedWord(**w) for w in gespeichert["words"]]
 
     emit_progress("align", 0.0)
-    import whisperx
+    from importlib import import_module
+    backend = import_module("ultrastar_pipeline.modelBackend")
 
     try:
         modell, metadaten = modelle.hole_align(language, device)
@@ -482,12 +501,49 @@ def align(
             raise
         raise LanguageUnsupported(language) from exc  # kein Alignment-Modell fuer diese Sprache
 
-    audio = whisperx.load_audio(str(vocals))
+    audio = backend.load_audio(str(vocals))
     audio_dauer = float(len(audio)) / 16000.0
 
     neue_warnungen: list[str] = []
-    zeiten = interpoliere(anker, flach, language, audio_dauer)
-    richte_fenster_aus(zeiten, modell, metadaten, audio, device, language, neue_warnungen)
+    geprueft = select_anchors(anker, [silbengewicht(w, language) for w in flach], audio_dauer)
+    verworfen = sum(a is not None and b is None for a, b in zip(anker, geprueft))
+    if verworfen:
+        neue_warnungen.append(
+            f"{verworfen} zeitlich unplausible Wortanker verworfen; betroffene Abschnitte werden neu ausgerichtet."
+        )
+    zeiten = None
+    anzahl_anker = sum(a is not None for a in geprueft)
+    # Sparse ASR can bind a repeated phrase to the wrong verse even when its
+    # timestamps are individually valid. Try the complete known text once,
+    # within the same resource limits, before trusting these hard boundaries.
+    if (0 < anzahl_anker / len(flach) < MIN_ANCHOR_COVERAGE
+            and audio_dauer <= MAX_WINDOW_SECONDS and len(flach) <= MAX_WINDOW_WORDS):
+        kandidat = interpoliere([None] * len(flach), flach, language, audio_dauer)
+        versuch_warnungen: list[str] = []
+        gemessen = richte_fenster_aus(
+            kandidat, modell, metadaten, audio, device, language, versuch_warnungen,
+        )
+        if gemessen == len(flach):
+            zeiten = kandidat
+            neue_warnungen.append(
+                f"Nur {anzahl_anker}/{len(flach)} Woerter verankert: "
+                "Bekannter Liedtext vollstaendig neu am Gesang ausgerichtet; Timing pruefen."
+            )
+        else:
+            neue_warnungen.append(
+                "Direkte Ausrichtung des Liedtexts unvollstaendig; verwertbare Wortanker bleiben erhalten."
+            )
+    if zeiten is None:
+        zeiten = interpoliere(geprueft, flach, language, audio_dauer)
+        richte_fenster_aus(zeiten, modell, metadaten, audio, device, language, neue_warnungen)
+
+    if validate_window([
+        {"start": z.start, "end": z.ende, "score": z.score} for z in zeiten
+    ], 0.0, audio_dauer) is None:
+        raise AlignmentFailed("Wortausrichtung enthaelt ungueltige oder ueberlappende Zeitbereiche")
+    geschaetzt = sum(z.quelle == QUELLE_INTERPOLIERT for z in zeiten)
+    if geschaetzt:
+        neue_warnungen.append(f"Timing von {geschaetzt}/{len(zeiten)} Woertern nur geschaetzt; im Editor pruefen.")
 
     woerter = [
         AlignedWord(

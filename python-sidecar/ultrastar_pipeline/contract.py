@@ -52,6 +52,8 @@ def baue_song_data(
                 "pitch": n.pitch,
                 "syllable": n.syllable,
                 "confidence": n.confidence,
+                **({"pitchStatus": n.pitch_status} if n.pitch_status is not None else {}),
+                **({"timingConfidence": n.timing_confidence} if n.timing_confidence is not None else {}),
             }
             for n in notes
         ],

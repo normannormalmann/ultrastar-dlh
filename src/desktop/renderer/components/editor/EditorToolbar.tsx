@@ -81,7 +81,11 @@ export const EditorToolbar: FC<EditorToolbarProps> = (p) => {
         disabled={!pb.available}
         onClick={pb.toggle}
       >
-        {pb.playing ? <Pause size={14} aria-hidden /> : <Play size={14} aria-hidden />}
+        {pb.playing ? (
+          <Pause size={14} aria-hidden />
+        ) : (
+          <Play size={14} aria-hidden />
+        )}
       </Knopf>
       <Knopf
         titel={t.editor.playLine}
@@ -90,18 +94,38 @@ export const EditorToolbar: FC<EditorToolbarProps> = (p) => {
       >
         <SkipForward size={14} aria-hidden />
       </Knopf>
-      <Knopf titel={t.editor.tones} aktiv={pb.tones} onClick={() => pb.setTones(!pb.tones)}>
+      <Knopf
+        titel={t.editor.tones}
+        aktiv={pb.tones}
+        onClick={() => pb.setTones(!pb.tones)}
+      >
         <Music size={14} aria-hidden />
       </Knopf>
       <Knopf
         titel={t.editor.singIn}
         aktiv={p.singing}
-        disabled={!pb.available || !p.hasSelection}
+        disabled={!pb.available || !p.hasSelection || pb.rate !== 1}
         onClick={p.onSing}
       >
         <Mic size={14} aria-hidden />
       </Knopf>
-      <span className="muted editor-time">{(pb.positionMs / 1000).toFixed(2)} s</span>
+      <label className="editor-inline">
+        Tempo
+        <select
+          aria-label="Abspieltempo"
+          className="input"
+          value={pb.rate}
+          disabled={p.singing}
+          onChange={(e) => pb.setRate(Number(e.target.value))}
+        >
+          <option value={1}>100 %</option>
+          <option value={0.75}>75 %</option>
+          <option value={0.5}>50 %</option>
+        </select>
+      </label>
+      <span className="muted editor-time">
+        {(pb.positionMs / 1000).toFixed(2)} s
+      </span>
       <span className="editor-sep" />
       <Knopf titel={t.editor.zoomOut} onClick={() => p.onZoom(0.8)}>
         <Minus size={14} aria-hidden />
@@ -146,8 +170,12 @@ export const EditorToolbar: FC<EditorToolbarProps> = (p) => {
         </button>
       )}
       <span className="spacer" />
-      {p.saved && <span style={{ color: "var(--green)" }}>{t.editor.saved}</span>}
-      {p.dirty && !p.saved && <span style={{ color: "var(--yellow)" }}>{t.editor.unsaved}</span>}
+      {p.saved && (
+        <span style={{ color: "var(--green)" }}>{t.editor.saved}</span>
+      )}
+      {p.dirty && !p.saved && (
+        <span style={{ color: "var(--yellow)" }}>{t.editor.unsaved}</span>
+      )}
       <button
         className="btn primary"
         type="button"

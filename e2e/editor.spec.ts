@@ -29,7 +29,8 @@ const wav = (sekunden: number, hz?: number): Buffer => {
   b.write("data", 36);
   b.writeUInt32LE(daten, 40);
   for (let i = 0; i < daten; i += 1) {
-    const wert = hz === undefined ? 0 : Math.sin((2 * Math.PI * hz * i) / rate) * 90;
+    const wert =
+      hz === undefined ? 0 : Math.sin((2 * Math.PI * hz * i) / rate) * 90;
     b.writeUInt8(Math.round(128 + wert), 44 + i);
   }
   return b;
@@ -53,7 +54,10 @@ const SONG = [
 const UNSICHER = SONG.replace("#TITLE:Testlied", "#TITLE:Unsicher");
 const KONFLIKT = SONG.replace("#TITLE:Testlied", "#TITLE:Konflikt");
 /** What "someone else" writes while the editor is open: a fourth note. */
-const KONFLIKT_VIER = KONFLIKT.replace(": 12 6 9  Welt\n", ": 12 6 9  Welt\n: 20 4 9 da\n");
+const KONFLIKT_VIER = KONFLIKT.replace(
+  ": 12 6 9  Welt\n",
+  ": 12 6 9  Welt\n: 20 4 9 da\n",
+);
 
 const DUETT = [
   "#TITLE:Duett",
@@ -120,7 +124,10 @@ test.beforeAll(async () => {
   ];
   await writeFile(
     join(ordner("Unsicher"), "sync-hints.json"),
-    JSON.stringify({ version: 1, hints: [{ fromBeat: 4, toBeat: 18, kind: "interpolated" }] }),
+    JSON.stringify({
+      version: 1,
+      hints: [{ fromBeat: 4, toBeat: 18, kind: "interpolated" }],
+    }),
   );
   // The fake microphone: a steady D4 (MIDI 62, UltraStar pitch 2).
   mikroWav = join(bibliothek, "mikro.wav");
@@ -129,9 +136,16 @@ test.beforeAll(async () => {
   await mkdir(datenDir(), { recursive: true });
   await writeFile(
     join(datenDir(), "config.json"),
-    JSON.stringify({ downloadDir: bibliothek, browser: "none", uiLanguage: "de" }),
+    JSON.stringify({
+      downloadDir: bibliothek,
+      browser: "none",
+      uiLanguage: "de",
+    }),
   );
-  await writeFile(join(datenDir(), "downloaded.json"), JSON.stringify(eintraege));
+  await writeFile(
+    join(datenDir(), "downloaded.json"),
+    JSON.stringify(eintraege),
+  );
 });
 
 test.afterAll(async () => {
@@ -141,8 +155,19 @@ test.afterAll(async () => {
   await rm(profilOrdner(APP_NAME), { recursive: true, force: true });
 });
 
-const starte = (): Promise<ElectronApplication> =>
-  electron.launch({
+const apps = new Set<ElectronApplication>();
+test.afterEach(async () => {
+  for (const app of apps) {
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) window.destroy();
+    });
+    await app.close();
+  }
+  apps.clear();
+});
+
+const starte = async (): Promise<ElectronApplication> => {
+  const app = await electron.launch({
     args: [
       "out/main/index.js",
       "--use-fake-device-for-media-stream",
@@ -151,10 +176,19 @@ const starte = (): Promise<ElectronApplication> =>
     ],
     env: { ...process.env, ULTRASTAR_APP_NAME: APP_NAME },
   });
+  apps.add(app);
+  app.on("close", () => apps.delete(app));
+  return app;
+};
 
-const oeffne = async (app: ElectronApplication, titel: string): Promise<Page> => {
+const oeffne = async (
+  app: ElectronApplication,
+  titel: string,
+): Promise<Page> => {
   const window = await app.firstWindow();
-  await window.getByRole("button", { name: "Heruntergeladen", exact: true }).click();
+  await window
+    .getByRole("button", { name: "Heruntergeladen", exact: true })
+    .click();
   await window
     .getByRole("row", { name: new RegExp(titel) })
     .getByRole("button", { name: "Bearbeiten" })
@@ -174,7 +208,9 @@ test("the correction editor edits and saves a song", async () => {
 
   // Select the first note, raise it a semitone, rename the second syllable.
   await window.keyboard.press("ArrowRight");
-  await expect(window.getByRole("button", { name: "Hal", exact: true })).toBeVisible();
+  await expect(
+    window.getByRole("button", { name: "Hal", exact: true }),
+  ).toBeVisible();
   await window.keyboard.press("ArrowUp");
   await window.keyboard.press("ArrowRight");
   await window.keyboard.press("e");
@@ -186,9 +222,9 @@ test("the correction editor edits and saves a song", async () => {
   // left edge 8 beats before the first note; pitch rows span 2..12.
   const box = await window.locator(".piano-roll canvas").boundingBox();
   if (!box) throw new Error("no canvas");
-  const rowH = (box.height - 24) / 11;
-  const x = box.x + (12 + 8) * 10 + 20;
-  const y = box.y + (12 - 9) * rowH + rowH / 2;
+  const rowH = (box.height - 24 - 32) / 11;
+  const x = box.x + 58 + (12 + 8) * 10 + 20;
+  const y = box.y + 32 + (12 - 9) * rowH + rowH / 2;
   await window.mouse.move(x, y);
   await window.mouse.down();
   await window.mouse.move(x + 20, y, { steps: 3 });
@@ -231,7 +267,9 @@ test("uncertain spots are marked, found and checked off", async () => {
   const knopf = window.getByRole("button", { name: "1 unsichere Stelle" });
   await expect(knopf).toBeVisible();
   await knopf.click();
-  await expect(window.getByText(/Timing dieser Stelle hat die Erkennung nur geschätzt/)).toBeVisible();
+  await expect(
+    window.getByText(/Timing dieser Stelle hat die Erkennung nur geschätzt/),
+  ).toBeVisible();
   await window.screenshot({ path: "test-results/editor-unsicher.png" });
 
   await window.keyboard.press("k");
@@ -250,7 +288,10 @@ test("duets show both voices and edit one at a time", async () => {
   const window = await oeffne(app, "Duett");
   const songDir = ordner("Duett");
 
-  await expect(window.getByRole("tab", { name: "Anna" })).toHaveAttribute("aria-selected", "true");
+  await expect(window.getByRole("tab", { name: "Anna" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await window.getByRole("tab", { name: "Ben" }).click();
   await window.keyboard.press("ArrowRight");
   await expect(window.locator(".editor-field input").first()).toHaveValue("du");
@@ -263,9 +304,14 @@ test("duets show both voices and edit one at a time", async () => {
   );
 
   // Tab switches voice from the notes; on a focused button it stays focus navigation.
-  await window.locator(".piano-roll canvas").click({ position: { x: 5, y: 5 } });
+  await window
+    .locator(".piano-roll canvas")
+    .click({ position: { x: 63, y: 5 } });
   await window.keyboard.press("Tab");
-  await expect(window.getByRole("tab", { name: "Anna" })).toHaveAttribute("aria-selected", "true");
+  await expect(window.getByRole("tab", { name: "Anna" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 
   await app.close();
 });
@@ -279,11 +325,15 @@ test("singing a line in corrects its pitches", async () => {
   // early ArrowRight selects nothing and "i" then does nothing either.
   await expect(window.getByText("3 Noten")).toBeVisible();
   await window.keyboard.press("ArrowRight");
-  await expect(window.getByRole("button", { name: /Zeile einsingen/ })).toBeEnabled();
+  await expect(
+    window.getByRole("button", { name: /Zeile einsingen/ }),
+  ).toBeEnabled();
   await window.keyboard.press("i");
   await expect(window.getByText("Sing die Zeile mit …")).toBeVisible();
   // The fake microphone holds D4 throughout: every note should become 2.
-  await expect(window.getByText(/3 von 3 erkannten Noten/)).toBeVisible({ timeout: 15_000 });
+  await expect(window.getByText(/3 von 3 erkannten Noten/)).toBeVisible({
+    timeout: 15_000,
+  });
   await window.screenshot({ path: "test-results/editor-einsingen.png" });
 
   await window.keyboard.press("Enter");
@@ -303,22 +353,34 @@ test("a file changed on disk offers reloading it or overwriting it", async () =>
 
   // Our own edit: first note one semitone up.
   await window.keyboard.press("ArrowRight");
+  await expect(
+    window.getByRole("button", { name: "Hal", exact: true }),
+  ).toBeVisible();
   await window.keyboard.press("ArrowUp");
   await expect(window.getByText("Ungespeicherte Änderungen")).toBeVisible();
 
   // Meanwhile someone else saves a version with a fourth note.
   await writeFile(join(songDir, "song.txt"), KONFLIKT_VIER);
   await window.keyboard.press("Control+s");
-  await expect(window.getByText(/außerhalb des Editors geändert/)).toBeVisible();
+  await expect(
+    window.getByText(/außerhalb des Editors geändert/),
+  ).toBeVisible();
 
   // Reloading takes the version from disk and drops our edit.
-  await window.getByRole("button", { name: "Von der Festplatte neu laden" }).click();
+  await window
+    .getByRole("button", { name: "Von der Festplatte neu laden" })
+    .click();
   await expect(window.getByText("4 Noten")).toBeVisible();
   await expect(window.getByText("Ungespeicherte Änderungen")).toHaveCount(0);
-  await expect(window.getByText(/außerhalb des Editors geändert/)).toHaveCount(0);
+  await expect(window.getByText(/außerhalb des Editors geändert/)).toHaveCount(
+    0,
+  );
 
   // Edit again, the disk changes again - this time we overwrite.
   await window.keyboard.press("ArrowRight");
+  await expect(
+    window.getByRole("button", { name: "Hal", exact: true }),
+  ).toBeVisible();
   await window.keyboard.press("ArrowUp");
   await writeFile(join(songDir, "song.txt"), KONFLIKT);
   await window.keyboard.press("Control+s");

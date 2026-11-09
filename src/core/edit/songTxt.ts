@@ -16,9 +16,14 @@ export const NOTE_TYPES: readonly NoteType[] = [":", "*", "F", "R", "G"];
  * was guessed between measured words, "low" that the measurement was weak.
  * Not part of the .txt - it lives in sync-hints.json next to it.
  */
-export type UnsureKind = "interpolated" | "low";
+export type UnsureKind = "interpolated" | "low" | "pitch" | "pitchAndTiming";
 
-export const UNSURE_KINDS: readonly UnsureKind[] = ["interpolated", "low"];
+export const UNSURE_KINDS: readonly UnsureKind[] = [
+  "interpolated",
+  "low",
+  "pitch",
+  "pitchAndTiming",
+];
 
 export type LineBreakMark = { beat: number; end?: number };
 
@@ -59,25 +64,26 @@ export type SongTxt = {
  * Codes, not sentences: the renderer translates them, the main process
  * stays language-free.
  */
-export type SongTxtErrorCode =
-  | "noNotes"
-  | "badLine"
-  | "badHeader"
-  | "badValue";
+export type SongTxtErrorCode = "noNotes" | "badLine" | "badHeader" | "badValue";
 
 export class SongTxtError extends Error {
   constructor(
     readonly code: SongTxtErrorCode,
     readonly line?: number,
   ) {
-    super(line === undefined ? `songTxt: ${code}` : `songTxt: ${code} (Zeile ${line})`);
+    super(
+      line === undefined
+        ? `songTxt: ${code}`
+        : `songTxt: ${code} (Zeile ${line})`,
+    );
   }
 }
 
 /** Written as an escape: a literal BOM in source is invisible in every editor. */
 export const BOM = String.fromCharCode(0xfeff);
 
-const NOTE_LINE = /^([:*FRG])[ \t]+(-?\d+)[ \t]+(-?\d+)[ \t]+(-?\d+)(?:[ \t](.*))?$/;
+const NOTE_LINE =
+  /^([:*FRG])[ \t]+(-?\d+)[ \t]+(-?\d+)[ \t]+(-?\d+)(?:[ \t](.*))?$/;
 const BREAK_LINE = /^-[ \t]*(-?\d+)(?:[ \t]+(-?\d+))?[ \t]*$/;
 const HEADER_LINE = /^#([^:]+):(.*)$/;
 /** One rule for reading and writing: whatever the parser accepts, the writer takes back. */
@@ -89,7 +95,9 @@ const markerKey = (marker: string): string => marker.replace(/\s/g, "");
 
 const istRelativ = (headers: HeaderLine[]): boolean =>
   headers.some(
-    (h) => h.key.toUpperCase() === "RELATIVE" && h.value.trim().toUpperCase() === "YES",
+    (h) =>
+      h.key.toUpperCase() === "RELATIVE" &&
+      h.value.trim().toUpperCase() === "YES",
   );
 
 /** A break after a track's very last note would land right before "E". */
@@ -141,7 +149,10 @@ export const parseSongTxt = (text: string): SongTxt => {
     const getrimmt = zeile.trim();
     if (getrimmt === "E") {
       const rest = zeilen.slice(i + 1);
-      while (rest.length > 0 && (rest[rest.length - 1] as string).trim() === "") {
+      while (
+        rest.length > 0 &&
+        (rest[rest.length - 1] as string).trim() === ""
+      ) {
         rest.pop();
       }
       trailer.push(...rest);
@@ -180,14 +191,16 @@ export const parseSongTxt = (text: string): SongTxt => {
       if (relativ) basis += zweite ?? erste;
       else if (zweite !== undefined) mark.end = zweite;
       // A break before the first note of a track means nothing to any game.
-      if (vorige) spur.notes[spur.notes.length - 1] = { ...vorige, breakAfter: mark };
+      if (vorige)
+        spur.notes[spur.notes.length - 1] = { ...vorige, breakAfter: mark };
       continue;
     }
 
     throw new SongTxtError("badLine", nr);
   }
 
-  if (!tracks.some((t) => t.notes.length > 0)) throw new SongTxtError("noNotes");
+  if (!tracks.some((t) => t.notes.length > 0))
+    throw new SongTxtError("noNotes");
   const letzte = tracks.length - 1;
   const ergebnis: SongTxt = {
     headers,
@@ -258,7 +271,8 @@ const pruefe = (song: SongTxt): void => {
       throw new SongTxtError("badValue");
     }
   }
-  if (!song.tracks.some((t) => t.notes.length > 0)) throw new SongTxtError("noNotes");
+  if (!song.tracks.some((t) => t.notes.length > 0))
+    throw new SongTxtError("noNotes");
 };
 
 /**
@@ -267,7 +281,10 @@ const pruefe = (song: SongTxt): void => {
  * it is pulled back to the end of its note. Hand-placed breaks inside their
  * own note are common in USDB files and stay untouched.
  */
-const umbruchBeat = (note: EditNote, naechste: EditNote | undefined): number => {
+const umbruchBeat = (
+  note: EditNote,
+  naechste: EditNote | undefined,
+): number => {
   const mark = note.breakAfter as LineBreakMark;
   if (naechste === undefined || mark.beat <= naechste.beat) return mark.beat;
   return Math.min(note.beat + note.length, naechste.beat);
@@ -285,7 +302,9 @@ const schreibeSpur = (
   const schluessel = markerKey(t.marker ?? "");
   let basis = basen.get(schluessel) ?? 0;
   t.notes.forEach((n, i) => {
-    zeilen.push(`${n.type} ${n.beat - basis} ${n.length} ${n.pitch} ${n.syllable}`);
+    zeilen.push(
+      `${n.type} ${n.beat - basis} ${n.length} ${n.pitch} ${n.syllable}`,
+    );
     const naechste = t.notes[i + 1];
     if (!n.breakAfter || (naechste === undefined && istLetzte)) return;
     const beat = umbruchBeat(n, naechste);
@@ -297,7 +316,9 @@ const schreibeSpur = (
     }
     const ende = n.breakAfter.end;
     const endeGueltig =
-      ende !== undefined && ende >= beat && (naechste === undefined || ende <= naechste.beat);
+      ende !== undefined &&
+      ende >= beat &&
+      (naechste === undefined || ende <= naechste.beat);
     zeilen.push(endeGueltig ? `- ${beat} ${ende}` : `- ${beat}`);
   });
   basen.set(schluessel, basis);
@@ -316,7 +337,11 @@ export const serializeSongTxt = (song: SongTxt): string => {
   return `${zeilen.join(song.eol)}${song.eol}`;
 };
 
-export const withTrack = (song: SongTxt, index: number, track: Track): SongTxt =>
+export const withTrack = (
+  song: SongTxt,
+  index: number,
+  track: Track,
+): SongTxt =>
   song.tracks[index] === track
     ? song
     : { ...song, tracks: song.tracks.map((t, i) => (i === index ? track : t)) };
@@ -331,7 +356,10 @@ export const headerValue = (song: SongTxt, key: string): string | undefined =>
   song.headers.find((h) => gleicherKey(h.key, key))?.value;
 
 /** German files write "1200,5"; both separators are read. */
-export const headerNumber = (song: SongTxt, key: string): number | undefined => {
+export const headerNumber = (
+  song: SongTxt,
+  key: string,
+): number | undefined => {
   const roh = headerValue(song, key);
   if (roh === undefined) return undefined;
   const zahl = Number(roh.trim().replace(",", "."));
@@ -339,10 +367,16 @@ export const headerNumber = (song: SongTxt, key: string): number | undefined => 
 };
 
 /** Replaces the value and keeps the file's spelling of the key. */
-export const withHeader = (song: SongTxt, key: string, value: string): SongTxt => {
+export const withHeader = (
+  song: SongTxt,
+  key: string,
+  value: string,
+): SongTxt => {
   const vorhanden = song.headers.some((h) => gleicherKey(h.key, key));
   const headers = vorhanden
-    ? song.headers.map((h) => (gleicherKey(h.key, key) ? { key: h.key, value } : h))
+    ? song.headers.map((h) =>
+        gleicherKey(h.key, key) ? { key: h.key, value } : h,
+      )
     : [...song.headers, { key: key.toUpperCase(), value }];
   return { ...song, headers };
 };
@@ -359,7 +393,8 @@ export const withoutHeader = (song: SongTxt, key: string): SongTxt => ({
 export const trackName = (song: SongTxt, track: Track): string | undefined => {
   const nr = track.marker?.replace(/\D/g, "");
   if (!nr) return undefined;
-  const name = headerValue(song, `P${nr}`) ?? headerValue(song, `DUETSINGERP${nr}`);
+  const name =
+    headerValue(song, `P${nr}`) ?? headerValue(song, `DUETSINGERP${nr}`);
   return name?.trim() || undefined;
 };
 

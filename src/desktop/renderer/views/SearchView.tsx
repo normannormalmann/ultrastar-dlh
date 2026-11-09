@@ -1,3 +1,4 @@
+import { SearchPreview } from "../components/SearchPreview.tsx";
 import {
   ArrowDown,
   ArrowUp,
@@ -93,6 +94,7 @@ export const SearchView: FC<{
   status: AppStatus;
 }> = ({ downloaded, status }) => {
   const t = useT();
+  const [preview, setPreview] = useState<Song | null>(null);
   const [artist, setArtist] = useState("");
   const [title, setTitle] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
@@ -210,9 +212,7 @@ export const SearchView: FC<{
   };
 
   const queueEntireDatabase = (): void => {
-    if (
-      window.confirm(t.search.confirmEntireDatabase)
-    ) {
+    if (window.confirm(t.search.confirmEntireDatabase)) {
       void window.ultrastar.queueEntireDatabase();
     }
   };
@@ -231,6 +231,13 @@ export const SearchView: FC<{
 
   return (
     <div>
+      {preview && (
+        <SearchPreview
+          key={preview.apiId}
+          song={preview}
+          onClose={() => setPreview(null)}
+        />
+      )}
       <h2>{t.search.title}</h2>
       <form className="row" style={{ marginBottom: 16 }} onSubmit={onSubmit}>
         <input
@@ -426,6 +433,13 @@ export const SearchView: FC<{
                           : ""}
                       </td>
                       <td>
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => setPreview(s)}
+                        >
+                          Anhören
+                        </button>
                         {!isDownloaded && (
                           <span className="row">
                             <button

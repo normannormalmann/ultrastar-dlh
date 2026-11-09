@@ -11,6 +11,8 @@ export const checkYtDlpAvailable: Effect.Effect<boolean, never, never> =
       await new Promise<boolean>((resolve) => {
         const child = spawn("yt-dlp", ["--version"], {
           stdio: ["ignore", "ignore", "ignore"],
+          timeout: 10_000,
+          windowsHide: true,
         });
         child.on("error", () => resolve(false));
         child.on("close", (code) => resolve(code === 0));
@@ -28,6 +30,8 @@ export const checkFfmpegAvailable: Effect.Effect<boolean, never, never> =
       await new Promise<boolean>((resolve) => {
         const child = spawn("ffmpeg", ["-version"], {
           stdio: ["ignore", "ignore", "ignore"],
+          timeout: 10_000,
+          windowsHide: true,
         });
         child.on("error", () => resolve(false));
         child.on("close", (code) => resolve(code === 0));

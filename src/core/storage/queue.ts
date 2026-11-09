@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { writeJson } from "./atomicFile.ts";
 import { Effect } from "effect";
 import type { Song } from "../api/usdb/search.ts";
 import { resolveDataFilePath } from "./paths.ts";
@@ -23,7 +24,7 @@ export const saveQueue = (queue: Song[]): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const filePath = yield* resolveDataFilePath("queue.json");
     yield* Effect.tryPromise({
-      try: async () => writeFile(filePath, JSON.stringify(queue, null, 2)),
+      try: async () => writeJson(filePath, queue),
       catch: (e) =>
         e instanceof Error ? e : new Error("Failed to save queue"),
     });

@@ -1,5 +1,4 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, resolve, isAbsolute } from "node:path";
 import { Effect } from "effect";
 import { BrowserWindow } from "electron";
 import {
@@ -30,12 +29,15 @@ import type {
   EventPayloads,
 } from "../shared/ipcContract.ts";
 
+export const eventState: Partial<EventPayloads> = {};
+
 const QUEUE_SAVE_DEBOUNCE_MS = 2000;
 
 export const broadcast = <C extends EventChannel>(
   channel: C,
   payload: EventPayloads[C],
 ): void => {
+  Object.assign(eventState, { [channel]: payload });
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(channel, payload);
   }
@@ -114,13 +116,21 @@ class AppState {
     }, QUEUE_SAVE_DEBOUNCE_MS);
   }
 
+  async flushQueue(): Promise<void> {
+    if (this.#queueSaveTimer) clearTimeout(this.#queueSaveTimer);
+    this.#queueSaveTimer = null;
+    await Effect.runPromise(saveQueue(this.queue));
+  }
+
   /** Adds songs deduplicated (against queue AND history). Returns the count of new songs. */
   addToQueue(songs: Song[]): number {
     const existing = new Set(this.queue.map((s) => s.apiId));
     const isDownloaded = this.makeIsDownloadedSong();
-    const fresh = songs.filter(
-      (s) => !existing.has(s.apiId) && !isDownloaded(s),
-    );
+    const fresh = songs.filter((s) => {
+      if (existing.has(s.apiId) || isDownloaded(s)) return false;
+      existing.add(s.apiId);
+      return true;
+    });
     if (fresh.length > 0) this.setQueue([...this.queue, ...fresh]);
     return fresh.length;
   }
@@ -163,44 +173,24 @@ class AppState {
   }
 
   async saveConfigAndApply(config: AppConfig): Promise<void> {
-    await Effect.runPromise(saveConfig(config));
-    this.config = config;
+    this.config = await Effect.runPromise(saveConfig(config));
+    broadcast("event:config", this.config);
   }
 }
 
 export const state = new AppState();
 
-const STAT_CONCURRENCY = 64;
-
-/** Load history and filter out entries without video.mp4 for the UI (like the TUI). */
+/** Keep broken entries visible so the library validator can explain them. */
 export const reloadDownloadedEntries = async (
   onProgress?: (p: { current: number; total: number }) => void,
 ): Promise<void> => {
-  try {
-    const entries = await Effect.runPromise(loadDownloadedEntries);
-    const valid: DownloadedEntry[] = [];
-    for (let i = 0; i < entries.length; i += STAT_CONCURRENCY) {
-      const chunk = entries.slice(i, i + STAT_CONCURRENCY);
-      await Promise.all(
-        chunk.map(async (e) => {
-          try {
-            await stat(join(e.songDir, "video.mp4"));
-            valid.push(e);
-          } catch {
-            // File missing – entry stays in downloaded.json for the repair
-            // feature, but isn't listed in the UI (same behavior as the TUI).
-          }
-        }),
-      );
-      onProgress?.({
-        current: Math.min(i + STAT_CONCURRENCY, entries.length),
-        total: entries.length,
-      });
-    }
-    state.setDownloaded(valid);
-  } catch (e) {
-    console.error("Failed to load downloaded entries:", e);
-  }
+  const entries = await Effect.runPromise(loadDownloadedEntries);
+  const visible = entries.filter((entry) => {
+    const rel = relative(resolve(state.downloadDir), resolve(entry.songDir));
+    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  });
+  state.setDownloaded(visible);
+  onProgress?.({ current: entries.length, total: entries.length });
 };
 
 /**
@@ -215,25 +205,36 @@ export const loadStartConfig = async (): Promise<void> => {
 
 /** On app start: session, queue, history, tool checks (config: loadStartConfig). */
 export const initializeState = async (): Promise<void> => {
-  try {
-    const session = await Effect.runPromise(ensureSession);
-    state.cookie = session.cookie;
-    state.setStatus({ loggedIn: true });
-  } catch (e) {
-    console.error("USDB session failed:", e);
-    state.setStatus({ loggedIn: false });
-  }
+  const login = (async () => {
+    try {
+      if (process.env.ULTRASTAR_OFFLINE === "1") {
+        state.setStatus({ loggedIn: false });
+        return;
+      }
+      const session = await Effect.runPromise(
+        Effect.timeout(ensureSession, "30 seconds"),
+      );
+      state.cookie = session.cookie;
+      state.setStatus({ loggedIn: true });
+    } catch (e) {
+      console.error("USDB session failed:", e);
+      state.setStatus({ loggedIn: false });
+    }
+  })();
 
   const savedQueue = await Effect.runPromise(loadQueue).catch(
     () => [] as Song[],
   );
   if (savedQueue.length > 0) state.setQueue(savedQueue);
 
-  await reloadDownloadedEntries();
+  await reloadDownloadedEntries().catch((error) =>
+    broadcast("event:error", { context: "library", message: String(error) }),
+  );
 
   const [yt, ff] = await Promise.all([
     Effect.runPromise(checkYtDlpAvailable),
     Effect.runPromise(checkFfmpegAvailable),
   ]);
   state.setStatus({ ytDlpAvailable: yt, ffmpegAvailable: ff });
+  await login;
 };

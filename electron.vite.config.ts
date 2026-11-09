@@ -8,6 +8,7 @@ import { defineConfig } from "electron-vite";
 export default defineConfig({
   main: {
     build: {
+      externalizeDeps: false,
       rollupOptions: {
         external: ["electron"],
         input: { index: resolve("src/desktop/main/index.ts") },
@@ -16,9 +17,11 @@ export default defineConfig({
   },
   preload: {
     build: {
+      externalizeDeps: false,
       rollupOptions: {
         external: ["electron"],
         input: { index: resolve("src/desktop/preload/index.ts") },
+        output: { format: "cjs", entryFileNames: "index.cjs" },
       },
     },
   },

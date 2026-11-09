@@ -9,7 +9,8 @@ from ultrastar_pipeline.notes import AlignedWord
 from ultrastar_pipeline.verarbeitung import Auftrag, verarbeite_auftrag
 
 
-def test_verarbeite_auftrag_happy_path_smoke(tmp_path, monkeypatch):
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_verarbeite_auftrag_happy_path_smoke(tmp_path, monkeypatch, capsys, conflicting):
     """Smoke test that verarbeite_auftrag wiring works end-to-end.
 
     Catches import and basic call errors that fast tests miss because
@@ -59,7 +60,7 @@ def test_verarbeite_auftrag_happy_path_smoke(tmp_path, monkeypatch):
     # Stub align to return one AlignedWord per text word
     def stub_align(*_):
         return [
-            AlignedWord("Hallo", 0.0, 0.5, 0.8, 0, quelle="anchor"),
+            AlignedWord("Hallo", 2.0 if conflicting else 0.0, 2.5 if conflicting else 0.5, 0.8, 0, quelle="anchor"),
             AlignedWord("Welt", 0.5, 1.0, 0.8, 0, quelle="anchor"),
             AlignedWord("Test", 1.0, 1.5, 0.8, 0, quelle="anchor"),
             AlignedWord("Text", 1.5, 2.0, 0.8, 0, quelle="anchor"),
@@ -88,6 +89,15 @@ def test_verarbeite_auftrag_happy_path_smoke(tmp_path, monkeypatch):
 
     result = verarbeite_auftrag(auftrag)
 
+    if conflicting:
+        assert result == 1
+        assert not out.exists()
+        assert not (out.parent / "originalPitch.json").exists()
+        message = capsys.readouterr().out
+        assert '"kind":"alignment_failed"' in message
+        assert "Zeitkonflikt" in message
+        return
+
     # Verify success
     assert result == 0, "verarbeite_auftrag should return 0 on success"
     assert out.is_file(), "Output file should exist"
@@ -100,3 +110,10 @@ def test_verarbeite_auftrag_happy_path_smoke(tmp_path, monkeypatch):
     assert "notes" in data
     assert "sections" in data
     assert len(data["sections"]) > 0, "Should have sections"
+    trace = json.loads((out.parent / "originalPitch.json").read_text(encoding="utf8"))
+    assert trace == {"midiOffset": 60, "points": []}
+    assert data["bpm"] == 1920
+    assert data["meta"]["musicalBpm"] == 120
+    assert all(n["pitchStatus"] == "missing" and n["confidence"] == 0 for n in data["notes"])
+    assert all(n["timingConfidence"] == 0.8 for n in data["notes"])
+    assert (out.parent / "vocals.wav").read_bytes() == dummy_vocals.read_bytes()

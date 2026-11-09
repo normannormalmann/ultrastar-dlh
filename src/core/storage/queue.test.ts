@@ -1,5 +1,4 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import { afterAll, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { getCacheDir, resolveDataFilePath } from "./paths.ts";
@@ -10,9 +9,8 @@ import { loadQueue, saveQueue } from "./queue.ts";
 process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-test-${process.pid}`;
 
 afterAll(async () => {
-  // Delete the parent directory (…\ultrastar-cli-test-<pid>), not just the cache leaf
   const dir = await Effect.runPromise(getCacheDir());
-  await rm(join(dir, ".."), { recursive: true, force: true });
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("resolveDataFilePath respects ULTRASTAR_APP_NAME and file name", async () => {

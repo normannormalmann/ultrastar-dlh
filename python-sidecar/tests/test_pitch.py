@@ -118,6 +118,9 @@ def test_torchcrepe_parameter_stehen_im_schluessel(monkeypatch):
         "decoder": "viterbi",
         "periodicity_medianfenster": 3,
         "stimmhaft_ab": 0.21,
+        "batch_frames": 512,
+        "silence_rms_db": -60.0,
+        "dither_seed": 0,
     }
 
 
@@ -186,3 +189,54 @@ def test_torchcrepe_medianfilter_glaettet_einzelne_ausreisser():
 
 def test_torchcrepe_punkte_ohne_frames():
     assert pitch._torchcrepe_punkte([], [], 0.01, 3, 0.21) == []
+
+
+def test_crepe_silence_does_not_become_a_confident_tone():
+    result = pitch._torchcrepe_punkte([440, 440], [.99, .99], .01, 1, .21, [0, .01])
+    assert [p.voiced for p in result] == [False, True]
+    assert result[1].confidence == .99
+
+
+def test_swift_preserves_evidence_and_rejects_truncated_arrays(monkeypatch):
+    from types import SimpleNamespace
+    import pytest
+    result = SimpleNamespace(timestamps=[0,.016], pitch_hz=[220,440], voicing=[False,True], confidence=[.6,.95])
+    monkeypatch.setattr(pitch.modelle, 'hole_swiftf0', lambda: SimpleNamespace(detect_from_file=lambda path: result))
+    points = pitch._verlauf_swiftf0(Path('fake.wav'))
+    assert points[0].confidence == .6 and not points[0].voiced
+    assert points[1].midi == 69 and points[1].source == 'swift-f0'
+    result.confidence = [.6]
+    with pytest.raises(ValueError):
+        pitch._verlauf_swiftf0(Path('fake.wav'))
+
+
+def test_invalid_model_values_are_not_cached(tmp_path, monkeypatch):
+    import pytest
+    monkeypatch.setattr(pitch, '_verlauf_swiftf0', lambda path: [pitch.PitchPoint(0,float('nan'),True)])
+    with pytest.raises(ValueError):
+        pitch.track_pitch(Path('fake.wav'), tmp_path, 'bad')
+    assert not list(tmp_path.rglob('pitch-*.json'))
+
+
+def test_consensus_cache_contains_recovery_parameters(tmp_path, monkeypatch):
+    from ultrastar_pipeline.pitchConsensus import PARAMETERS
+    monkeypatch.setattr(modellwahl, 'PITCH', pitch.CONSENSUS)
+    assert pitch._cache_parameter()['consensus'] == PARAMETERS
+    primary = [pitch.PitchPoint(.008+i*.016,60,False,.6,'swift-f0') for i in range(4)]
+    secondary = [pitch.PitchPoint(p.time,60,True,.8,'torchcrepe') for p in primary]
+    monkeypatch.setattr(pitch, '_verlauf_swiftf0', lambda path: primary)
+    monkeypatch.setattr(pitch, '_verlauf_torchcrepe', lambda path,device: secondary)
+    result = pitch.track_pitch(Path('fake.wav'), tmp_path, 'consensus')
+    assert all(p.voiced and p.source == 'consensus' for p in result)
+    assert pitch.track_pitch(Path('fake.wav'), tmp_path, 'consensus') == result
+
+
+def test_preload_checks_the_selected_pitch_backend(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    calls = []
+    monkeypatch.setattr(modellwahl, 'PITCH', pitch.CONSENSUS)
+    monkeypatch.setattr(pitch.modelle, 'hole_swiftf0', lambda: calls.append('swift'))
+    monkeypatch.setitem(sys.modules, 'torchcrepe', SimpleNamespace(load=SimpleNamespace(model=lambda device,model: calls.append((device,model)))))
+    pitch.preload_pitch('cuda')
+    assert calls == ['swift', ('cuda','full')]

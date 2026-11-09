@@ -62,6 +62,7 @@ export const fetchDetailPage = (id: number, cookie?: string) =>
   Effect.tryPromise({
     try: async () => {
       const response = await fetch(`${API_URL}/?link=detail&id=${id}`, {
+        signal: AbortSignal.timeout(30_000),
         method: "GET",
         headers: {
           ...(cookie ? { Cookie: cookie } : {}),

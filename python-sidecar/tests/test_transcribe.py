@@ -35,14 +35,14 @@ def _platzhalter(zugriffe: list[str]) -> types.ModuleType:
         zugriffe.append("load_model")
         raise RuntimeError("Platzhalter: dieser Test laedt kein Modell")
 
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
     modul.load_model = load_model
     return modul
 
 
 def test_cache_treffer_kommt_ohne_modell_aus(tmp_path, monkeypatch):
     zugriffe: list[str] = []
-    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _platzhalter(zugriffe))
     atomic_write_bytes(
         _cache_pfad(tmp_path, "hashA"),
         json.dumps([{"text": "eins", "start": 0.0, "ende": 0.5}]).encode("utf8"),
@@ -59,7 +59,7 @@ def test_separate_versionswechsel_invalidiert_den_transcribe_cache(tmp_path, mon
     wiederverwenden — sonst beschreibt das Transkript Audio, das es nie
     gesehen hat."""
     zugriffe: list[str] = []
-    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _platzhalter(zugriffe))
     atomic_write_bytes(_cache_pfad(tmp_path, "hashB"), json.dumps([]).encode("utf8"))
 
     assert transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashB", "cpu") == []
@@ -78,9 +78,9 @@ def test_fehlende_asr_sprache_nennt_die_stufe(tmp_path, monkeypatch):
     def load_model(*args, **kwargs):
         raise RuntimeError("kein Modell fuer diese Sprache")
 
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
     modul.load_model = load_model
-    monkeypatch.setitem(sys.modules, "whisperx", modul)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", modul)
 
     with pytest.raises(LanguageUnsupported) as fehler:
         transcribe.transcribe(Path("egal.wav"), "xx", tmp_path, "hashC", "cpu")
@@ -96,9 +96,9 @@ def test_gpu_speicher_voll_wird_nicht_zu_language_unsupported(tmp_path, monkeypa
     def load_model(*args, **kwargs):
         raise RuntimeError("CUDA out of memory")
 
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
     modul.load_model = load_model
-    monkeypatch.setitem(sys.modules, "whisperx", modul)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", modul)
 
     with pytest.raises(RuntimeError):
         transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashOOM", "cpu")
@@ -107,7 +107,7 @@ def test_gpu_speicher_voll_wird_nicht_zu_language_unsupported(tmp_path, monkeypa
 def _stub_mit_alignment() -> types.ModuleType:
     """whisperx-Platzhalter: Transkription plus Forced Alignment des
     Transkripts, ohne ein Modell zu laden."""
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
 
     class _Modell:
         def transcribe(self, pfad, language):
@@ -116,7 +116,8 @@ def _stub_mit_alignment() -> types.ModuleType:
     modul.load_model = lambda *a, **k: _Modell()
     modul.load_align_model = lambda **k: ("alignmodell", {"meta": True})
 
-    def align(segmente, modell, metadaten, pfad, device, return_char_alignments):
+    def align(segmente, modell, metadaten, pfad, device, return_char_alignments, interpolate_method):
+        assert interpolate_method == "ignore"
         return {
             "segments": [
                 {"words": [
@@ -137,7 +138,7 @@ def test_transkript_zeiten_sind_gemessen_nicht_verteilt(tmp_path, monkeypatch):
     Jetzt kommen die Zeiten aus dem Forced Alignment des Transkripts -
     Woerter ohne Zeitstempel entfallen, ein erfundener Wert waere schlimmer
     als ein fehlendes Wort."""
-    monkeypatch.setitem(sys.modules, "whisperx", _stub_mit_alignment())
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _stub_mit_alignment())
     ergebnis = transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashD", "cpu")
     assert ergebnis == [
         TranskriptWort(text="hallo", start=10.2, ende=10.6, score=0.31),
@@ -146,11 +147,11 @@ def test_transkript_zeiten_sind_gemessen_nicht_verteilt(tmp_path, monkeypatch):
 
 
 def test_score_ueberlebt_den_cache(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, "whisperx", _stub_mit_alignment())
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _stub_mit_alignment())
     transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashE", "cpu")
 
     zugriffe: list[str] = []
-    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _platzhalter(zugriffe))
     ergebnis = transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashE", "cpu")
     assert zugriffe == []
     assert ergebnis[0].score == 0.31
@@ -159,7 +160,7 @@ def test_score_ueberlebt_den_cache(tmp_path, monkeypatch):
 def test_fehlendes_alignment_modell_nennt_die_stufe_transcribe(tmp_path, monkeypatch):
     """Auch der zweite Modellzugriff dieser Stufe muss die Stufe nennen -
     sonst raet der Nutzer, ob ASR- oder Alignment-Modell fehlt."""
-    modul = types.ModuleType("whisperx")
+    modul = types.ModuleType("ultrastar_pipeline.modelBackend")
 
     class _Modell:
         def transcribe(self, pfad, language):
@@ -171,7 +172,7 @@ def test_fehlendes_alignment_modell_nennt_die_stufe_transcribe(tmp_path, monkeyp
         raise RuntimeError("kein Alignment-Modell")
 
     modul.load_align_model = load_align_model
-    monkeypatch.setitem(sys.modules, "whisperx", modul)
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", modul)
 
     with pytest.raises(LanguageUnsupported) as fehler:
         transcribe.transcribe(Path("egal.wav"), "xy", tmp_path, "hashF", "cpu")
@@ -183,7 +184,7 @@ def test_anderer_aligner_invalidiert_den_transcribe_cache(tmp_path, monkeypatch)
     Zeiten stecken also im gecachten Ergebnis. Ohne die Aligner-Identitaet im
     Schluessel liefert ein Vergleichslauf still die Zeiten des alten."""
     zugriffe: list[str] = []
-    monkeypatch.setitem(sys.modules, "whisperx", _platzhalter(zugriffe))
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", _platzhalter(zugriffe))
     atomic_write_bytes(_cache_pfad(tmp_path, "hashC"), json.dumps([]).encode("utf8"))
 
     assert transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashC", "cpu") == []
@@ -193,3 +194,21 @@ def test_anderer_aligner_invalidiert_den_transcribe_cache(tmp_path, monkeypatch)
     with pytest.raises(LanguageUnsupported):
         transcribe.transcribe(Path("egal.wav"), "de", tmp_path, "hashC", "cpu")
     assert zugriffe == ["load_model"]
+
+
+def test_invalid_and_overlapping_measurements_never_become_anchors(tmp_path, monkeypatch):
+    stub = _stub_mit_alignment()
+    def align(*args, **kwargs):
+        assert kwargs["interpolate_method"] == "ignore"
+        return {"segments": [{"words": [
+            {"word": "valid", "start": 1, "end": 2, "score": .5},
+            {"word": "overlap", "start": 1.5, "end": 2.5},
+            {"word": "zero", "start": 3, "end": 3},
+            {"word": "nan", "start": float("nan"), "end": 4},
+            {"word": "infinite", "start": 3, "end": float("inf")},
+            {"word": "valid", "start": 4, "end": 5, "score": .7},
+        ]}]}
+    stub.align = align
+    monkeypatch.setitem(sys.modules, "ultrastar_pipeline.modelBackend", stub)
+    words = transcribe.transcribe(Path("x.wav"), "de", tmp_path, "invalid", "cpu")
+    assert [(w.text, w.start, w.ende) for w in words] == [("valid", 1, 2), ("valid", 4, 5)]
