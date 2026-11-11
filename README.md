@@ -2,11 +2,13 @@
 
 # UltraStar - Dirty Little Helper
 
-**Die Desktop-App, die deine UltraStar-Karaoke-Sammlung aufbaut, pflegt und durchsuchbar macht.**
+**Die Desktop-App, die deine UltraStar-Karaoke-Sammlung aufbaut, pflegt und durchsuchbar macht — und aus jedem Lied einen singbaren Song erstellt.**
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
 
 Durchsuche die größte UltraStar-Datenbank (USDB), lade komplette, sofort singbare Song-Ordner — Text, Cover und Video in einem Rutsch — und verwalte zehntausende Songs mit echten Filtern. Kein manuelles Zusammensuchen, keine kaputten Ordner. Suchen, laden, singen.
+
+Dein Lieblingslied fehlt in der Datenbank? Dann **erstelle es selbst:** Die KI trennt die Stimme ab, legt den Text auf den Gesang und erkennt die Tonhöhen — heraus kommt ein fertiger Song mit Noten, den du im Editor noch nachschärfen kannst.
 
 🎤 **Gebaut für [Melody Mania](https://store.steampowered.com/search/?term=Melody%20Mania) auf Steam** — und genauso für UltraStar Deluxe, Vocaluxe und UltraStar Play.
 

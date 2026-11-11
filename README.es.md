@@ -2,11 +2,13 @@
 
 # UltraStar - Dirty Little Helper
 
-**La aplicación de escritorio que crea, mantiene y hace buscable tu colección de karaoke UltraStar.**
+**La aplicación de escritorio que crea, mantiene y hace buscable tu colección de karaoke UltraStar — y convierte cualquier tema en una canción para cantar.**
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/normanschou)
 
 Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de canciones completas y listas para cantar —letra, carátula y vídeo de una sola vez— y administra decenas de miles de canciones con filtros de verdad. Sin montajes manuales, sin carpetas rotas. Buscar, descargar, cantar.
+
+¿Tu canción favorita no está en la base de datos? Entonces **créala tú:** la IA separa la voz, alinea la letra con el canto y detecta las notas — el resultado es una canción terminada con notas que puedes pulir en el editor.
 
 🎤 **Hecha para [Melody Mania](https://store.steampowered.com/search/?term=Melody%20Mania) en Steam** — e igual de bien para UltraStar Deluxe, Vocaluxe y UltraStar Play.
 
