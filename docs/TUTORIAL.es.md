@@ -39,7 +39,7 @@ Abre **Ajustes** (el engranaje de la barra lateral):
 
 ![Ajustes](screenshots/es/settings.png)
 
-- **Carpeta de descargas:** la carpeta donde están (o estarán) tus canciones — p. ej. `D:\UltraStar\Songs`. Se elige con «Examinar…». *Es la misma carpeta que indicas como SongDir en UltraStar Deluxe.*
+- **Carpeta de descargas:** la carpeta donde están (o estarán) tus canciones — p. ej. `D:\UltraStar\Songs`. Se elige con «Examinar…». *Es la misma carpeta que añades como carpeta de canciones en Melody Mania o indicas como SongDir en UltraStar Deluxe.*
 - **Navegador para las cookies de YouTube:** elige el navegador en el que hayas **iniciado sesión** en YouTube (p. ej. Edge, Chrome o Firefox). YouTube bloquea a menudo las descargas anónimas; con las cookies de tu navegador la aplicación lo sortea. Importante al descargar: cierra el navegador, si no su base de datos de cookies queda bloqueada.
 - **Descargas:**
   - *Estructura de carpetas para las descargas nuevas* — cómo se guardan las canciones nuevas:

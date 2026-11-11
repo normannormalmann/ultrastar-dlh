@@ -39,7 +39,7 @@ Open **Settings** (the cog in the sidebar):
 
 ![Settings](screenshots/en/settings.png)
 
-- **Download folder:** the folder your songs live in (or should live in) — e.g. `D:\UltraStar\Songs`. Pick it with "Browse…". *This is the same folder you enter as SongDir in UltraStar Deluxe.*
+- **Download folder:** the folder your songs live in (or should live in) — e.g. `D:\UltraStar\Songs`. Pick it with "Browse…". *This is the same folder you add as a song folder in Melody Mania, or enter as SongDir in UltraStar Deluxe.*
 - **Browser for YouTube cookies:** pick the browser you are **signed in** to YouTube with (e.g. Edge, Chrome or Firefox). YouTube often blocks anonymous downloads; with your browser cookies the app gets past that. Important while downloading: close the browser, otherwise its cookie database is locked.
 - **Downloads:**
   - *Folder layout for new downloads* — how new songs are filed:

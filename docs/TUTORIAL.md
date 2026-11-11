@@ -39,7 +39,7 @@ Links siehst du die Seitenleiste mit allen Bereichen, unten die **Status-Punkte*
 
 ![Einstellungen](screenshots/de/settings.png)
 
-- **Download-Ordner:** Der Ordner, in dem deine Songs liegen (sollen) — z.B. `D:\UltraStar\Songs`. Über „Durchsuchen…" wählbar. *Das ist derselbe Ordner, den du in UltraStar Deluxe als SongDir einträgst.*
+- **Download-Ordner:** Der Ordner, in dem deine Songs liegen (sollen) — z.B. `D:\UltraStar\Songs`. Über „Durchsuchen…" wählbar. *Das ist derselbe Ordner, den du in Melody Mania als Song-Ordner bzw. in UltraStar Deluxe als SongDir einträgst.*
 - **Browser für YouTube-Cookies:** Wähle den Browser, in dem du bei YouTube **angemeldet** bist (z.B. Edge, Chrome oder Firefox). YouTube blockiert anonyme Downloads häufig; mit deinen Browser-Cookies umgeht die App das. Wichtig beim Herunterladen: Browser schließen, sonst ist seine Cookie-Datenbank gesperrt.
 - **Downloads:**
   - *Ordnerstruktur neuer Downloads* — wie neue Songs abgelegt werden:

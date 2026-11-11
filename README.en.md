@@ -8,6 +8,8 @@
 
 Search the largest UltraStar database (USDB), download complete, ready-to-sing song folders — lyrics, cover, and video in one go — and manage tens of thousands of songs with real filters. No manual assembling, no broken folders. Search, download, sing.
 
+🎤 **Built for [Melody Mania](https://store.steampowered.com/search/?term=Melody%20Mania) on Steam** — and just as much for UltraStar Deluxe, Vocaluxe, and UltraStar Play.
+
 ➡️ **New here? [Go to the step-by-step tutorial](docs/TUTORIAL.en.md)**
 
 
@@ -96,7 +98,7 @@ bunx --bun github:normannormalmann/ultrastar-dlh
 1. **Search:** The app authenticates with USDB and queries the database.
 2. **Resolve:** Video links come from USDB comments (including any VIDEOGAP corrections stored there); if one is missing, the app searches YouTube directly.
 3. **Download:** Video/audio via `yt-dlp` at the configured quality, merged with `ffmpeg`.
-4. **Assemble:** Cover and lyrics are fetched and saved as a standard-compliant `song.txt` — compatible with UltraStar Deluxe, Vocaluxe, and UltraStar Play.
+4. **Assemble:** Cover and lyrics are fetched and saved as a standard-compliant `song.txt` — compatible with Melody Mania, UltraStar Deluxe, Vocaluxe, and UltraStar Play.
 5. **Track:** Successes and failures are logged locally (`downloaded.json`, `failed-downloads.xlsx`) — for duplicate protection and easy retries.
 
 ---

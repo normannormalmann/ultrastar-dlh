@@ -8,6 +8,8 @@
 
 Busca en la mayor base de datos de UltraStar (USDB), descarga carpetas de canciones completas y listas para cantar —letra, carátula y vídeo de una sola vez— y administra decenas de miles de canciones con filtros de verdad. Sin montajes manuales, sin carpetas rotas. Buscar, descargar, cantar.
 
+🎤 **Hecha para [Melody Mania](https://store.steampowered.com/search/?term=Melody%20Mania) en Steam** — e igual de bien para UltraStar Deluxe, Vocaluxe y UltraStar Play.
+
 ➡️ **¿Es tu primera vez? [Ve al tutorial paso a paso](docs/TUTORIAL.es.md)**
 
 
@@ -96,7 +98,7 @@ bunx --bun github:normannormalmann/ultrastar-dlh
 1. **Buscar:** la aplicación se autentica en USDB y consulta la base de datos.
 2. **Resolver:** los enlaces de vídeo salen de los comentarios de USDB (incluidas las correcciones de VIDEOGAP allí guardadas); si falta alguno, la aplicación busca directamente en YouTube.
 3. **Descargar:** vídeo y audio con `yt-dlp` en la calidad configurada, combinados con `ffmpeg`.
-4. **Montar:** la carátula y la letra se obtienen y se guardan como un `song.txt` conforme al estándar — compatible con UltraStar Deluxe, Vocaluxe y UltraStar Play.
+4. **Montar:** la carátula y la letra se obtienen y se guardan como un `song.txt` conforme al estándar — compatible con Melody Mania, UltraStar Deluxe, Vocaluxe y UltraStar Play.
 5. **Registrar:** los aciertos y los fallos se anotan localmente (`downloaded.json`, `failed-downloads.xlsx`) — para la protección contra duplicados y para reintentar con comodidad.
 
 ---
