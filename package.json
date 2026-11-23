@@ -60,13 +60,13 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "effect": "^3.22.4",
+    "effect": "^3.22.5",
     "electron-updater": "^6.8.11",
     "env-paths": "^4.0.0",
     "ink": "^8.0.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
-    "lucide-react": "^1.61.0",
+    "lucide-react": "^1.77.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "yauzl": "^3.4.0"
