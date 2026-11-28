@@ -1,18 +1,25 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { getCacheDir, resolveDataFilePath } from "./paths.ts";
 import { loadQueue, saveQueue } from "./queue.ts";
 
-// Isolated cache directory per test run; getAppName() reads the variable
-// on every call, so setting it before the first Effect run is sufficient.
-process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-test-${process.pid}`;
+const appName = `ultrastar-cli-test-${process.pid}`;
+let previousAppName: string | undefined;
+
+beforeEach(() => {
+  previousAppName = process.env.ULTRASTAR_APP_NAME;
+  process.env.ULTRASTAR_APP_NAME = appName;
+});
+
+afterEach(() => {
+  if (previousAppName === undefined) delete process.env.ULTRASTAR_APP_NAME;
+  else process.env.ULTRASTAR_APP_NAME = previousAppName;
+});
 
 afterAll(async () => {
-  // Delete the parent directory (…\ultrastar-cli-test-<pid>), not just the cache leaf
-  const dir = await Effect.runPromise(getCacheDir());
-  await rm(join(dir, ".."), { recursive: true, force: true });
+  const dir = await Effect.runPromise(getCacheDir(appName));
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("resolveDataFilePath respects ULTRASTAR_APP_NAME and file name", async () => {
@@ -32,7 +39,7 @@ test("saveQueue then loadQueue round-trips songs", async () => {
 });
 
 test("loadQueue returns empty array when file is missing", async () => {
-  const dir = await Effect.runPromise(getCacheDir());
+  const dir = await Effect.runPromise(getCacheDir(appName));
   await rm(dir, { recursive: true, force: true });
   const loaded = await Effect.runPromise(loadQueue);
   expect(loaded).toEqual([]);

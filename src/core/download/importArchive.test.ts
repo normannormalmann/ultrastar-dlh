@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
   loadDownloadedEntries,
@@ -10,14 +10,24 @@ import {
 import { getCacheDir } from "../storage/paths.ts";
 import { importArchive } from "./importArchive.ts";
 
-// Isoliertes Datenverzeichnis (gleiche Technik wie queue.test.ts)
-process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-import-test-${process.pid}`;
+const appName = `ultrastar-cli-import-test-${process.pid}`;
+let previousAppName: string | undefined;
+
+beforeEach(() => {
+  previousAppName = process.env.ULTRASTAR_APP_NAME;
+  process.env.ULTRASTAR_APP_NAME = appName;
+});
+
+afterEach(() => {
+  if (previousAppName === undefined) delete process.env.ULTRASTAR_APP_NAME;
+  else process.env.ULTRASTAR_APP_NAME = previousAppName;
+});
 
 const dirs: string[] = [];
 afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
-  const cache = await Effect.runPromise(getCacheDir());
-  await rm(join(cache, ".."), { recursive: true, force: true });
+  const cache = await Effect.runPromise(getCacheDir(appName));
+  await rm(cache, { recursive: true, force: true });
 });
 
 const makeArchive = async (): Promise<string> => {

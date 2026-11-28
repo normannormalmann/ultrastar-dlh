@@ -1,15 +1,25 @@
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { getCacheDir } from "./paths.ts";
 import { loadConfig, saveConfig } from "./config.ts";
 
-process.env.ULTRASTAR_APP_NAME = `ultrastar-cli-config-test-${process.pid}`;
+const appName = `ultrastar-cli-config-test-${process.pid}`;
+let previousAppName: string | undefined;
+
+beforeEach(() => {
+  previousAppName = process.env.ULTRASTAR_APP_NAME;
+  process.env.ULTRASTAR_APP_NAME = appName;
+});
+
+afterEach(() => {
+  if (previousAppName === undefined) delete process.env.ULTRASTAR_APP_NAME;
+  else process.env.ULTRASTAR_APP_NAME = previousAppName;
+});
 
 afterAll(async () => {
-  const dir = await Effect.runPromise(getCacheDir());
-  await rm(join(dir, ".."), { recursive: true, force: true });
+  const dir = await Effect.runPromise(getCacheDir(appName));
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("saveConfig merges with existing fields instead of wiping them", async () => {
